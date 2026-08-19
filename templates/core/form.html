@@ -1,0 +1,5 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page"><div class="head"><div><div class="ey">MANAGEMENT CONTROL</div><h1 class="pt">{{ title }}</h1></div></div>
+<div class="card pad" style="max-width:760px"><form method="post">{% csrf_token %}{% for field in form %}<div style="margin-bottom:14px"><label style="display:block;font-weight:600;margin-bottom:6px">{{ field.label }}</label>{{ field }}{% if field.errors %}<div class="alert" style="margin-top:5px">{{ field.errors }}</div>{% endif %}</div>{% endfor %}<div class="actions"><a class="btn secondary" href="{% url back_url %}">Cancel</a><button class="btn primary">Save</button></div></form></div></div>
+{% endblock %}

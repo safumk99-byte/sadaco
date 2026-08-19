@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page">
+  <div class="head">
+    <div><div class="ey">CUSTOMER</div><h1 class="pt">{{ customer.name }}</h1><p class="desc">{{ customer.phone }}{% if customer.email %} · {{ customer.email }}{% endif %}</p></div>
+    <div class="actions">
+      <a class="btn secondary" href="{% url 'sales:customers' %}">Back</a>
+      {% if request.user.is_superuser or request.user.profile.role in "super_admin institution_admin manager" %}<a class="btn secondary" href="{% url 'sales:customer_interaction_create' customer.pk %}">+ Follow-up</a><a class="btn primary" href="{% url 'sales:customer_edit' customer.pk %}">Edit</a>{% endif %}
+    </div>
+  </div>
+
+  <div class="grid g2">
+    <div class="card pad">
+      <h2>Customer information</h2>
+      <div class="detail"><span>Phone</span><b>{{ customer.phone }}</b></div>
+      <div class="detail"><span>Alternate phone</span><b>{{ customer.alternate_phone|default:"—" }}</b></div>
+      <div class="detail"><span>Email</span><b>{{ customer.email|default:"—" }}</b></div>
+      <div class="detail"><span>Address</span><b>{{ customer.address|default:"—" }}</b></div>
+      <div class="detail"><span>Status</span><b>{{ customer.get_status_display }}</b></div>
+    </div>
+    <div class="card pad"><h2>Notes</h2><p class="desc">{{ customer.notes|default:"No notes recorded." }}</p></div>
+  </div>
+
+  <div class="grid g3" style="margin-top:16px">
+    <div class="card pad"><h2>Enquiries</h2>{% for x in enquiries %}<div class="detail"><span>{{ x.enquiry_no }}</span><span class="badge blue">{{ x.get_status_display }}</span></div>{% empty %}<div class="empty">No enquiries.</div>{% endfor %}</div>
+    <div class="card pad"><h2>Quotations</h2>{% for x in quotations %}<div class="detail"><span>{{ x.quotation_no }}</span><b>₹ {{ x.quoted_price }}</b></div>{% empty %}<div class="empty">No quotations.</div>{% endfor %}</div>
+    <div class="card pad"><h2>Orders</h2>{% for x in orders %}<div class="detail"><span>{{ x.order_no }}</span><span class="badge ok">{{ x.get_status_display }}</span></div>{% empty %}<div class="empty">No orders.</div>{% endfor %}</div>
+  </div>
+
+  <div class="card pad" style="margin-top:16px">
+    <div class="head" style="margin-bottom:10px"><div><h2>Customer Follow-up Timeline</h2><p class="desc">Calls, WhatsApp, meetings, notes and next follow-up dates.</p></div></div>
+    {% for x in interactions %}
+      <div class="detail" style="align-items:flex-start;gap:12px">
+        <div><b>{{ x.subject }}</b><small style="display:block">{{ x.get_interaction_type_display }} · {{ x.created_at|date:"d M Y H:i" }}</small></div>
+        <div style="text-align:right"><span class="badge {% if x.completed %}ok{% else %}blue{% endif %}">{% if x.completed %}Completed{% else %}Open{% endif %}</span>{% if x.next_follow_up %}<small style="display:block">Next: {{ x.next_follow_up|date:"d M Y" }}</small>{% endif %}</div>
+      </div>
+      {% if x.notes %}<p class="desc" style="padding:0 0 8px 0">{{ x.notes }}</p>{% endif %}
+    {% empty %}
+      <div class="empty">No follow-up activity recorded yet.</div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

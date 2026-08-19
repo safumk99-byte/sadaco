@@ -1,0 +1,9 @@
+{% load static %}
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{{ title }}</title>
+<link rel="stylesheet" href="{% static 'css/output.css' %}"><link rel="stylesheet" href="{% static 'css/customer-orders.css' %}"></head>
+<body><div class="customer-portal"><div class="portal-wrap portal-request-detail">
+<a class="portal-back" href="{% url 'sales:portal_requests' %}">← My Requests</a>
+<div class="portal-detail-card"><div class="portal-detail-head"><div><div class="ey">REQUEST</div><h1>{{ request_obj.request_no }}</h1><p>Submitted {{ request_obj.created_at|date:"d M Y, h:i A" }}</p></div><span class="co-status large {{ request_obj.status }}">{{ request_obj.get_status_display }}</span></div>
+<div class="portal-detail-body"><div class="portal-detail-grid"><div><label>Product / Work</label><b>{{ request_obj.product.name|default:request_obj.product_name }}</b></div><div><label>Quantity</label><b>{{ request_obj.quantity }}</b></div><div><label>Size</label><b>{{ request_obj.size|default:"—" }}</b></div><div><label>Material</label><b>{{ request_obj.material_preference|default:"—" }}</b></div><div><label>Requested Date</label><b>{{ request_obj.requested_date|date:"d M Y"|default:"—" }}</b></div><div><label>Budget</label><b>{{ request_obj.budget|default:"—" }}</b></div></div>
+<div class="portal-note"><b>Requirement</b><br>{{ request_obj.requirement }}</div>{% if request_obj.design_requirement %}<div class="portal-note"><b>Design requirement</b><br>{{ request_obj.design_requirement }}</div>{% endif %}{% if request_obj.manager_notes %}<div class="portal-note"><b>Manager update</b><br>{{ request_obj.manager_notes }}</div>{% endif %}{% if request_obj.reference_file %}<a class="co-btn secondary" style="margin-top:15px" href="{{ request_obj.reference_file.url }}">↗ View reference file</a>{% endif %}</div></div>
+</div></div></body></html>

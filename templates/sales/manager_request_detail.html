@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% load static %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'css/customer-orders.css' %}">{% endblock %}
+{% block content %}
+<div class="customer-orders page">
+  <div class="co-breadcrumb"><a href="{% url 'sales:manager_requests' %}">Customer Requests</a><span>›</span><b>{{ request_obj.request_no }}</b></div>
+  <section class="co-detail-hero">
+    <div><div class="ey">REQUEST DETAILS</div><h1 class="pt">{{ request_obj.request_no }}</h1><p class="desc">Received {{ request_obj.created_at|date:"d M Y, h:i A" }}</p></div>
+    <span class="co-status large {{ request_obj.status }}">{{ request_obj.get_status_display }}</span>
+  </section>
+
+  <div class="co-detail-grid">
+    <div>
+      <div class="co-panel co-card">
+        <div class="co-card-head"><div><h2>Customer requirement</h2><p>Everything submitted by the customer.</p></div><span class="co-type">{{ request_obj.get_request_type_display }}</span></div>
+        <div class="co-info-grid">
+          <div><label>Product / Work</label><b>{{ request_obj.product.name|default:request_obj.product_name }}</b></div>
+          <div><label>Quantity</label><b>{{ request_obj.quantity }}{% if request_obj.product %} {{ request_obj.product.unit }}{% endif %}</b></div>
+          <div><label>Size</label><b>{{ request_obj.size|default:"—" }}</b></div>
+          <div><label>Material</label><b>{{ request_obj.material_preference|default:"—" }}</b></div>
+          <div><label>Budget</label><b>{{ request_obj.budget|default:"Not specified" }}</b></div>
+          <div><label>Requested date</label><b>{{ request_obj.requested_date|date:"d M Y"|default:"Not specified" }}</b></div>
+        </div>
+        <div class="co-message"><label>Requirement</label><p>{{ request_obj.requirement }}</p></div>
+        {% if request_obj.design_requirement %}<div class="co-message"><label>Design requirement</label><p>{{ request_obj.design_requirement }}</p></div>{% endif %}
+        {% if request_obj.reference_file %}<a class="co-btn secondary" href="{{ request_obj.reference_file.url }}">↗ View reference file</a>{% endif %}
+      </div>
+
+      <div class="co-panel co-card">
+        <div class="co-card-head"><div><h2>Customer contact</h2><p>Contact the customer before confirming the commercial details.</p></div></div>
+        <div class="co-contact">
+          <div class="co-avatar">{{ request_obj.customer.name|first|upper }}</div>
+          <div class="co-contact-main"><b>{{ request_obj.customer.name }}</b><span>{{ request_obj.customer.phone }}{% if request_obj.customer.email %} · {{ request_obj.customer.email }}{% endif %}</span></div>
+          <div class="co-contact-actions">
+            <a class="co-btn secondary" href="tel:{{ request_obj.customer.phone }}">☎ Call</a>
+            <a class="co-btn secondary" target="_blank" rel="noopener" href="https://wa.me/{{ request_obj.customer.phone|cut:' '|cut:'+' }}">WhatsApp</a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="co-panel co-card sticky-card">
+        <div class="co-card-head"><div><h2>Manager action</h2><p>Update the request and notify the customer.</p></div></div>
+        <div class="co-flow">
+          <span class="{% if request_obj.status == 'new' %}current{% endif %}">1. New</span><i></i>
+          <span class="{% if request_obj.status == 'reviewing' %}current{% endif %}">2. Review</span><i></i>
+          <span class="{% if request_obj.status == 'contacted' %}current{% endif %}">3. Contact</span><i></i>
+          <span class="{% if request_obj.status == 'quotation' %}current{% endif %}">4. Quote</span>
+        </div>
+        <form method="post">{% csrf_token %}
+          <div class="co-field"><label>Status</label><select name="status" class="co-input">{% for value,label in request_status_choices %}<option value="{{ value }}" {% if request_obj.status == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+          <div class="co-field"><label>Manager notes</label><textarea name="manager_notes" class="co-input" rows="6" placeholder="Record call outcome, agreed requirements, pricing discussion or next step...">{{ request_obj.manager_notes }}</textarea></div>
+          <button class="co-btn primary wide">Save & Notify Customer</button>
+        </form>
+        {% if existing_quotation %}
+          <a class="co-btn secondary wide" href="{% url 'sales:quotation_detail' existing_quotation.pk %}">View quotation {{ existing_quotation.quotation_no }}</a>
+        {% else %}
+          <a class="co-btn accent wide" href="{% url 'sales:quotation_create' %}?request={{ request_obj.pk }}">Create quotation from request →</a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

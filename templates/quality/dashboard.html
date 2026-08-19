@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% load static %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'css/quality.css' %}">{% endblock %}
+{% block content %}
+<div class="quality-ui"><div class="quality-page">
+<section class="quality-hero"><div><div class="ey">QUALITY OPERATIONS</div><h1>Quality Control</h1><p>Inspect production output, manage defects and release approved work for packing.</p></div><a class="qc-light" href="{% url 'production:dashboard' %}">Production →</a></section>
+<div class="qc-stats"><div><span>QC Pending</span><b>{{ pending }}</b><small>Jobs awaiting inspection</small></div><div><span>Passed</span><b>{{ passed }}</b><small>Checks passed</small></div><div><span>Rework</span><b>{{ rework }}</b><small>Open rework cases</small></div><div><span>Packed</span><b>{{ packed }}</b><small>Ready for delivery</small></div></div>
+<div class="qc-panel"><form class="qc-toolbar" method="get"><div class="qc-search">⌕<input name="q" value="{{ query }}" placeholder="Search job, order or customer"></div><select name="result" class="qc-select"><option value="">All results</option>{% for value,label in result_choices %}<option value="{{ value }}" {% if selected_result == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select><button class="qc-btn dark">Search</button><a class="qc-btn light" href="{% url 'quality:dashboard' %}">Reset</a></form>
+<div class="qc-table-wrap"><table class="qc-table"><thead><tr><th>Job</th><th>Order / Customer</th><th>Check</th><th>Inspector</th><th>Result</th><th>Date</th><th></th></tr></thead><tbody>
+{% for c in checks %}<tr><td><a class="qc-link" href="{% url 'quality:job_detail' c.job.pk %}"><b>{{ c.job.job_no }}</b></a><small>{{ c.job.station|title }}</small></td><td><b>{{ c.job.order.order_no }}</b><small>{{ c.job.order.customer.name }}</small></td><td>{{ c.get_check_type_display }}<small>{{ c.stage|default:"—" }}</small></td><td>{% if c.inspector %}{{ c.inspector.user.get_full_name|default:c.inspector.user.username }}{% else %}—{% endif %}</td><td><span class="qc-status {{ c.result }}">{{ c.get_result_display }}</span></td><td>{{ c.checked_at|date:"d M Y"|default:"—" }}</td><td><a class="qc-open" href="{% url 'quality:job_detail' c.job.pk %}">Open →</a></td></tr>{% empty %}<tr><td colspan="7"><div class="qc-empty">No quality checks found.</div></td></tr>{% endfor %}
+</tbody></table></div></div></div></div>
+{% endblock %}

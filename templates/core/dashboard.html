@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% load static %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'css/dashboard.css' %}">{% endblock %}
+{% block content %}
+<div class="dashboard-ui"><div class="page">
+
+<section class="dash-hero">
+  <div class="head" style="margin:0;position:relative;z-index:2;align-items:center">
+    <div>
+      <div class="ey">SADACO MANAGEMENT SYSTEM</div>
+      <h1 class="pt">Good day, {{ request.user.first_name|default:request.user.username }} 👋</h1>
+      <p class="desc">Your operational overview, all in one place.</p>
+      <div class="hero-date">{{ today|date:"l, d F Y" }}</div>
+    </div>
+    {% if is_manager %}
+    <div class="hero-actions">
+      <a class="btn primary" href="{% url 'staff:create' %}">＋ Staff</a>
+      <a class="btn" href="{% url 'products:create' %}">＋ Product</a>
+      <a class="btn" href="{% url 'sales:manager_requests' %}">Orders</a>
+    </div>
+    {% endif %}
+  </div>
+</section>
+
+{% if is_staff_user %}
+<div class="metrics">
+  <div class="metric"><div class="metric-top"><span class="metric-label">My Open Tasks</span><span class="metric-icon">✓</span></div><div class="metric-value">{{ stats.open_tasks }}</div><div class="metric-foot">{{ stats.overdue_tasks }} overdue</div></div>
+  <div class="metric"><div class="metric-top"><span class="metric-label">My Attendance</span><span class="metric-icon">●</span></div><div class="metric-value">{{ stats.attendance_rate }}%</div><div class="metric-foot">{{ stats.present_today }} present today</div></div>
+  <div class="metric"><div class="metric-top"><span class="metric-label">Products</span><span class="metric-icon">▣</span></div><div class="metric-value">{{ stats.total_products }}</div><div class="metric-foot">Catalog access</div></div>
+  <div class="metric"><div class="metric-top"><span class="metric-label">Active Orders</span><span class="metric-icon">↗</span></div><div class="metric-value">{{ request.user.staff_profile.work_area.name|default:"—" }}</div><div class="metric-foot">Assigned work area</div></div>
+</div>
+<div class="section-grid">
+  <div class="panel"><div class="panel-head"><div><div class="panel-title">My Tasks</div><div class="panel-sub">Latest assigned work.</div></div><a class="btn secondary" href="{% url 'staff:tasks' %}">View all</a></div><div class="panel-body">
+  {% for x in recent_tasks %}<div class="activity"><div class="activity-icon">✓</div><div class="activity-main"><div class="activity-title">{{ x.title }}</div><div class="activity-meta">{% if x.due_date %}Due {{ x.due_date|date:"d M Y" }}{% endif %}</div></div><span class="badge {% if x.status == 'completed' %}ok{% elif x.priority == 'urgent' or x.priority == 'high' %}red{% else %}blue{% endif %}">{{ x.get_status_display }}</span></div>{% empty %}<div class="empty-state">No assigned tasks.</div>{% endfor %}
+  </div></div>
+  <div class="panel"><div class="panel-head"><div><div class="panel-title">My Work</div><div class="panel-sub">Use the sidebar to continue your assigned operational work.</div></div></div><div class="panel-body">
+    <div class="quick-grid">
+      <a class="quick" href="{% url 'staff:tasks' %}"><span class="quick-icon">✓</span><div><div class="quick-title">My Tasks</div><div class="quick-desc">View and update assigned tasks.</div></div></a>
+      <a class="quick" href="{% url 'staff:attendance' %}"><span class="quick-icon">●</span><div><div class="quick-title">My Attendance</div><div class="quick-desc">View attendance records.</div></div></a>
+      <a class="quick" href="{% url 'staff:performance' %}"><span class="quick-icon">★</span><div><div class="quick-title">My Performance</div><div class="quick-desc">View your performance records.</div></div></a>
+    </div>
+  </div></div>
+</div>
+{% else %}
+<div class="metrics">
+  <div class="metric"><div class="metric-top"><span class="metric-label">Staff</span><span class="metric-icon">♙</span></div><div class="metric-value">{{ stats.active_staff }}</div><div class="metric-foot">{{ stats.total_staff }} total · active staff</div></div>
+  <div class="metric"><div class="metric-top"><span class="metric-label">Products</span><span class="metric-icon">▣</span></div><div class="metric-value">{{ stats.total_products }}</div><div class="metric-foot">{{ stats.low_stock }} need stock attention</div></div>
+  <div class="metric"><div class="metric-top"><span class="metric-label">Customers</span><span class="metric-icon">♧</span></div><div class="metric-value">{{ stats.customers }}</div><div class="metric-foot">{{ stats.new_enquiries }} new enquiries</div></div>
+  <div class="metric"><div class="metric-top"><span class="metric-label">Active Orders</span><span class="metric-icon">↗</span></div><div class="metric-value">{{ stats.active_orders }}</div><div class="metric-foot">{{ stats.pending_requests }} customer requests pending</div></div>
+</div>
+
+<div class="three-grid">
+  <div class="panel"><div class="panel-head"><div><div class="panel-title">Today's attendance</div><div class="panel-sub">Active staff presence</div></div><span class="badge blue">{{ stats.attendance_rate }}%</span></div><div class="panel-body"><div style="display:flex;justify-content:space-between;font-size:12px"><b>{{ stats.present_today }} present</b><span class="desc">{{ stats.active_staff }} active staff</span></div><div class="mini-progress"><span style="width:{{ stats.attendance_rate }}%"></span></div></div></div>
+  <div class="panel"><div class="panel-head"><div><div class="panel-title">Task workload</div><div class="panel-sub">Open work across staff</div></div><span class="badge {% if stats.overdue_tasks %}red{% else %}ok{% endif %}">{{ stats.overdue_tasks }} overdue</span></div><div class="panel-body"><div style="font-size:27px;font-weight:950;color:#0f172a">{{ stats.open_tasks }}</div><div class="desc">Open tasks currently assigned</div></div></div>
+  <div class="panel"><div class="panel-head"><div><div class="panel-title">Sales pipeline</div><div class="panel-sub">Customer activity</div></div><span class="badge blue">{{ stats.new_enquiries }} new</span></div><div class="panel-body"><div style="display:flex;gap:24px"><div><b style="font-size:22px">{{ stats.pending_requests }}</b><div class="desc">Requests</div></div><div><b style="font-size:22px">{{ stats.active_orders }}</b><div class="desc">Orders</div></div></div></div></div>
+</div>
+
+<div class="section-grid">
+  <div class="panel"><div class="panel-head"><div><div class="panel-title">Recent orders</div><div class="panel-sub">Latest customer sales activity.</div></div><a class="btn secondary" href="{% url 'sales:orders' %}">View all</a></div><div class="panel-body">
+  {% for x in recent_orders %}<div class="activity"><div class="activity-icon">↗</div><div class="activity-main"><div class="activity-title">{{ x.order_no }} · {{ x.customer.name }}</div><div class="activity-meta">{{ x.item_description }} · {{ x.created_at|date:"d M Y, h:i A" }}</div></div><span class="badge {% if x.status == 'delivered' %}ok{% elif x.status == 'cancelled' %}red{% else %}blue{% endif %}">{{ x.get_status_display }}</span></div>{% empty %}<div class="empty-state">No orders yet.</div>{% endfor %}
+  </div></div>
+
+  <div class="panel"><div class="panel-head"><div><div class="panel-title">Low stock alerts</div><div class="panel-sub">Products at or below threshold.</div></div><a class="btn secondary" href="{% url 'products:list' %}">Products</a></div><div class="panel-body">
+  {% for x in low_stock_products %}<div class="alert-row"><div class="alert-icon">!</div><div class="activity-main"><div class="activity-title">{{ x.name }}</div><div class="activity-meta">{{ x.sku }} · threshold {{ x.low_stock_threshold }}</div></div><span class="badge red">{{ x.stock_quantity }} {{ x.unit }}</span></div>{% empty %}<div class="empty-state">All active products are above their stock threshold. ✓</div>{% endfor %}
+  </div></div>
+</div>
+
+<div class="section-grid">
+  <div class="panel"><div class="panel-head"><div><div class="panel-title">Recent staff tasks</div><div class="panel-sub">Latest work activity.</div></div><a class="btn secondary" href="{% url 'staff:tasks' %}">View all</a></div><div class="panel-body">
+  {% for x in recent_tasks %}<div class="activity"><div class="activity-icon">✓</div><div class="activity-main"><div class="activity-title">{{ x.title }}</div><div class="activity-meta">{{ x.assigned_to.user.get_full_name|default:x.assigned_to.user.username }}{% if x.due_date %} · Due {{ x.due_date|date:"d M" }}{% endif %}</div></div><span class="badge {% if x.status == 'completed' %}ok{% elif x.priority == 'urgent' or x.priority == 'high' %}red{% elif x.status == 'in_progress' %}blue{% else %}slate{% endif %}">{{ x.get_status_display }}</span></div>{% empty %}<div class="empty-state">No recent tasks.</div>{% endfor %}
+  </div></div>
+
+  <div class="panel"><div class="panel-head"><div><div class="panel-title">Recent enquiries</div><div class="panel-sub">Latest customer requests.</div></div><a class="btn secondary" href="{% url 'sales:enquiries' %}">View all</a></div><div class="panel-body">
+  {% for x in recent_enquiries %}<div class="activity"><div class="activity-icon">?</div><div class="activity-main"><div class="activity-title">{{ x.enquiry_no }} · {{ x.customer.name }}</div><div class="activity-meta">{{ x.product_type }} · {{ x.created_at|date:"d M Y" }}</div></div><span class="badge {% if x.status == 'new' %}blue{% elif x.status == 'converted' %}ok{% else %}slate{% endif %}">{{ x.get_status_display }}</span></div>{% empty %}<div class="empty-state">No enquiries yet.</div>{% endfor %}
+  </div></div>
+</div>
+
+{% if is_manager %}
+<div class="quick-grid">
+  <a class="quick" href="{% url 'staff:create' %}"><span class="quick-icon">＋</span><div><div class="quick-title">Add Staff</div><div class="quick-desc">Create a new staff profile.</div></div></a>
+  <a class="quick" href="{% url 'products:create' %}"><span class="quick-icon">＋</span><div><div class="quick-title">Add Product</div><div class="quick-desc">Add a product to the catalog.</div></div></a>
+  <a class="quick" href="{% url 'products:stock_transaction' %}"><span class="quick-icon">◈</span><div><div class="quick-title">Stock Transaction</div><div class="quick-desc">Record stock in, out or adjustment.</div></div></a>
+  <a class="quick" href="{% url 'sales:enquiry_create' %}"><span class="quick-icon">?</span><div><div class="quick-title">New Enquiry</div><div class="quick-desc">Start a customer enquiry.</div></div></a>
+</div>
+{% endif %}
+
+</div></div>
+{% endif %}
+{% endblock %}

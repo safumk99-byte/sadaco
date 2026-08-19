@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% load static %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'css/quality.css' %}">{% endblock %}
+{% block content %}
+<div class="quality-ui"><div class="quality-page"><a class="qc-back" href="{% url 'quality:job_detail' job.pk %}">← Back to QC</a>
+<section class="quality-hero"><div><div class="ey">QUALITY OPERATIONS</div><h1>Packing Checklist</h1><p>{{ job.job_no }} · {{ job.order.order_no }} · {{ job.order.customer.name }}</p></div></section>
+<div class="qc-panel qc-form-panel"><form method="post">{% csrf_token %}
+{% if form.non_field_errors %}<div class="qc-error">{{ form.non_field_errors }}</div>{% endif %}
+<div class="qc-form-grid">{% for f in form %}<div class="qc-field {% if f.name == 'defects' or f.name == 'rework_reason' or f.name == 'corrective_action' or f.name == 'remarks' or f.name == 'notes' %}full{% endif %}"><label>{{ f.label }}</label>{{ f }}{% for e in f.errors %}<small>{{ e }}</small>{% endfor %}</div>{% endfor %}</div>
+<div class="qc-form-actions"><a class="qc-btn light" href="{% url 'quality:job_detail' job.pk %}">Cancel</a><button class="qc-btn dark">Save</button></div>
+</form></div></div></div>
+{% endblock %}

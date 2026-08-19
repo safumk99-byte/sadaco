@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block public_content %}
+<div class="login">
+  <section class="hero">
+    <div>
+      <div class="logo">S</div>
+      <h1>SADACO<br>Customer Portal</h1>
+      <p>Submit enquiries, review quotations and track confirmed orders directly with SADACO.</p>
+      <div style="margin-top:28px;color:#dbeafe;font-size:13px;line-height:1.8">
+        ✓ Secure customer account<br>
+        ✓ Direct enquiry submission<br>
+        ✓ Quotation & design responses<br>
+        ✓ Order status tracking
+      </div>
+    </div>
+  </section>
+
+  <section class="loginpanel">
+    <div class="loginbox">
+      <div class="ey">CUSTOMER PORTAL</div>
+      <h2>Customer Sign In</h2>
+      <p class="desc">Use your registered mobile number and password.</p>
+
+      {% if form.non_field_errors %}
+        <div class="alert alerterr">{{ form.non_field_errors }}</div>
+      {% endif %}
+
+      <form method="post" class="loginform">
+        {% csrf_token %}
+        <div class="field">
+          <label>Mobile Number</label>
+          {{ form.phone }}
+          {{ form.phone.errors }}
+        </div>
+
+        <div class="field">
+          <label>Password</label>
+          {{ form.password }}
+          {{ form.password.errors }}
+        </div>
+
+        <button class="btn primary" style="width:100%;padding:12px">
+          Sign in securely →
+        </button>
+      </form>
+
+      <div style="margin-top:20px;padding-top:18px;border-top:1px solid #e2e8f0;text-align:center">
+        <p class="desc" style="margin:0 0 8px">New to SADACO?</p>
+        <a class="btn secondary" style="display:inline-flex" href="{% url 'sales:portal_register' %}">
+          Create Customer Account
+        </a>
+      </div>
+
+      <p class="desc" style="margin-top:16px;text-align:center">
+        <a href="{% url 'accounts:login' %}">Internal Staff / Manager Login</a>
+      </p>
+    </div>
+  </section>
+</div>
+{% endblock %}

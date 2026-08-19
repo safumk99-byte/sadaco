@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% load static %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'css/notifications.css' %}">{% endblock %}
+{% block content %}
+<div class="notifications-ui"><div class="page">
+<section class="notification-hero"><div><div class="ey">SADACO ALERT CENTER</div><h1 class="pt">Notifications</h1><p class="desc">Important updates from your SADACO operations.</p></div><a class="btn light" href="{% url 'accounts:notifications_read_all' %}">✓ Mark all as read</a></section>
+<div class="notification-panel">
+{% for n in notifications %}
+<a class="full-notification {% if not n.is_read %}unread{% endif %}" href="{% url 'accounts:notification_read' n.id %}">
+<span class="full-icon {{ n.priority }}">{{ n.notification_type|first|upper }}</span>
+<span class="full-copy"><b>{{ n.title }}</b><span>{{ n.message }}</span><small>{{ n.created_at|date:"d M Y, h:i A" }}</small></span>
+{% if not n.is_read %}<span class="new-pill">NEW</span>{% endif %}
+</a>
+{% empty %}<div class="notification-empty large">No notifications yet. You're all caught up. ✓</div>{% endfor %}
+</div>
+</div></div>
+{% endblock %}

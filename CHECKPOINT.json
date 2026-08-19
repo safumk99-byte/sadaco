@@ -1,0 +1,42 @@
+{
+  "checkpoint": "SADACO Customer & Sales",
+  "modules": [
+    "System Foundation",
+    "Authentication / Users / Roles",
+    "Staff Management",
+    "Product Management",
+    "Inventory / Stock Management",
+    "Customer & Sales Management"
+  ],
+  "static_audit": {
+    "python_syntax": true,
+    "missing_required_files": [],
+    "broken_template_url_refs": [],
+    "security": {
+      "PostgreSQL only": true,
+      ".env excluded": true,
+      ".env.example present": true,
+      "CSRF middleware": true
+    },
+    "capabilities": {
+      "Staff Profile": true,
+      "Designations": true,
+      "Work Areas": true,
+      "Staff Tasks": true,
+      "Staff Attendance": true,
+      "Staff Performance": true,
+      "Product Categories": true,
+      "Products": true,
+      "Stock Ledger": true,
+      "Atomic Stock Updates": true,
+      "Negative Stock Protection": true,
+      "Customers": true,
+      "Customer Enquiries": true,
+      "Quotations": true,
+      "Order Confirmation": true,
+      "Quotation Cost Components": true,
+      "Sales Role Protection": true,
+      "Staff Photo Media URL": true
+    }
+  }
+}

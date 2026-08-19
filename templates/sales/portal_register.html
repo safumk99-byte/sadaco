@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block public_content %}
+<div class="login">
+  <section class="hero">
+    <div>
+      <div class="logo">S</div>
+      <h1>Create your<br>SADACO account</h1>
+      <p>Start a request from your phone, receive quotations and track your orders in one place.</p>
+      <div style="margin-top:28px;color:#dbeafe;font-size:13px;line-height:1.8">
+        ✓ Quick registration<br>
+        ✓ Direct manager follow-up<br>
+        ✓ Quotation & design approval<br>
+        ✓ Order tracking
+      </div>
+    </div>
+  </section>
+
+  <section class="loginpanel">
+    <div class="loginbox">
+      <div class="ey">CUSTOMER REGISTRATION</div>
+      <h2>Create an account</h2>
+      <p class="desc">Enter your details. Your mobile number will be used to sign in.</p>
+
+      {% if form.non_field_errors %}
+        <div class="alert alerterr">{{ form.non_field_errors }}</div>
+      {% endif %}
+
+      <form method="post" class="loginform">
+        {% csrf_token %}
+
+        <div class="field">
+          <label>Full Name</label>
+          {{ form.name }}
+          {{ form.name.errors }}
+        </div>
+
+        <div class="field">
+          <label>Mobile Number</label>
+          {{ form.phone }}
+          {{ form.phone.errors }}
+        </div>
+
+        <div class="field">
+          <label>Email <span style="font-weight:400;color:#64748b">(Optional)</span></label>
+          {{ form.email }}
+          {{ form.email.errors }}
+        </div>
+
+        <div class="field">
+          <label>Password</label>
+          {{ form.password }}
+          {{ form.password.errors }}
+        </div>
+
+        <div class="field">
+          <label>Confirm Password</label>
+          {{ form.confirm_password }}
+          {{ form.confirm_password.errors }}
+        </div>
+
+        <button class="btn primary" style="width:100%;padding:12px">
+          Create account →
+        </button>
+      </form>
+
+      <p class="desc" style="margin-top:18px;text-align:center">
+        Already have an account?
+        <a href="{% url 'sales:portal_login' %}">Sign in</a>
+      </p>
+
+      <p class="desc" style="margin-top:10px;text-align:center">
+        <a href="{% url 'accounts:login' %}">Internal Staff / Manager Login</a>
+      </p>
+    </div>
+  </section>
+</div>
+{% endblock %}

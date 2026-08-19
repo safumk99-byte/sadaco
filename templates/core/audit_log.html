@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page">
+<div class="head"><div><div class="ey">MANAGEMENT CONTROL</div><h1 class="pt">Audit Trail</h1><p class="desc">A protected history of important management actions.</p></div></div>
+<div class="card pad">
+<form method="get" class="search"><input name="module" value="{{ module }}" placeholder="Filter module"><select name="action" class="btn secondary"><option value="">All actions</option>{% for v,l in action_choices %}<option value="{{ v }}" {% if selected_action == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select><button class="btn secondary">Filter</button></form>
+<div class="tablewrap"><table><thead><tr><th>Date</th><th>User</th><th>Module</th><th>Action</th><th>Reference</th><th>Description</th><th>IP</th></tr></thead><tbody>
+{% for x in logs %}<tr><td>{{ x.created_at|date:"d M Y H:i" }}</td><td>{{ x.user.get_full_name|default:x.user.username|default:"System" }}</td><td><b>{{ x.module }}</b></td><td>{{ x.get_action_display }}</td><td>{{ x.reference|default:"—" }}</td><td>{{ x.description|default:"—" }}</td><td>{{ x.ip_address|default:"—" }}</td></tr>{% empty %}<tr><td colspan="7"><div class="empty">No audit entries found.</div></td></tr>{% endfor %}
+</tbody></table></div></div></div>
+{% endblock %}

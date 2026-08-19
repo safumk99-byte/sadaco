@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block public_content %}
+<div class="login">
+  <section class="hero">
+    <div>
+      <div class="logo">S</div>
+      <h1>SADACO<br>Management System</h1>
+      <p>One secure sign-in for your SADACO workspace and customer portal.</p>
+      <div style="margin-top:28px;color:#dbeafe;font-size:13px;line-height:1.9">
+        ✓ Super Admin · Manager · Staff<br>
+        ✓ Customer Portal<br>
+        ✓ Secure role-based access<br>
+        ✓ Enquiries, quotations & order tracking
+      </div>
+    </div>
+  </section>
+
+  <section class="loginpanel">
+    <div class="loginbox">
+      <div class="ey">WELCOME BACK</div>
+      <h2>Sign in to SADACO</h2>
+      <p class="desc">Staff and managers can use their username. Customers can use their registered mobile number.</p>
+
+      {% if messages %}
+        {% for message in messages %}
+          <div class="alert {% if message.tags == 'error' %}alerterr{% else %}alertsuccess{% endif %}">{{ message }}</div>
+        {% endfor %}
+      {% endif %}
+
+      {% if form.non_field_errors %}
+        <div class="alert alerterr">{{ form.non_field_errors }}</div>
+      {% endif %}
+
+      <form method="post" class="loginform">
+        {% csrf_token %}
+        <div class="field">
+          <label>Username or Mobile Number</label>
+          {{ form.username }}
+          {{ form.username.errors }}
+        </div>
+
+        <div class="field">
+          <label>Password</label>
+          {{ form.password }}
+          {{ form.password.errors }}
+        </div>
+
+        <button class="btn primary" style="width:100%;padding:12px">Sign in securely →</button>
+      </form>
+
+      <div style="margin-top:22px;padding-top:18px;border-top:1px solid #e2e8f0;text-align:center">
+        <p class="desc" style="margin:0 0 8px">New customer?</p>
+        <a class="btn secondary" style="display:inline-flex" href="{% url 'sales:portal_register' %}">Create Customer Account</a>
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}

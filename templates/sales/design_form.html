@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% load static %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'css/design-management.css' %}">{% endblock %}
+{% block content %}
+<div class="design-ui"><div class="design-page">
+<a class="dm-back" href="{% url 'sales:quotation_detail' quotation.pk %}">← Back to quotation</a>
+<section class="dm-hero"><div><div class="ey">DESIGN APPROVAL</div><h1>Send Design · {{ quotation.quotation_no }}</h1><p>Upload a customer-ready design and keep every revision safely in the quotation history.</p></div><div class="dm-version">V{{ next_version }}<small>Next version</small></div></section>
+<div class="dm-grid"><div class="dm-panel"><div class="dm-head"><div><h2>New Design Version</h2><p>Customer will receive a notification after submission.</p></div></div>
+<form method="post" enctype="multipart/form-data" class="dm-form">{% csrf_token %}{% if form.non_field_errors %}<div class="dm-error">{{ form.non_field_errors }}</div>{% endif %}
+<div class="dm-upload"><div class="dm-upload-icon">↑</div><div><b>Upload design file</b><p>PDF, PNG, JPG, JPEG or WEBP · Max 15 MB</p>{{ form.file }}{% for e in form.file.errors %}<small>{{ e }}</small>{% endfor %}</div></div>
+<div class="dm-field"><label>{{ form.notes.label }}</label>{{ form.notes }}{% for e in form.notes.errors %}<small>{{ e }}</small>{% endfor %}</div>
+<div class="dm-actions"><a class="dm-btn light" href="{% url 'sales:quotation_detail' quotation.pk %}">Cancel</a><button class="dm-btn dark">Send V{{ next_version }} to Customer →</button></div></form></div>
+<div class="dm-panel"><div class="dm-head"><div><h2>Current Status</h2><p>Latest customer response.</p></div></div>{% if latest_design %}<div class="dm-current"><div class="dm-current-top"><b>Version {{ latest_design.version }}</b><span class="dm-status {{ latest_design.status }}">{{ latest_design.get_status_display }}</span></div><div class="dm-current-meta">Created {{ latest_design.created_at|date:"d M Y · H:i" }}{% if latest_design.responded_at %}<br>Responded {{ latest_design.responded_at|date:"d M Y · H:i" }}{% endif %}</div>{% if latest_design.customer_notes %}<div class="dm-note"><label>Customer note</label>{{ latest_design.customer_notes }}</div>{% endif %}<a class="dm-btn blue wide" href="{% url 'sales:design_history' quotation.pk %}">View Design History →</a></div>{% else %}<div class="dm-empty">No design has been sent yet.<br><span>This will be version 1.</span></div>{% endif %}</div></div>
+</div></div>
+{% endblock %}

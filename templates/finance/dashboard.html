@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% load static %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'css/business_modules.css' %}">{% endblock %}
+{% block content %}
+<div class="biz-page">
+<section class="biz-hero finance"><div><div class="ey">FINANCE & ACCOUNTS</div><h1>Accounts Control Center</h1><p>Collections, receivables, expenses, supplier payments and reconciliation in one place.</p></div>
+<div class="biz-actions"><a class="biz-btn white" href="{% url 'finance:receivables' %}">Receivables</a><a class="biz-btn light" href="{% url 'finance:supplier_payments' %}">Supplier Payments</a><a class="biz-btn dark" href="{% url 'finance:expense_create' %}">＋ Expense</a></div></section>
+<div class="biz-stats">
+<div><span>Income Received</span><b>₹ {{ income|floatformat:2 }}</b><small>Received / verified customer payments</small></div>
+<div><span>Customer Receivable</span><b>₹ {{ receivable|floatformat:2 }}</b><small>Outstanding order balances</small></div>
+<div><span>Expenses</span><b>₹ {{ expenses|floatformat:2 }}</b><small>Recorded paid expenses</small></div>
+<div><span>Supplier Due</span><b>₹ {{ supplier_due|floatformat:2 }}</b><small>Unpaid purchase balances</small></div>
+</div>
+<div class="biz-panel"><div class="biz-head"><div><h2>Quick Finance Actions</h2><p>Use the correct workflow instead of entering duplicate transactions.</p></div></div>
+<div class="biz-actions" style="padding:18px;display:flex;flex-wrap:wrap;gap:10px">
+<a class="biz-btn dark" href="{% url 'finance:receivables' %}">Receive Customer Payment →</a>
+<a class="biz-btn light" href="{% url 'finance:expense_create' %}">＋ Record Expense</a>
+<a class="biz-btn light" href="{% url 'finance:supplier_payment_create' %}">＋ Supplier Payment</a>
+<a class="biz-btn light" href="{% url 'finance:reconciliation' %}">Cash / UPI / Bank Reconciliation</a>
+</div></div>
+<div class="biz-panel"><div class="biz-head"><div><h2>Finance Ledger</h2><p>Posted income and expense movements linked to business records.</p></div></div>
+<div class="biz-table-wrap"><table class="biz-table"><thead><tr><th>Date</th><th>Transaction</th><th>Reference</th><th>Method</th><th>Amount</th><th>Status</th></tr></thead><tbody>
+{% for x in transactions %}<tr><td>{{ x.transaction_date|date:"d M Y" }}</td><td><b>{{ x.get_transaction_type_display }}</b><small>{{ x.description|default:"—" }}</small></td><td>{{ x.reference|default:"—" }}</td><td>{{ x.payment_method|title }}</td><td class="{% if x.transaction_type == 'income' %}biz-income{% else %}biz-expense{% endif %}">₹ {{ x.amount|floatformat:2 }}</td><td><span class="biz-badge {{ x.status }}">{{ x.get_status_display }}</span></td></tr>{% empty %}<tr><td colspan="6" class="biz-empty">No finance transactions have been posted yet.</td></tr>{% endfor %}</tbody></table></div></div>
+</div>
+{% endblock %}

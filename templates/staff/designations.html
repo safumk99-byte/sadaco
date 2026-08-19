@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% block extra_css %}{% load static %}<link rel="stylesheet" href="{% static 'css/staff.css' %}">{% endblock %}
+{% block content %}<div class="staff-ui"><div class="page">
+<div class="head"><div><div class="ey">STAFF STRUCTURE</div><h1 class="pt">Designations</h1><p class="desc">Create and maintain the positions used across SADACO.</p></div><a class="btn primary" href="{% url 'staff:designation_create' %}">＋ Add Designation</a></div>
+<div class="panel"><div class="mobile-scroll"><table class="staff-table"><thead><tr><th>Designation</th><th>Description</th><th>Status</th><th></th></tr></thead><tbody>{% for x in items %}<tr><td><div class="person"><span class="person-initial">⌘</span><div><div class="person-name">{{ x.name }}</div><div class="person-meta">Created {{ x.created_at|date:"d M Y" }}</div></div></div></td><td>{{ x.description|default:"No description" }}</td><td>{% if x.is_active %}<span class="status-dot active">Active</span>{% else %}<span class="status-dot inactive">Inactive</span>{% endif %}</td><td><a class="btn secondary" href="{% url 'staff:designation_edit' x.id %}">Edit →</a></td></tr>{% endfor %}{% empty %}<tr><td colspan="4"><div class="table-empty">No designations yet.</div></td></tr>{% endfor %}</tbody></table></div></div>
+</div></div>{% endblock %}

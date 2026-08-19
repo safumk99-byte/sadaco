@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block extra_css %}{% load static %}<link rel="stylesheet" href="{% static 'css/staff.css' %}">{% endblock %}
+{% block content %}
+<div class="staff-ui"><div class="page">
+  <section class="staff-hero">
+    <div class="head" style="margin:0;align-items:center;position:relative;z-index:2">
+      <div><div class="ey">PEOPLE OPERATIONS</div><h1 class="pt">Staff Management</h1><p class="desc">Your complete staff workspace — people, roles, tasks, attendance and performance.</p></div>
+      <div class="hero-actions">{% if can_manage %}<a class="btn primary" href="{% url 'staff:create' %}">＋ Add Staff</a>{% endif %}</div>
+    </div>
+  </section>
+  {% for message in messages %}<div class="alert alertok">{{ message }}</div>{% endfor %}
+  <div class="metric-grid">
+    <div class="metric"><div class="metric-top"><span class="metric-label">Total Staff</span><span class="metric-icon">♙</span></div><div class="metric-value">{{ stats.total_staff }}</div><div class="metric-foot">All staff profiles</div></div>
+    <div class="metric"><div class="metric-top"><span class="metric-label">Active</span><span class="metric-icon">✓</span></div><div class="metric-value">{{ stats.active_staff }}</div><div class="metric-foot">Currently active</div></div>
+    <div class="metric"><div class="metric-top"><span class="metric-label">Open Tasks</span><span class="metric-icon">↗</span></div><div class="metric-value">{{ stats.open_tasks }}</div><div class="metric-foot">Needs attention</div></div>
+    <div class="metric"><div class="metric-top"><span class="metric-label">Present Today</span><span class="metric-icon">●</span></div><div class="metric-value">{{ stats.today_present }}</div><div class="metric-foot">Today's attendance</div></div>
+  </div>
+  <div class="panel" style="margin-top:16px">
+    <div class="panel-head">
+      <div><div class="panel-title">Staff Directory</div><div class="panel-sub">Search and filter your people in one place.</div></div>
+      <form method="get" class="filterbar">
+        <input name="q" value="{{ query }}" placeholder="Search name or Staff ID…">
+        <select name="status"><option value="">All status</option><option value="active" {% if status == "active" %}selected{% endif %}>Active</option><option value="on_leave" {% if status == "on_leave" %}selected{% endif %}>On Leave</option><option value="inactive" {% if status == "inactive" %}selected{% endif %}>Inactive</option></select>
+        <select name="designation"><option value="">All designations</option>{% for d in designations %}<option value="{{ d.id }}" {% if designation == d.id|stringformat:"s" %}selected{% endif %}>{{ d.name }}</option>{% endfor %}</select>
+        <select name="work_area"><option value="">All work areas</option>{% for w in work_areas %}<option value="{{ w.id }}" {% if work_area == w.id|stringformat:"s" %}selected{% endif %}>{{ w.name }}</option>{% endfor %}</select>
+        <button class="btn secondary">Filter</button>
+      </form>
+    </div>
+    <div class="mobile-scroll"><table class="staff-table"><thead><tr><th>Staff</th><th>ID</th><th>Designation</th><th>Work Area</th><th>Status</th><th></th></tr></thead><tbody>
+    {% for s in staff_members %}<tr>
+      <td><div class="person">{% if s.photo %}<img class="person-photo" src="{{ s.photo.url }}" alt="">{% else %}<span class="person-initial">{{ s.user.first_name|first|default:s.user.username|first|upper }}</span>{% endif %}<div><div class="person-name">{{ s.user.get_full_name|default:s.user.username }}</div><div class="person-meta">{{ s.user.email|default:"No email" }}</div></div></div></td>
+      <td><b>{{ s.staff_id }}</b></td><td>{{ s.designation|default:"—" }}</td><td>{{ s.work_area|default:"—" }}</td>
+      <td>{% if s.status == "active" %}<span class="status-dot active">Active</span>{% elif s.status == "on_leave" %}<span class="status-dot leave">On Leave</span>{% else %}<span class="status-dot inactive">Inactive</span>{% endif %}</td>
+      <td><a class="btn secondary row-action" href="{% url 'staff:detail' s.id %}">View →</a></td>
+    </tr>{% empty %}<tr><td colspan="6"><div class="table-empty"><div style="font-size:30px">♙</div><b>No staff members found</b><div class="desc">Try changing the filters or add a new staff member.</div></div></td></tr>{% endfor %}
+    </tbody></table></div>
+  </div>
+  <div style="margin-top:18px"><div class="panel-title" style="margin:0 0 10px 2px">Staff Workspace</div><div class="quick-grid">
+    <a class="quick-card" href="{% url 'staff:designations' %}"><span class="quick-icon">⌘</span><div><div class="quick-title">Designations</div><div class="quick-desc">Configure positions</div></div></a>
+    <a class="quick-card" href="{% url 'staff:work_areas' %}"><span class="quick-icon">⌂</span><div><div class="quick-title">Work Areas</div><div class="quick-desc">Configure work areas</div></div></a>
+    <a class="quick-card" href="{% url 'staff:tasks' %}"><span class="quick-icon">✓</span><div><div class="quick-title">Tasks</div><div class="quick-desc">Assign & track work</div></div></a>
+    <a class="quick-card" href="{% url 'staff:attendance' %}"><span class="quick-icon">●</span><div><div class="quick-title">Attendance</div><div class="quick-desc">Daily attendance</div></div></a>
+    <a class="quick-card" href="{% url 'staff:performance' %}"><span class="quick-icon">★</span><div><div class="quick-title">Performance</div><div class="quick-desc">Reviews & scores</div></div></a>
+  </div></div>
+</div></div>
+{% endblock %}

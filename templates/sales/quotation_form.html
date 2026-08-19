@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% load static %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'css/quotation.css' %}">{% endblock %}
+{% block content %}
+<div class="quotation-ui">
+<div class="q-page">
+<a class="q-back" href="{% if quotation %}{% url 'sales:quotation_detail' quotation.pk %}{% else %}{% url 'sales:quotations' %}{% endif %}">← Back to quotations</a>
+<section class="q-hero"><div><div class="ey">COMMERCIAL SALES</div><h1>{{ title }}</h1><p>Create a clear, professional quotation with complete cost breakdown and validity.</p></div><div class="q-badge">SADACO<br><small>Quotation</small></div></section>
+<form method="post" class="q-form">{% csrf_token %}
+{% if form.non_field_errors %}<div class="q-error">{{ form.non_field_errors }}</div>{% endif %}
+<div class="q-grid">
+<div class="q-panel">
+<div class="q-head"><div><h2>Customer & Request</h2><p>Connect this quotation to the customer request.</p></div></div>
+<div class="q-fields two">
+{% for field in form %}
+{% if field.name == "customer" or field.name == "enquiry" or field.name == "order_request" or field.name == "item_description" or field.name == "quantity" %}
+<div class="q-field"><label>{{ field.label }}</label>{{ field }}{% for e in field.errors %}<small class="q-field-error">{{ e }}</small>{% endfor %}</div>
+{% endif %}
+{% endfor %}
+</div>
+</div>
+<div class="q-panel">
+<div class="q-head"><div><h2>Cost Breakdown</h2><p>Enter internal costs before setting the customer price.</p></div></div>
+<div class="q-fields two">
+{% for field in form %}
+{% if field.name == "material_cost" or field.name == "labour_cost" or field.name == "machine_cost" or field.name == "finishing_cost" or field.name == "packaging_cost" or field.name == "delivery_cost" %}
+<div class="q-field"><label>{{ field.label }}</label><div class="money-field"><span>₹</span>{{ field }}</div>{% for e in field.errors %}<small class="q-field-error">{{ e }}</small>{% endfor %}</div>
+{% endif %}
+{% endfor %}
+</div>
+</div>
+<div class="q-panel">
+<div class="q-head"><div><h2>Commercial Terms</h2><p>Define the customer-facing price and payment terms.</p></div></div>
+<div class="q-fields two">
+{% for field in form %}
+{% if field.name == "quoted_price" or field.name == "advance_required" or field.name == "delivery_timeline" or field.name == "valid_until" or field.name == "status" %}
+<div class="q-field"><label>{{ field.label }}</label>{{ field }}{% for e in field.errors %}<small class="q-field-error">{{ e }}</small>{% endfor %}</div>
+{% endif %}
+{% endfor %}
+</div>
+<div class="q-summary"><span>Estimated cost</span><strong id="costTotal">₹ 0.00</strong><span>Quoted price</span><strong id="quotedPreview">₹ 0.00</strong></div>
+</div>
+<div class="q-panel">
+<div class="q-head"><div><h2>Notes</h2><p>Add delivery, quality or customer-specific notes.</p></div></div>
+{% for field in form %}{% if field.name == "notes" %}<div class="q-field q-notes"><label>{{ field.label }}</label>{{ field }}{% for e in field.errors %}<small class="q-field-error">{{ e }}</small>{% endfor %}</div>{% endif %}{% endfor %}
+</div>
+</div>
+<div class="q-actions"><a class="q-btn secondary" href="{% if quotation %}{% url 'sales:quotation_detail' quotation.pk %}{% else %}{% url 'sales:quotations' %}{% endif %}">Cancel</a><button class="q-btn primary">Save Quotation →</button></div>
+</form>
+</div></div>
+<script>
+(function(){
+ const ids=["material_cost","labour_cost","machine_cost","finishing_cost","packaging_cost","delivery_cost"];
+ function money(v){return new Intl.NumberFormat("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2}).format(Number(v||0));}
+ function calc(){let total=0;ids.forEach(id=>{const e=document.getElementById("id_"+id);if(e)total+=Number(e.value||0)});const c=document.getElementById("costTotal"),q=document.getElementById("id_quoted_price"),qp=document.getElementById("quotedPreview");if(c)c.textContent="₹ "+money(total);if(qp)qp.textContent="₹ "+money(q?q.value:0)}
+document.querySelectorAll(".q-form input").forEach(e=>e.addEventListener("input",calc));calc();
+})();
+</script>
+{% endblock %}

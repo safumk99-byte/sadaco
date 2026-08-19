@@ -1,0 +1,12 @@
+{
+  "name": "sadaco-management-system",
+  "private": true,
+  "scripts": {
+    "css:build": "npx @tailwindcss/cli -i ./static/css/input.css -o ./static/css/output.css",
+    "css:watch": "npx @tailwindcss/cli -i ./static/css/input.css -o ./static/css/output.css --watch"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.1.0",
+    "tailwindcss": "^4.1.0"
+  }
+}

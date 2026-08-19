@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page">
+<div class="head"><div><div class="ey">MANAGEMENT CONTROL</div><h1 class="pt">Approval Center</h1><p class="desc">Review management approval requests without changing the underlying module workflow.</p></div><a class="btn primary" href="{% url 'core:approval_create' %}">＋ Request Approval</a></div>
+<div class="card pad">
+<form method="get" class="search"><select name="status" class="btn secondary"><option value="">All statuses</option>{% for v,l in status_choices %}<option value="{{ v }}" {% if selected_status == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select><button class="btn secondary">Filter</button></form>
+<div class="tablewrap"><table><thead><tr><th>Module</th><th>Action</th><th>Reference</th><th>Amount</th><th>Requested By</th><th>Status</th><th></th></tr></thead><tbody>
+{% for x in requests %}<tr><td><b>{{ x.module }}</b></td><td>{{ x.action }}</td><td>{{ x.reference|default:"—" }}</td><td>₹ {{ x.amount|floatformat:2 }}</td><td>{{ x.requested_by.get_full_name|default:x.requested_by.username|default:"—" }}</td><td><span class="badge {% if x.status == 'approved' %}ok{% elif x.status == 'rejected' %}red{% elif x.status == 'pending' %}blue{% else %}slate{% endif %}">{{ x.get_status_display }}</span></td><td>{% if x.status == "pending" %}<a class="btn secondary" href="{% url 'core:approval_review' x.pk %}">Review</a>{% endif %}</td></tr>{% empty %}<tr><td colspan="7"><div class="empty">No approval requests found.</div></td></tr>{% endfor %}
+</tbody></table></div></div></div>
+{% endblock %}

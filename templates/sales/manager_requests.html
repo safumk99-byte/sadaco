@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% load static %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'css/customer-orders.css' %}">{% endblock %}
+{% block content %}
+<div class="customer-orders page">
+  <section class="co-hero">
+    <div><div class="ey">CUSTOMER SALES</div><h1 class="pt">Customer Requests</h1><p class="desc">Review enquiries and order requests submitted through the customer portal.</p></div>
+    <a class="co-light-btn" href="{% url 'sales:manager_notifications' %}">🔔 Notifications</a>
+  </section>
+
+  <div class="co-stats">
+    <div class="co-stat"><span>New</span><b>{{ stats.new }}</b><small>Needs attention</small></div>
+    <div class="co-stat"><span>Under Review</span><b>{{ stats.reviewing }}</b><small>Being assessed</small></div>
+    <div class="co-stat"><span>Contacted</span><b>{{ stats.contacted }}</b><small>Customer reached</small></div>
+    <div class="co-stat"><span>Quotation</span><b>{{ stats.quotation }}</b><small>Quotation in progress</small></div>
+  </div>
+
+  <div class="co-panel">
+    <form class="co-toolbar" method="get">
+      <div class="co-search"><span>⌕</span><input name="q" value="{{ query }}" placeholder="Search request, customer, phone or product"></div>
+      <select name="status" class="co-select">
+        <option value="">All statuses</option>
+        {% for value,label in status_choices %}<option value="{{ value }}" {% if selected_status == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+      <button class="co-btn primary">Search</button>
+      <a class="co-btn secondary" href="{% url 'sales:manager_requests' %}">Reset</a>
+    </form>
+    <div class="co-table-wrap"><table class="co-table">
+      <thead><tr><th>Request</th><th>Customer</th><th>Requirement</th><th>Type</th><th>Status</th><th>Received</th><th></th></tr></thead>
+      <tbody>
+      {% for r in requests %}
+      <tr>
+        <td><a class="co-link" href="{% url 'sales:manager_request_review' r.pk %}"><b>{{ r.request_no }}</b></a></td>
+        <td><b>{{ r.customer.name }}</b><small>{{ r.customer.phone }}</small></td>
+        <td><b>{{ r.product.name|default:r.product_name }}</b><small>{{ r.quantity }}{% if r.size %} · {{ r.size }}{% endif %}</small></td>
+        <td><span class="co-type">{{ r.get_request_type_display }}</span></td>
+        <td><span class="co-status {{ r.status }}">{{ r.get_status_display }}</span></td>
+        <td>{{ r.created_at|date:"d M Y" }}<small>{{ r.created_at|date:"h:i A" }}</small></td>
+        <td><a class="co-view" href="{% url 'sales:manager_request_review' r.pk %}">Review →</a></td>
+      </tr>
+      {% empty %}<tr><td colspan="7"><div class="co-empty">No customer requests match your search.</div></td></tr>{% endfor %}
+      </tbody>
+    </table></div>
+  </div>
+</div>
+{% endblock %}

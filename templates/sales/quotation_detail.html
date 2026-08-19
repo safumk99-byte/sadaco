@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% load static %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'css/quotation.css' %}">{% endblock %}
+{% block content %}
+<div class="quotation-ui"><div class="q-page">
+<div class="q-topline"><a class="q-back" href="{% url 'sales:quotations' %}">← Quotations</a><div class="q-actions-inline"><a class="q-btn secondary" href="{% url 'sales:quotation_pdf' quotation.pk %}">↓ PDF</a><a class="q-btn secondary" href="{% url 'sales:quotation_edit' quotation.pk %}">Edit</a>{% if quotation.status == "approved" %}<form method="post" action="{% url 'sales:confirm_quotation_order' quotation.pk %}">{% csrf_token %}<button class="q-btn primary">Confirm Order</button></form>{% endif %}</div></div>
+<section class="q-detail-hero"><div><div class="ey">QUOTATION</div><h1>{{ quotation.quotation_no }}</h1><p>{{ quotation.customer.name }} · {{ quotation.item_description }}</p></div><span class="q-status {{ quotation.status }}">{{ quotation.get_status_display }}</span></section>
+<div class="q-detail-grid">
+<div>
+<div class="q-panel"><div class="q-head"><div><h2>Quotation summary</h2><p>Customer-facing commercial information.</p></div></div><div class="q-info-grid"><div><label>Customer</label><b>{{ quotation.customer.name }}</b></div><div><label>Quantity</label><b>{{ quotation.quantity }}</b></div><div><label>Valid until</label><b>{{ quotation.valid_until|date:"d M Y"|default:"—" }}</b></div><div><label>Delivery</label><b>{{ quotation.delivery_timeline|default:"—" }}</b></div><div><label>Advance required</label><b>₹ {{ quotation.advance_required|floatformat:2 }}</b></div><div><label>Created</label><b>{{ quotation.created_at|date:"d M Y" }}</b></div></div>{% if quotation.notes %}<div class="q-note"><label>Notes</label><p>{{ quotation.notes }}</p></div>{% endif %}</div>
+<div class="q-panel"><div class="q-head"><div><h2>Cost & Pricing</h2><p>Internal cost structure and final quotation value.</p></div></div><div class="q-cost-list">
+{% for label,value in cost_items %}<div><span>{{ label }}</span><b>₹ {{ value|floatformat:2 }}</b></div>{% endfor %}
+<div class="total"><span>Total cost</span><b>₹ {{ quotation.cost_total|floatformat:2 }}</b></div><div class="price"><span>Quoted price</span><b>₹ {{ quotation.quoted_price|floatformat:2 }}</b></div>
+</div></div>
+</div>
+<div>
+<div class="q-panel q-side"><div class="q-head"><div><h2>Customer action</h2><p>Track quotation approval.</p></div></div>
+<div class="q-timeline"><div class="done">Quotation created</div><div class="{% if quotation.status == 'sent' or quotation.status == 'approved' or quotation.status == 'rejected' or quotation.status == 'converted' %}done{% endif %}">Sent to customer</div><div class="{% if quotation.status == 'approved' or quotation.status == 'converted' %}done{% endif %}">Customer approved</div><div class="{% if quotation.status == 'converted' %}done{% endif %}">Converted to order</div></div>
+<a class="q-btn primary wide" href="{% url 'sales:quotation_pdf' quotation.pk %}">Download Quotation PDF</a>
+{% if quotation.status == "approved" %}<form method="post" action="{% url 'sales:confirm_quotation_order' quotation.pk %}">{% csrf_token %}<button class="q-btn accent wide">Confirm Customer Order →</button></form>{% endif %}
+</div>
+<div class="q-panel q-side"><div class="q-head"><div><h2>Design approval</h2><p>Optional design workflow before order confirmation.</p></div></div>{% with d=quotation.designs.first %}{% if d %}<div class="q-design"><b>Version {{ d.version }}</b><span>{{ d.get_status_display }}</span>{% if d.file %}<a href="{{ d.file.url }}">View design →</a>{% endif %}</div>{% else %}<p class="q-muted">No design has been sent.</p>{% endif %}{% endwith %}<a class="q-btn secondary wide" href="{% url 'sales:create_design' quotation.pk %}">Send / Update Design</a></div>
+</div></div>
+</div>
+{% endblock %}

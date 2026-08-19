@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% load static %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'css/design-management.css' %}">{% endblock %}
+{% block content %}
+<div class="design-ui"><div class="design-page"><div class="dm-top"><a class="dm-back" href="{% url 'sales:quotation_detail' quotation.pk %}">← Quotation</a><a class="dm-btn dark" href="{% url 'sales:create_design' quotation.pk %}">＋ New Design Version</a></div>
+<section class="dm-hero compact"><div><div class="ey">DESIGN HISTORY</div><h1>{{ quotation.quotation_no }}</h1><p>{{ quotation.customer.name }} · {{ quotation.item_description }}</p></div><span class="dm-count">{{ designs|length }} version{{ designs|length|pluralize }}</span></section>
+<div class="dm-timeline">{% for d in designs %}<article class="dm-version-card"><div class="dm-version-dot">V{{ d.version }}</div><div class="dm-version-body"><div class="dm-version-head"><div><h2>Design Version {{ d.version }}</h2><p>{{ d.created_at|date:"d M Y · H:i" }}{% if d.created_by %} · {{ d.created_by.get_full_name|default:d.created_by.username }}{% endif %}</p></div><span class="dm-status {{ d.status }}">{{ d.get_status_display }}</span></div>{% if d.file %}<a class="dm-file" href="{{ d.file.url }}" target="_blank">📎 View / Download design file</a>{% else %}<div class="dm-file missing">No file attached</div>{% endif %}{% if d.notes %}<div class="dm-note"><label>Manager notes</label>{{ d.notes }}</div>{% endif %}{% if d.customer_notes %}<div class="dm-note customer"><label>Customer response</label>{{ d.customer_notes }}</div>{% endif %}</div></article>{% empty %}<div class="dm-panel dm-empty">No design versions yet.</div>{% endfor %}</div></div></div>
+{% endblock %}

@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% load static %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'css/order-management.css' %}">{% endblock %}
+{% block content %}
+<div class="order-ui"><div class="order-page"><a class="om-back" href="{% if order %}{% url 'sales:order_detail' order.pk %}{% else %}{% url 'sales:orders' %}{% endif %}">← Back</a>
+<section class="order-hero"><div><div class="ey">SALES OPERATIONS</div><h1>{{ title }}</h1><p>Keep the confirmed order, responsible staff and operational deadline up to date.</p></div></section>
+<div class="om-panel om-form-panel"><form method="post">{% csrf_token %}{% if form.non_field_errors %}<div class="om-error">{{ form.non_field_errors }}</div>{% endif %}<div class="om-form-grid">{% for f in form %}<div class="om-field {% if f.name == 'notes' %}full{% endif %}"><label>{{ f.label }}</label>{{ f }}{% for e in f.errors %}<small>{{ e }}</small>{% endfor %}</div>{% endfor %}</div><div class="om-form-actions"><a class="om-btn light" href="{% if order %}{% url 'sales:order_detail' order.pk %}{% else %}{% url 'sales:orders' %}{% endif %}">Cancel</a><button class="om-btn dark">Save Order</button></div></form></div>
+</div></div>{% endblock %}
