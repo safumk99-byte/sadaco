@@ -1,0 +1,83 @@
+<aside class="customer-sidebar" id="customer-sidebar">
+  <a class="customer-brand" href="{% url 'sales:portal_dashboard' %}">
+    <span class="customer-brand-logo">S</span>
+    <span><b>SADACO</b><small>Customer Portal</small></span>
+  </a>
+
+  <nav class="customer-side-nav">
+    <span class="customer-side-label">MAIN</span>
+    <a class="customer-side-link {% if request.resolver_match.url_name == 'portal_dashboard' %}active{% endif %}" href="{% url 'sales:portal_dashboard' %}">
+      <span>⌂</span> Dashboard
+    </a>
+    <a class="customer-side-link {% if request.resolver_match.url_name == 'portal_products' %}active{% endif %}" href="{% url 'sales:portal_products' %}">
+      <span>▣</span> Products
+    </a>
+    <a class="customer-side-link {% if request.resolver_match.url_name == 'portal_requests' or request.resolver_match.url_name == 'portal_request_create' or request.resolver_match.url_name == 'portal_request_detail' %}active{% endif %}" href="{% url 'sales:portal_requests' %}">
+      <span>⌁</span> My Requests
+    </a>
+    <a class="customer-side-link {% if request.resolver_match.url_name == 'portal_quotations' or request.resolver_match.url_name == 'portal_quotation_detail' %}active{% endif %}" href="{% url 'sales:portal_quotations' %}">
+      <span>◇</span> Quotations
+    </a>
+    <a class="customer-side-link {% if request.resolver_match.url_name == 'portal_orders' or request.resolver_match.url_name == 'portal_order_detail' or request.resolver_match.url_name == 'portal_feedback' %}active{% endif %}" href="{% url 'sales:portal_orders' %}">
+      <span>↗</span> My Orders
+    </a>
+
+    <span class="customer-side-label">ACCOUNT</span>
+    <a class="customer-side-link {% if request.resolver_match.url_name == 'portal_notifications' or request.resolver_match.url_name == 'portal_notification_read' %}active{% endif %}" href="{% url 'sales:portal_notifications' %}">
+      <span>🔔</span> Notifications
+      {% if customer_notification_count %}<em>{{ customer_notification_count }}</em>{% endif %}
+    </a>
+    <a class="customer-side-link" href="{% url 'accounts:my_profile' %}"><span>◎</span> My Profile</a>
+  </nav>
+
+  <div class="customer-side-user">
+    <div class="customer-side-avatar">{{ request.user.username|first|upper }}</div>
+    <div><b>{{ request.user.get_full_name|default:request.user.username }}</b><small>Customer</small></div>
+  </div>
+  <a class="customer-logout" href="{% url 'accounts:logout' %}">↪ Logout</a>
+</aside>
+
+<header class="customer-topbar">
+  <button class="customer-menu-btn" type="button" aria-label="Open customer menu"
+          onclick="document.getElementById('customer-sidebar').classList.toggle('open');document.getElementById('customer-overlay').classList.toggle('show')">☰</button>
+  <div class="customer-top-title">
+    <b>{{ title|default:"Customer Portal" }}</b>
+    <small>SADACO Customer Portal</small>
+  </div>
+
+  <div class="customer-top-actions">
+    <div class="customer-notification-wrap">
+      <button class="customer-notification-btn" type="button" aria-label="Notifications"
+              onclick="document.getElementById('customer-notification-menu').classList.toggle('show')">
+        <span>🔔</span>
+        {% if customer_notification_count %}<em>{{ customer_notification_count }}</em>{% endif %}
+      </button>
+      <div id="customer-notification-menu" class="customer-notification-menu">
+        <div class="customer-notification-head">
+          <div><b>Notifications</b><small>{% if customer_notification_count %}{{ customer_notification_count }} unread{% else %}All caught up{% endif %}</small></div>
+          {% if customer_notification_count %}
+          <a href="{% url 'sales:portal_notifications' %}">View all</a>
+          {% endif %}
+        </div>
+        <div class="customer-notification-list">
+          {% for n in customer_recent_notifications %}
+          <a class="customer-notification-item {% if not n.is_read %}unread{% endif %}" href="{% url 'sales:portal_notification_read' n.pk %}">
+            <span class="customer-notification-icon">!</span>
+            <span><b>{{ n.title }}</b><small>{{ n.message }}</small><time>{{ n.created_at|timesince }} ago</time></span>
+          </a>
+          {% empty %}
+          <div class="customer-notification-empty">No notifications yet.</div>
+          {% endfor %}
+        </div>
+        <a class="customer-notification-all" href="{% url 'sales:portal_notifications' %}">View all notifications →</a>
+      </div>
+    </div>
+    <a class="customer-profile-chip" href="{% url 'accounts:my_profile' %}">
+      <span>{{ request.user.username|first|upper }}</span>
+      <b>{{ request.user.get_full_name|default:request.user.username }}</b>
+    </a>
+  </div>
+</header>
+
+<div class="customer-overlay" id="customer-overlay"
+     onclick="document.getElementById('customer-sidebar').classList.remove('open');this.classList.remove('show')"></div>

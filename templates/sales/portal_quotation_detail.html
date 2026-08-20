@@ -1,6 +1,6 @@
 {% load static %}
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{{ title }}</title><link rel="stylesheet" href="{% static 'css/output.css' %}"><link rel="stylesheet" href="{% static 'css/customer-orders.css' %}"><link rel="stylesheet" href="{% static 'css/quotation.css' %}"></head>
-<body><div class="customer-portal"><div class="portal-wrap portal-request-detail">
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{{ title }}</title><link rel="stylesheet" href="{% static 'css/output.css' %}"><link rel="stylesheet" href="{% static 'css/customer-orders.css' %}"><link rel="stylesheet" href="{% static 'css/quotation.css' %}"><link rel="stylesheet" href="{% static 'css/customer-portal.css' %}"></head>
+<body>{% include "sales/portal_chrome.html" %}<div class="customer-portal"><div class="portal-wrap portal-request-detail">
 <a class="portal-back" href="{% url 'sales:portal_quotations' %}">← My Quotations</a>
 <div class="portal-detail-card"><div class="portal-detail-head"><div><div class="ey">SADACO QUOTATION</div><h1>{{ quotation.quotation_no }}</h1><p>Prepared {{ quotation.created_at|date:"d M Y" }}</p></div><span class="q-status large {{ quotation.status }}">{{ quotation.get_status_display }}</span></div>
 <div class="portal-detail-body">

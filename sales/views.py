@@ -13,6 +13,7 @@ import io
 
 from .decorators import customer_required, sales_manager_required
 from .forms import CustomerForm, CustomerRegistrationForm, CustomerRequestForm, CustomerInteractionForm, EnquiryForm, QuotationForm, SalesOrderForm, DesignApprovalForm
+from products.models import Product
 from .models import Customer, CustomerFeedback, CustomerNotification, DeliveryRecord, DesignApproval, Enquiry, OrderRequest, PaymentRecord, Quotation, SalesOrder
 
 
@@ -644,6 +645,61 @@ def customer_login(request):
 
 
 @customer_required
+@customer_required
+@customer_required
+def portal_product_detail(request, pk):
+    product = get_object_or_404(
+        Product.objects.select_related("category"),
+        pk=pk,
+        status=Product.Status.ACTIVE,
+        customer_visible=True,
+    )
+    return render(request, "sales/portal_product_detail.html", {
+        "title": product.name,
+        "product": product,
+    })
+
+
+def portal_products(request):
+    query = request.GET.get("q", "").strip()
+    products = Product.objects.select_related("category").filter(
+        status=Product.Status.ACTIVE,
+        customer_visible=True,
+    )
+    if query:
+        products = products.filter(
+            Q(name__icontains=query) |
+            Q(sku__icontains=query) |
+            Q(category__name__icontains=query)
+        )
+    return render(request, "sales/portal_products.html", {
+        "title": "Products",
+        "products": products,
+        "query": query,
+    })
+
+
+@customer_required
+def portal_notifications(request):
+    notifications = request.user.customer_notifications.all()
+    return render(request, "sales/portal_notifications.html", {
+        "title": "Notifications",
+        "notifications": notifications,
+    })
+
+
+@customer_required
+def portal_notification_read(request, pk):
+    notification = get_object_or_404(
+        request.user.customer_notifications.all(), pk=pk
+    )
+    notification.is_read = True
+    notification.save(update_fields=["is_read"])
+    if notification.url:
+        return redirect(notification.url)
+    return redirect("sales:portal_notifications")
+
+
 def portal_dashboard(request):
     customer = _customer_for_user(request.user)
     return render(request, "sales/portal_dashboard.html", {
@@ -659,7 +715,23 @@ def portal_dashboard(request):
 @customer_required
 def portal_request_create(request):
     customer = _customer_for_user(request.user)
-    form = CustomerRequestForm(request.POST or None, request.FILES or None)
+    selected_product = request.GET.get("product")
+    initial = {}
+    if selected_product and request.method == "GET":
+        try:
+            product = Product.objects.get(
+                pk=selected_product,
+                status=Product.Status.ACTIVE,
+                customer_visible=True,
+            )
+            initial = {"product": product.pk, "product_name": product.name}
+        except (Product.DoesNotExist, ValueError):
+            initial = {}
+    form = CustomerRequestForm(
+        request.POST or None,
+        request.FILES or None,
+        initial=initial,
+    )
     if request.method == "POST" and form.is_valid():
         obj = form.save(commit=False)
         obj.customer = customer

@@ -55,6 +55,7 @@ TEMPLATES = [
             "context_processors": [
                 "django.template.context_processors.request",
                 "accounts.context_processors.notifications",
+                "sales.context_processors.customer_portal_notifications",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
                 "core.context_processors.system_info",

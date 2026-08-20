@@ -1,8 +1,8 @@
 {% load static %}
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{{ title }}</title>
-<link rel="stylesheet" href="{% static 'css/output.css' %}"><link rel="stylesheet" href="{% static 'css/customer-orders.css' %}"></head>
-<body><div class="customer-portal"><div class="portal-wrap portal-form">
-<a class="portal-back" href="{% url 'sales:portal_dashboard' %}">← Back to portal</a>
+<link rel="stylesheet" href="{% static 'css/output.css' %}"><link rel="stylesheet" href="{% static 'css/customer-orders.css' %}"><link rel="stylesheet" href="{% static 'css/customer-portal.css' %}"></head>
+<body>{% include "sales/portal_chrome.html" %}<div class="customer-portal"><div class="portal-wrap portal-form">
+<a class="portal-back" href="{% url 'sales:portal_products' %}">← Back to Products</a>
 <section class="portal-hero"><div><div class="ey">CUSTOMER REQUEST</div><h1>New Enquiry / Order Request</h1><p>Share your requirement. Our manager will contact you and confirm the commercial details.</p></div></section>
 <div class="portal-form-card" style="margin-top:15px"><form method="post" enctype="multipart/form-data">{% csrf_token %}{% if form.non_field_errors %}<div class="portal-note">{{ form.non_field_errors }}</div>{% endif %}{% for field in form %}<div class="portal-form-field"><label>{{ field.label }}</label>{{ field }}{% if field.help_text %}<small style="display:block;color:#94a3b8;margin-top:4px;font-size:9px">{{ field.help_text }}</small>{% endif %}{{ field.errors }}</div>{% endfor %}<button class="co-btn primary" style="width:100%;padding:12px">Submit Request →</button></form></div>
 </div></div></body></html>

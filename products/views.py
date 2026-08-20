@@ -56,7 +56,7 @@ def category_edit(request, pk):
 
 @product_manager_required
 def product_create(request):
-    form = ProductForm(request.POST or None)
+    form = ProductForm(request.POST or None, request.FILES or None)
     if request.method == "POST" and form.is_valid():
         form.save()
         messages.success(request, "Product created successfully.")
@@ -69,7 +69,7 @@ def product_create(request):
 @product_manager_required
 def product_edit(request, pk):
     product = get_object_or_404(Product, pk=pk)
-    form = ProductForm(request.POST or None, instance=product)
+    form = ProductForm(request.POST or None, request.FILES or None, instance=product)
     if request.method == "POST" and form.is_valid():
         form.save()
         messages.success(request, "Product updated successfully.")

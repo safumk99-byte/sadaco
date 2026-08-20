@@ -36,6 +36,25 @@ class Product(models.Model):
         max_digits=12, decimal_places=2,
         validators=[MinValueValidator(0)],
     )
+    # Existing selling_price is retained for backward compatibility.
+    actual_price = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        validators=[MinValueValidator(0)],
+        default=0,
+    )
+    discount_price = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        validators=[MinValueValidator(0)],
+        default=0,
+    )
+    customer_visible = models.BooleanField(default=False)
+    image = models.ImageField(
+        upload_to="products/%Y/%m/",
+        blank=True,
+        null=True,
+    )
     cost_price = models.DecimalField(
         max_digits=12, decimal_places=2,
         validators=[MinValueValidator(0)],
@@ -66,6 +85,18 @@ class Product(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.sku})"
+
+    @property
+    def discount_percentage(self):
+        if self.actual_price and self.discount_price and self.discount_price < self.actual_price:
+            return round((self.actual_price - self.discount_price) * 100 / self.actual_price)
+        return 0
+
+    @property
+    def customer_price(self):
+        if self.discount_price and self.discount_price < self.actual_price:
+            return self.discount_price
+        return self.actual_price or self.selling_price
 
     @property
     def is_low_stock(self):

@@ -1,0 +1,20 @@
+{% load static %}
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{{ title }}</title>
+<link rel="stylesheet" href="{% static 'css/output.css' %}"><link rel="stylesheet" href="{% static 'css/customer-orders.css' %}"><link rel="stylesheet" href="{% static 'css/customer-portal.css' %}"></head>
+<body><div class="customer-portal"><div class="portal-wrap">
+{% include "sales/portal_chrome.html" %}
+<main class="portal-main">
+<section class="portal-hero"><div><div class="ey">CUSTOMER UPDATES</div><h1>Notifications</h1><p>Stay updated about requests, quotations, orders and status changes.</p></div></section>
+<div class="portal-card" style="margin-top:16px;padding:0;overflow:hidden">
+{% for n in notifications %}
+<a class="customer-notification-full {% if not n.is_read %}unread{% endif %}" href="{% url 'sales:portal_notification_read' n.pk %}">
+  <span class="customer-notification-icon">!</span>
+  <span><b>{{ n.title }}</b><small>{{ n.message }}</small><time>{{ n.created_at|date:"d M Y, h:i A" }}</time></span>
+  {% if not n.is_read %}<em>NEW</em>{% endif %}
+</a>
+{% empty %}<div class="portal-empty" style="padding:60px">You're all caught up.</div>{% endfor %}
+</div>
+</main></div></div>
+<style>
+.customer-notification-full{display:flex;align-items:center;gap:12px;padding:16px 18px;border-bottom:1px solid #edf1f6;text-decoration:none;color:#334155}.customer-notification-full:last-child{border-bottom:0}.customer-notification-full:hover{background:#f8fbff}.customer-notification-full.unread{background:#eff6ff}.customer-notification-full>span:nth-child(2){flex:1}.customer-notification-full b{display:block;font-size:11px;color:#172033}.customer-notification-full small{display:block;font-size:10px;color:#64748b;margin-top:3px}.customer-notification-full time{display:block;font-size:9px;color:#94a3b8;margin-top:5px}.customer-notification-full>em{font-size:8px;font-style:normal;font-weight:900;color:#2563eb;background:#dbeafe;border-radius:99px;padding:5px 7px}
+</style></body></html>

@@ -1,7 +1,7 @@
 {% load static %}
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{{ title }}</title>
-<link rel="stylesheet" href="{% static 'css/output.css' %}"><link rel="stylesheet" href="{% static 'css/customer-orders.css' %}"></head>
-<body><div class="customer-portal"><div class="portal-wrap">
+<link rel="stylesheet" href="{% static 'css/output.css' %}"><link rel="stylesheet" href="{% static 'css/customer-orders.css' %}"><link rel="stylesheet" href="{% static 'css/customer-portal.css' %}"></head>
+<body>{% include "sales/portal_chrome.html" %}<div class="customer-portal"><div class="portal-wrap">
 <nav class="portal-nav"><a class="portal-brand" href="{% url 'sales:portal_dashboard' %}"><span class="portal-logo">S</span><span><b>SADACO</b><small>Customer Portal</small></span></a><div class="portal-nav-actions"><a class="portal-btn" href="{% url 'sales:portal_requests' %}">My Requests</a><a class="portal-btn" href="{% url 'sales:portal_quotations' %}">Quotations</a><a class="portal-btn" href="{% url 'sales:portal_orders' %}">Orders</a><a class="portal-btn" href="{% url 'accounts:logout' %}">Logout</a></div></nav>
 <main class="portal-main">
 <section class="portal-hero"><div><div class="ey">CUSTOMER PORTAL</div><h1>Welcome, {{ customer.name }}</h1><p>Submit a requirement, review quotations and track confirmed orders in one place.</p></div><a class="portal-btn primary" href="{% url 'sales:portal_request_create' %}">＋ New Request</a></section>
