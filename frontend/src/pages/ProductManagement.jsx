@@ -38,12 +38,12 @@ export default function ProductManagement() {
   const s = data.stats || {};
   return (
     <div className="space-y-6">
-      <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+      <div className="relative overflow-hidden flex flex-col justify-between gap-4 rounded-[24px] bg-gradient-to-br from-blue-700 via-indigo-700 to-violet-800 p-5 text-white shadow-xl shadow-indigo-900/15 sm:flex-row sm:items-center sm:p-6">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">
+          <h1 className="text-2xl font-bold text-white">
             Products & Inventory
           </h1>
-          <p className="text-sm text-slate-500">
+          <p className="text-sm text-blue-100">
             Manage internal products, materials, categories and stock.
           </p>
         </div>
@@ -51,7 +51,7 @@ export default function ProductManagement() {
           <div className="flex gap-2">
             <button
               onClick={() => setCategoryForm(true)}
-              className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold"
+              className="rounded-xl border border-white/40 bg-white/15 px-4 py-2.5 text-sm font-semibold text-white backdrop-blur-sm hover:bg-white/25"
             >
               + Category
             </button>

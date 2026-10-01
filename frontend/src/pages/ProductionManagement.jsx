@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import api from "../services/api";
 
-const card = "rounded-2xl border border-slate-200 bg-white shadow-sm";
+const card = "rounded-2xl border border-slate-200 bg-white shadow-sm transition-shadow hover:shadow-md";
 const input =
-  "w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-500";
+  "w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100";
 
 export default function ProductionManagement() {
   const [jobs, setJobs] = useState([]),
@@ -79,22 +79,22 @@ export default function ProductionManagement() {
   };
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <p className="text-sm font-semibold text-slate-500">Operations</p>
-          <h1 className="text-2xl font-bold text-slate-900">
-            Production Management
-          </h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Plan jobs, assign staff, track stages and manage production issues.
-          </p>
+      <div className="relative overflow-hidden rounded-[28px] bg-gradient-to-br from-blue-700 via-indigo-700 to-violet-800 p-5 text-white shadow-xl shadow-indigo-900/15 sm:p-6">
+        <div className="relative flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-blue-100">Operations</p>
+            <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">Production Management</h1>
+            <p className="mt-1 max-w-2xl text-sm text-indigo-100">
+              Plan jobs, assign staff, track stages and manage production issues.
+            </p>
+          </div>
+          <button
+            onClick={() => setShowForm(true)}
+            className="rounded-xl border border-white/40 bg-white/15 px-4 py-2.5 font-semibold text-white backdrop-blur-sm transition hover:bg-white/25"
+          >
+            + New Production Job
+          </button>
         </div>
-        <button
-          onClick={() => setShowForm(true)}
-          className="rounded-xl bg-slate-900 px-4 py-2.5 font-semibold text-white"
-        >
-          + New Production Job
-        </button>
       </div>
       {error && (
         <div className="rounded-xl bg-red-50 p-3 text-sm text-red-700">
@@ -110,7 +110,8 @@ export default function ProductionManagement() {
           ["Completed", stats.completed],
           ["Delayed", stats.delayed],
         ].map(([k, v]) => (
-          <div className={`${card} p-4`} key={k}>
+          <div className={`${card} group relative overflow-hidden p-4`} key={k}>
+            <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-500 via-indigo-500 to-violet-500" />
             <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
               {k}
             </div>
@@ -173,7 +174,7 @@ export default function ProductionManagement() {
           </select>
           <button
             onClick={load}
-            className="rounded-xl border border-slate-300 px-4 py-2.5 font-semibold"
+            className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-2.5 font-semibold text-indigo-700 transition hover:bg-indigo-100"
           >
             Refresh
           </button>

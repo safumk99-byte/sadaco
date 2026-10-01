@@ -92,33 +92,28 @@ export default function FinanceManagement() {
   };
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold">Finance & Accounts</h1>
-          <p className="text-sm text-slate-500">
-            Income, expenses, receivables, supplier dues and reconciliation.
-          </p>
+      <div className="relative overflow-hidden rounded-[28px] bg-gradient-to-br from-blue-700 via-indigo-700 to-violet-800 p-5 text-white shadow-xl shadow-indigo-900/15 sm:p-6">
+        <div className="relative flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-blue-100">Finance Control Center</p>
+            <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">Finance & Accounts</h1>
+            <p className="mt-1 text-sm text-indigo-100">Income, expenses, receivables, supplier dues and reconciliation.</p>
+          </div>
+          <div className="rounded-2xl border border-white/20 bg-white/10 px-4 py-3 text-sm backdrop-blur-sm">
+            <div className="text-blue-100">Financial workspace</div>
+            <div className="font-semibold">Cash flow & controls</div>
+          </div>
         </div>
-        <div className="flex gap-2">
+        <div className="mt-4 flex flex-wrap gap-2">
           <button
-            onClick={() => {
-              setForm({
-                expense_date: new Date().toISOString().slice(0, 10),
-                status: "paid",
-                payment_method: "cash",
-              });
-              setModal("expense");
-            }}
-            className="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white"
+            onClick={() => { setForm({ expense_date: new Date().toISOString().slice(0, 10), status: "paid", payment_method: "cash" }); setModal("expense"); }}
+            className="rounded-xl bg-white px-4 py-2.5 text-sm font-bold text-indigo-700 shadow-sm transition hover:bg-indigo-50"
           >
             + Expense
           </button>
           <button
-            onClick={() => {
-              setForm({ name: "", is_active: true });
-              setModal("category");
-            }}
-            className="rounded-xl border px-4 py-2.5 text-sm font-semibold"
+            onClick={() => { setForm({ name: "", is_active: true }); setModal("category"); }}
+            className="rounded-xl border border-white/30 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white backdrop-blur-sm transition hover:bg-white/20"
           >
             + Category
           </button>
@@ -134,8 +129,9 @@ export default function FinanceManagement() {
         ].map(([a, b]) => (
           <div
             key={a}
-            className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+            className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
           >
+            <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-500 via-indigo-500 to-violet-500" />
             <div className="text-xs font-semibold uppercase text-slate-400">
               {a}
             </div>

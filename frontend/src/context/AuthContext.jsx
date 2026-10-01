@@ -9,7 +9,7 @@ export function AuthProvider({ children }) {
 
   async function refreshUser() {
     try {
-      await initCsrf()
+      // GET /auth/me/ does not require CSRF. Avoid an extra startup request.
       const data = await getCurrentUser()
       setUser(data.user)
     } catch {

@@ -85,28 +85,23 @@ export default function ReportsManagement() {
 
   return (
     <div className="space-y-6 pb-8">
-      <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-slate-900 text-white text-sm font-bold">
-              R
-            </span>
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight">
-                Reports & Analytics
-              </h1>
-              <p className="muted">
-                A consolidated view of sales, finance, stock, operations and
-                people.
-              </p>
+      <div className="relative overflow-hidden rounded-[28px] bg-gradient-to-br from-blue-700 via-indigo-700 to-violet-800 p-5 text-white shadow-xl shadow-indigo-900/15 sm:p-6">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+          <div>
+            <div className="flex items-center gap-3">
+              <span className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/20 bg-white/10 text-sm font-black backdrop-blur-sm">R</span>
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.2em] text-blue-100">Business Intelligence</p>
+                <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Reports & Analytics</h1>
+              </div>
             </div>
+            <p className="mt-3 max-w-2xl text-sm text-indigo-100">A consolidated view of sales, finance, stock, operations and people.</p>
           </div>
-        </div>
-        <div className="card flex flex-wrap items-end gap-2 p-3">
+          <div className="flex flex-wrap items-end gap-2 rounded-2xl border border-white/15 bg-white/10 p-3 backdrop-blur-sm">
           <label className="text-xs font-medium text-slate-500">
             From
             <input
-              className="input mt-1"
+              className="mt-1 rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm text-white outline-none backdrop-blur-sm focus:border-white/50 focus:ring-2 focus:ring-white/20"
               type="date"
               value={start}
               onChange={(e) => setStart(e.target.value)}
@@ -115,7 +110,7 @@ export default function ReportsManagement() {
           <label className="text-xs font-medium text-slate-500">
             To
             <input
-              className="input mt-1"
+              className="mt-1 rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm text-white outline-none backdrop-blur-sm focus:border-white/50 focus:ring-2 focus:ring-white/20"
               type="date"
               value={end}
               onChange={(e) => setEnd(e.target.value)}
@@ -139,6 +134,7 @@ export default function ReportsManagement() {
             Reset
           </button>
         </div>
+        </div>
       </div>
 
       {error && (
@@ -157,7 +153,7 @@ export default function ReportsManagement() {
 
       <section className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3">
         {cards.map(([key, label]) => (
-          <div className="card" key={key}>
+          <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md" key={key}>
             <div className="muted text-xs">{label}</div>
             <div className="mt-2 text-xl font-bold tracking-tight">
               {moneyKeys.has(key) ? money(stats[key]) : (stats[key] ?? 0)}

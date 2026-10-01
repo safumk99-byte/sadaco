@@ -35,14 +35,15 @@ export default function Login() {
   }
 
   return (
-    <div className="grid min-h-screen place-items-center bg-slate-950 p-4">
+    <div className="relative grid min-h-screen place-items-center overflow-hidden bg-gradient-to-br from-slate-950 via-indigo-950 to-violet-950 p-4">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(99,102,241,0.28),transparent_38%),radial-gradient(circle_at_bottom_left,rgba(59,130,246,0.22),transparent_35%)]" />
       <form
         onSubmit={submit}
-        className="w-full max-w-md rounded-2xl bg-white p-7 shadow-2xl"
+        className="relative w-full max-w-md rounded-[28px] border border-white/20 bg-white/95 p-7 shadow-2xl backdrop-blur-xl sm:p-8"
       >
         <div className="mb-7">
-          <div className="text-2xl font-bold text-slate-900">SADACO</div>
-          <p className="mt-1 text-sm text-slate-500">Management System</p>
+          <div className="inline-flex rounded-2xl bg-gradient-to-br from-blue-700 via-indigo-700 to-violet-800 px-4 py-2 text-2xl font-black tracking-tight text-white shadow-lg">SADACO</div>
+          <p className="mt-3 text-sm text-slate-500">Management System</p>
         </div>
         {error && (
           <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">

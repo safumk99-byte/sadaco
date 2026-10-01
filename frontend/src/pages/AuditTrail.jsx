@@ -7,9 +7,10 @@ export default function AuditTrail() {
   }, []);
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Audit Trail</h1>
-        <p className="text-slate-500">System activity and approval history.</p>
+      <div className="relative overflow-hidden rounded-[28px] bg-gradient-to-br from-blue-700 via-indigo-700 to-violet-800 p-5 text-white shadow-xl shadow-indigo-900/15 sm:p-6">
+        <p className="text-xs font-bold uppercase tracking-[0.2em] text-blue-100">Governance & Security</p>
+        <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">Audit Trail</h1>
+        <p className="mt-2 text-sm text-indigo-100">System activity, approvals and accountability history.</p>
       </div>
       <div className="card overflow-x-auto">
         <table className="table">

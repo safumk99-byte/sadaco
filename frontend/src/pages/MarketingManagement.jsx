@@ -62,16 +62,17 @@ export default function MarketingManagement() {
   ];
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold">
-            Marketing & Business Development
-          </h1>
-          <p className="muted">Manage campaigns, content and business leads.</p>
-        </div>
-        <button className="btn" onClick={load} disabled={loading}>
+      <div className="relative overflow-hidden rounded-[28px] bg-gradient-to-br from-blue-700 via-indigo-700 to-violet-800 p-5 text-white shadow-xl shadow-indigo-900/15 sm:p-6">
+        <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-blue-100">Growth & Engagement</p>
+            <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">Marketing & Business Development</h1>
+            <p className="mt-2 text-sm text-indigo-100">Manage campaigns, content and business leads.</p>
+          </div>
+        <button className="rounded-xl border border-white/30 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white backdrop-blur-sm transition hover:bg-white/20" onClick={load} disabled={loading}>
           {loading ? "Loading…" : "Refresh"}
         </button>
+        </div>
       </div>
       {error && (
         <div className="card border border-red-200 text-red-700">{error}</div>

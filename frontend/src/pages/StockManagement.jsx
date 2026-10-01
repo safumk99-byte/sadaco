@@ -22,14 +22,11 @@ export default function StockManagement() {
   }, [q]);
   return (
     <div className="space-y-6">
-      <div>
-        <Link to="/products" className="text-sm text-slate-500">
-          ← Products
-        </Link>
-        <h1 className="mt-2 text-2xl font-bold">Stock Management</h1>
-        <p className="text-sm text-slate-500">
-          Review stock movements across internal products.
-        </p>
+      <div className="relative overflow-hidden rounded-[28px] bg-gradient-to-br from-blue-700 via-indigo-700 to-violet-800 p-5 text-white shadow-xl shadow-indigo-900/15 sm:p-6">
+        <Link to="/products" className="text-sm text-blue-100 hover:text-white">← Products</Link>
+        <p className="mt-3 text-xs font-bold uppercase tracking-[0.2em] text-blue-100">Inventory Control</p>
+        <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">Stock Management</h1>
+        <p className="mt-2 text-sm text-indigo-100">Review stock movements across internal products.</p>
       </div>
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <input

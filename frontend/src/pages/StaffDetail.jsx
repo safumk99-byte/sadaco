@@ -25,9 +25,9 @@ export default function StaffDetail() {
       <Link to="/staff" className="text-sm font-medium text-slate-600">
         ← Back to Staff
       </Link>
-      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="relative overflow-hidden rounded-[28px] bg-gradient-to-br from-blue-700 via-indigo-700 to-violet-800 p-5 text-white shadow-xl shadow-indigo-900/15 sm:p-6">
         <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
-          <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-2xl bg-slate-100 text-2xl font-bold text-slate-500">
+          <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-2xl border border-white/20 bg-white/10 text-2xl font-bold text-white backdrop-blur-sm">
             {s.photo ? (
               <img src={s.photo} className="h-full w-full object-cover" />
             ) : (
@@ -36,15 +36,12 @@ export default function StaffDetail() {
           </div>
           <div className="flex-1">
             <h1 className="text-2xl font-bold">{s.name}</h1>
-            <p className="text-sm text-slate-500">
-              {s.staff_id} · {s.designation?.name || "Staff"} ·{" "}
-              {s.work_area?.name || "No work area"}
+            <p className="text-sm text-white/90">
+              {s.staff_id} · {s.designation?.name || "Staff"} · {s.work_area?.name || "No work area"}
             </p>
-            <p className="mt-2 text-sm text-slate-600">
-              {s.email || "No email"} · {s.phone || "No phone"}
-            </p>
+            <p className="mt-2 text-sm text-indigo-100">{s.email || "No email"} · {s.phone || "No phone"}</p>
           </div>
-          <span className="rounded-full bg-emerald-100 px-3 py-1 text-sm font-medium text-emerald-700">
+          <span className="rounded-full bg-white/15 px-3 py-1 text-sm font-semibold text-white backdrop-blur-sm">
             {s.status_label}
           </span>
         </div>

@@ -11,17 +11,20 @@ export default function MyProfile() {
     });
   }, []);
   const save = async () => {
-    await api.post("/profile/update/", form);
+    const r = await api.post("/profile/update/", form);
     setMsg("Profile updated successfully.");
-    const r = await api.get("/auth/me/");
-    setU(r.data.user);
+    if (r.data?.user) {
+      setU(r.data.user);
+      setForm(r.data.user);
+    }
   };
   if (!u) return <div>Loading…</div>;
   return (
-    <div className="max-w-2xl space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">My Profile</h1>
-        <p className="text-slate-500">Update your account details.</p>
+    <div className="max-w-3xl space-y-6">
+      <div className="relative overflow-hidden rounded-[28px] bg-gradient-to-br from-blue-700 via-indigo-700 to-violet-800 p-5 text-white shadow-xl shadow-indigo-900/15 sm:p-6">
+        <p className="text-xs font-bold uppercase tracking-[0.2em] text-blue-100">Account Settings</p>
+        <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">My Profile</h1>
+        <p className="mt-2 text-sm text-indigo-100">Update your personal account details and contact information.</p>
       </div>
       {msg && <div className="alert-success">{msg}</div>}
       <div className="card grid gap-4 md:grid-cols-2">

@@ -38,22 +38,23 @@ export default function ApprovalCenter() {
   const pending = rows.filter((x) => x.status === "pending").length;
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between gap-4">
+      <div className="relative overflow-hidden flex flex-col justify-between gap-4 rounded-[24px] bg-gradient-to-br from-blue-700 via-indigo-700 to-violet-800 p-5 text-white shadow-xl shadow-indigo-900/15 sm:flex-row sm:items-center sm:p-6">
         <div>
-          <h1 className="text-2xl font-bold">Approval Center</h1>
-          <p className="text-slate-500">Review pending management approvals.</p>
+          <div className="mb-1 text-xs font-semibold uppercase tracking-[0.16em] text-blue-100">Workflow</div>
+          <h1 className="text-2xl font-bold tracking-tight text-white">Approval Center</h1>
+          <p className="text-blue-100">Review pending management approvals.</p>
         </div>
         <button className="btn-secondary" onClick={load} disabled={loading}>
           Refresh
         </button>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="card border-l-4 border-l-slate-900">
+        <div className="card border-l-4 border-l-slate-900 shadow-sm hover:shadow-md transition-shadow">
           <p className="text-sm text-slate-500">Total Requests</p>
           <p className="text-2xl font-bold mt-1">{rows.length}</p>
         </div>
-        <div className="card">
-          <p className="text-sm text-slate-500">Pending</p>
+        <div className="card bg-gradient-to-br from-indigo-50 to-violet-50 border-indigo-100">
+          <p className="text-sm text-indigo-600">Pending</p>
           <p className="text-2xl font-bold mt-1">{pending}</p>
         </div>
         <div className="card">

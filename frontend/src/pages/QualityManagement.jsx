@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import api from "../services/api";
 
-const card = "rounded-2xl border border-slate-200 bg-white shadow-sm";
+const card = "rounded-2xl border border-slate-200 bg-white shadow-sm transition-shadow hover:shadow-md";
 const input =
-  "w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-500";
+  "w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100";
 const label = "mb-1 block text-sm font-medium text-slate-700";
 
 export default function QualityManagement() {
@@ -94,25 +94,20 @@ export default function QualityManagement() {
     });
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <p className="text-sm font-semibold text-slate-500">
-            Quality Operations
-          </p>
-          <h1 className="text-2xl font-bold text-slate-900">
-            Quality Management
-          </h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Inspect production output, manage defects and release approved jobs
-            for packing.
-          </p>
+      <div className="relative overflow-hidden rounded-[28px] bg-gradient-to-br from-blue-700 via-indigo-700 to-violet-800 p-5 text-white shadow-xl shadow-indigo-900/15 sm:p-6">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-blue-100">Quality Operations</p>
+            <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">Quality Management</h1>
+            <p className="mt-2 max-w-2xl text-sm text-indigo-100">Inspect production output, manage defects and release approved jobs for packing.</p>
+          </div>
+          <button
+            onClick={() => setShowCheck(true)}
+            className="rounded-xl bg-white px-4 py-2.5 font-bold text-indigo-700 shadow-sm transition hover:bg-indigo-50"
+          >
+            + New Quality Check
+          </button>
         </div>
-        <button
-          onClick={() => setShowCheck(true)}
-          className="rounded-xl bg-slate-900 px-4 py-2.5 font-semibold text-white"
-        >
-          + New Quality Check
-        </button>
       </div>
       {error && (
         <div className="rounded-xl bg-red-50 p-3 text-sm text-red-700">
@@ -127,7 +122,8 @@ export default function QualityManagement() {
           ["Packed", stats.packed],
           ["Failed", stats.failed],
         ].map(([k, v]) => (
-          <div className={`${card} p-4`} key={k}>
+          <div className={`${card} relative overflow-hidden p-4`} key={k}>
+            <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-500 via-indigo-500 to-violet-500" />
             <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
               {k}
             </div>
@@ -175,7 +171,7 @@ export default function QualityManagement() {
           </select>
           <button
             onClick={load}
-            className="rounded-xl border border-slate-300 px-4 py-2.5 font-semibold"
+            className="rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-2.5 font-semibold text-white shadow-sm transition hover:from-blue-700 hover:to-indigo-700"
           >
             Refresh
           </button>
@@ -237,7 +233,7 @@ function CheckTable({ checks, onOpen }) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full min-w-[920px] text-left text-sm">
-        <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+        <thead className="bg-gradient-to-r from-slate-50 via-indigo-50 to-violet-50 text-xs uppercase text-slate-500">
           <tr>
             <th className="px-5 py-3">Job</th>
             <th>Order / Customer</th>

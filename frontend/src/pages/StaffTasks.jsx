@@ -25,11 +25,10 @@ export default function StaffTasks() {
   }
   return (
     <div className="space-y-5">
-      <div>
-        <h1 className="text-2xl font-bold">Staff Tasks</h1>
-        <p className="text-sm text-slate-500">
-          Track assigned work and task status.
-        </p>
+      <div className="relative overflow-hidden rounded-[28px] bg-gradient-to-br from-blue-700 via-indigo-700 to-violet-800 p-5 text-white shadow-xl shadow-indigo-900/15 sm:p-6">
+        <p className="text-xs font-bold uppercase tracking-[0.2em] text-blue-100">Operations Workspace</p>
+        <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">Staff Tasks</h1>
+        <p className="mt-2 text-sm text-indigo-100">Track assigned work, priorities and task progress.</p>
       </div>
       <div className="flex gap-2 overflow-x-auto">
         {[

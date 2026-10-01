@@ -6,6 +6,7 @@ from django.middleware.csrf import get_token
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST
 from django.db.models import F, Avg, Q
+from django.core.cache import cache
 import json
 
 from products.models import Product
@@ -86,9 +87,15 @@ def api_logout(request):
 @require_GET
 @login_required
 def dashboard_api(request):
+    cache_key = f"dashboard_stats:{request.user.pk}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return JsonResponse({"user": _user_payload(request.user), "stats": cached})
+
     today = timezone.localdate()
-    total_staff = StaffProfile.objects.count()
-    active_staff = StaffProfile.objects.filter(status=StaffProfile.Status.ACTIVE).count()
+    staff_qs = StaffProfile.objects.all()
+    total_staff = staff_qs.count()
+    active_staff = staff_qs.filter(status=StaffProfile.Status.ACTIVE).count()
     present_today = StaffAttendance.objects.filter(date=today, status=StaffAttendance.Status.PRESENT).count()
     stats = {
         "total_staff": total_staff,
@@ -103,6 +110,7 @@ def dashboard_api(request):
         "pending_requests": OrderRequest.objects.filter(status__in=[OrderRequest.Status.NEW, OrderRequest.Status.REVIEWING, OrderRequest.Status.CONTACTED, OrderRequest.Status.QUOTATION]).count(),
         "active_orders": SalesOrder.objects.exclude(status__in=[SalesOrder.Status.DELIVERED, SalesOrder.Status.CANCELLED]).count(),
     }
+    cache.set(cache_key, stats, 15)
     return JsonResponse({"user": _user_payload(request.user), "stats": stats})
 
 

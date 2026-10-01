@@ -24,24 +24,23 @@ export default function ProductDetail() {
   const p = data.product;
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <Link to="/products" className="text-sm text-slate-500">
-            ← Products
-          </Link>
-          <h1 className="mt-2 text-2xl font-bold">{p.name}</h1>
-          <p className="text-sm text-slate-500">
-            {p.sku} · {p.category?.name}
-          </p>
-        </div>
+      <div className="relative overflow-hidden rounded-[28px] bg-gradient-to-br from-blue-700 via-indigo-700 to-violet-800 p-5 text-white shadow-xl shadow-indigo-900/15 sm:p-6">
+        <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
+          <div>
+            <Link to="/products" className="text-sm text-blue-100 hover:text-white">← Products</Link>
+            <p className="mt-3 text-xs font-bold uppercase tracking-[0.2em] text-blue-100">Product Intelligence</p>
+            <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">{p.name}</h1>
+            <p className="text-sm text-indigo-100">{p.sku} · {p.category?.name}</p>
+          </div>
         {data.can_manage && (
           <button
             onClick={() => setShow(true)}
-            className="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white"
+            className="rounded-xl bg-white px-4 py-2.5 text-sm font-bold text-indigo-700 shadow-sm transition hover:bg-indigo-50"
           >
             Stock Transaction
           </button>
         )}
+        </div>
       </div>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Card

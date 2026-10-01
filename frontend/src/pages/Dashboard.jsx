@@ -30,7 +30,7 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <section className="overflow-hidden rounded-2xl bg-slate-900 p-6 text-white shadow-lg sm:p-8">
+      <section className="relative overflow-hidden rounded-[28px] bg-gradient-to-br from-blue-700 via-indigo-700 to-violet-800 p-6 text-white shadow-xl shadow-indigo-900/20 sm:p-8">
         <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-sm font-medium text-slate-300">
@@ -55,7 +55,7 @@ export default function Dashboard() {
         {cards.map(([label, value, hint], index) => (
           <div
             key={label}
-            className="group rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+            className={`group rounded-[22px] border border-white/70 p-5 shadow-sm transition duration-200 hover:-translate-y-1 hover:shadow-lg ${["from-blue-50 to-indigo-50","from-indigo-50 to-violet-50","from-violet-50 to-fuchsia-50","from-cyan-50 to-blue-50"][index % 4]} bg-gradient-to-br`}
           >
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">

@@ -208,19 +208,27 @@ export default function DeliveryManagement() {
 }
 function Header({ title }) {
   return (
-    <div>
-      <h1 className="text-2xl font-bold">{title}</h1>
-      <p className="muted">
-        Schedule deliveries, installation and customer feedback.
-      </p>
+    <div className="relative overflow-hidden rounded-[28px] bg-gradient-to-br from-blue-700 via-indigo-700 to-violet-800 p-5 text-white shadow-xl shadow-indigo-900/15 sm:p-6">
+      <div className="relative flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.2em] text-blue-100">Logistics & Customer Experience</p>
+          <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">{title}</h1>
+          <p className="mt-1 max-w-2xl text-sm text-indigo-100">Schedule deliveries, installation and customer feedback from one operational workspace.</p>
+        </div>
+        <div className="rounded-2xl border border-white/20 bg-white/10 px-4 py-3 text-sm backdrop-blur-sm">
+          <div className="text-blue-100">Live workflow</div>
+          <div className="font-semibold">Delivery control</div>
+        </div>
+      </div>
     </div>
   );
 }
 function K({ label, value }) {
   return (
-    <div className="card">
-      <div className="muted text-xs">{label}</div>
-      <div className="text-2xl font-bold">{value}</div>
+    <div className="card relative overflow-hidden p-4 transition-all hover:-translate-y-0.5 hover:shadow-md">
+      <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-500 via-indigo-500 to-violet-500" />
+      <div className="muted text-xs font-semibold uppercase tracking-wide">{label}</div>
+      <div className="mt-2 text-2xl font-bold text-slate-900">{value}</div>
     </div>
   );
 }

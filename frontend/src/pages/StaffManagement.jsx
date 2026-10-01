@@ -46,26 +46,22 @@ export default function StaffManagement() {
   const stats = useMemo(() => data.stats || {}, [data.stats]);
   return (
     <div className="space-y-6">
-      <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">
-            Staff Management
-          </h1>
-          <p className="text-sm text-slate-500">
-            Manage staff profiles, roles, status and work assignments.
-          </p>
+      <div className="relative overflow-hidden rounded-[28px] bg-gradient-to-br from-blue-700 via-indigo-700 to-violet-800 p-5 text-white shadow-xl shadow-indigo-900/15 sm:p-6">
+        <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-blue-100">People & Workforce</p>
+            <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">Staff Management</h1>
+            <p className="mt-2 max-w-2xl text-sm text-indigo-100">Manage staff profiles, roles, status and work assignments from one workspace.</p>
+          </div>
+          {data.can_manage && (
+            <button
+              onClick={() => { setEditing(null); setShowForm(true); }}
+              className="rounded-xl bg-white px-4 py-2.5 text-sm font-bold text-indigo-700 shadow-sm transition hover:bg-indigo-50"
+            >
+              + Add Staff
+            </button>
+          )}
         </div>
-        {data.can_manage && (
-          <button
-            onClick={() => {
-              setEditing(null);
-              setShowForm(true);
-            }}
-            className="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white"
-          >
-            + Add Staff
-          </button>
-        )}
       </div>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label="Total Staff" value={stats.total ?? 0} />
@@ -73,7 +69,14 @@ export default function StaffManagement() {
         <Stat label="Inactive" value={stats.inactive ?? 0} />
         <Stat label="On Leave" value={stats.on_leave ?? 0} />
       </div>
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-shadow hover:shadow-md">
+        <div className="mb-3 flex items-center justify-between">
+          <div>
+            <p className="text-sm font-bold text-slate-900">Staff Directory</p>
+            <p className="text-xs text-slate-500">Search and filter your workforce.</p>
+          </div>
+          <span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700">Live directory</span>
+        </div>
         <div className="grid gap-3 md:grid-cols-4">
           <input
             value={filters.q}
@@ -126,7 +129,7 @@ export default function StaffManagement() {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[760px] text-left text-sm">
-              <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+              <thead className="bg-gradient-to-r from-slate-50 via-indigo-50 to-violet-50 text-xs uppercase text-slate-500">
                 <tr>
                   <th className="px-5 py-3">Staff</th>
                   <th className="px-5 py-3">Designation</th>
@@ -208,11 +211,10 @@ export default function StaffManagement() {
 }
 function Stat({ label, value }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
-        {label}
-      </div>
-      <div className="mt-2 text-2xl font-bold text-slate-900">{value}</div>
+    <div className="group rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+      <div className="h-1 w-10 rounded-full bg-gradient-to-r from-blue-500 to-violet-600" />
+      <div className="mt-3 text-xs font-bold uppercase tracking-wide text-slate-500">{label}</div>
+      <div className="mt-1 text-2xl font-bold tracking-tight text-slate-900">{value}</div>
     </div>
   );
 }

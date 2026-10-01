@@ -33,11 +33,10 @@ export default function UsersManagement() {
   };
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Users & Roles</h1>
-        <p className="text-slate-500">
-          Manage internal accounts and access roles.
-        </p>
+      <div className="relative overflow-hidden rounded-[28px] bg-gradient-to-br from-blue-700 via-indigo-700 to-violet-800 p-5 text-white shadow-xl shadow-indigo-900/15 sm:p-6">
+        <p className="text-xs font-bold uppercase tracking-[0.2em] text-blue-100">Administration & Access</p>
+        <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">Users & Roles</h1>
+        <p className="mt-2 text-sm text-indigo-100">Manage internal accounts, roles and access status securely.</p>
       </div>
       <div className="flex gap-2">
         <input

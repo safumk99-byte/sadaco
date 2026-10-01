@@ -73,11 +73,13 @@ export default function CustomerPortal() {
     );
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold">Customer Portal</h1>
-          <p className="text-sm text-slate-500">Welcome, {user?.name}</p>
-        </div>
+      <div className="relative overflow-hidden rounded-[28px] bg-gradient-to-br from-blue-700 via-indigo-700 to-violet-800 p-5 text-white shadow-xl shadow-indigo-900/15 sm:p-6">
+        <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-blue-100">SADACO Customer Experience</p>
+            <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">Customer Portal</h1>
+            <p className="mt-2 text-sm text-indigo-100">Welcome back, {user?.name}</p>
+          </div>
         <div className="flex gap-2">
           <button
             onClick={load}
@@ -91,6 +93,7 @@ export default function CustomerPortal() {
           >
             Sign out
           </button>
+        </div>
         </div>
       </div>
       {message && (
