@@ -1,0 +1,16 @@
+{
+  "name": "sadaco-e2e-tests",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test tests/sadaco.full.spec.js --headed",
+    "test:e2e:report": "playwright show-report",
+    "test:e2e:full": "playwright test tests/sadaco.full.spec.js"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.1",
+    "dotenv": "^17.2.2"
+  }
+}
