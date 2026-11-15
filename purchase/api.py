@@ -68,7 +68,12 @@ def _purchase_orders(user):
     if _global_admin(user):
         return qs
     department_id = _department_id(user)
-    return qs.filter(created_by__profile__department_id=department_id) if department_id else qs.none()
+    if not department_id:
+        return qs.none()
+    return qs.filter(
+        Q(department_id=department_id) |
+        Q(department__isnull=True, created_by__profile__department_id=department_id)
+    )
 
 @require_GET
 @login_required
