@@ -84,17 +84,29 @@ class ProductionProgress(models.Model):
 
 class ProductionMaterial(models.Model):
     job = models.ForeignKey(ProductionJob, on_delete=models.CASCADE, related_name="materials")
+    # Product remains nullable for legacy finished-goods workflows. Raw materials use MaterialVariant.
     product = models.ForeignKey("products.Product", on_delete=models.PROTECT, null=True, blank=True, related_name="production_materials")
+    material_variant = models.ForeignKey(
+        "products.MaterialVariant", on_delete=models.PROTECT, null=True, blank=True,
+        related_name="production_requirements",
+    )
     material_name = models.CharField(max_length=180)
     quantity_required = models.DecimalField(max_digits=12, decimal_places=2, validators=[MinValueValidator(0)])
     unit = models.CharField(max_length=40, default="Piece")
     issued_quantity = models.DecimalField(max_digits=12, decimal_places=2, default=0, validators=[MinValueValidator(0)])
+    returned_quantity = models.DecimalField(max_digits=12, decimal_places=2, default=0, validators=[MinValueValidator(0)])
+    wastage_quantity = models.DecimalField(max_digits=12, decimal_places=2, default=0, validators=[MinValueValidator(0)])
+    issue_unit_rate = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
     notes = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     @property
     def pending_quantity(self):
         return max(self.quantity_required - self.issued_quantity, 0)
+
+    @property
+    def actual_consumption(self):
+        return max(self.issued_quantity - self.returned_quantity, 0)
 
 
 class ProductionIssue(models.Model):
