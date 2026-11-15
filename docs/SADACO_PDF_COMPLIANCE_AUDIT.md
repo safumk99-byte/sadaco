@@ -134,3 +134,17 @@ The user has explicitly superseded the earlier conservative operational-data pre
 - Retain only staff-linked designation/work-area master rows required by retained staff foreign keys; all other legacy business data/configuration is eligible for cleanup and PDF-based reseeding.
 - Before any cleanup, generate a table-by-table deletion plan and verify that cascades cannot delete Users, UserProfiles or StaffProfiles. Apply and test only on the isolated disposable/staging clone first. Do not touch production Neon or the main branch.
 - This decision supersedes the earlier notes about preserving customers, order requests, nonzero stock, and referenced operational records. Those records are no longer preservation requirements.
+
+
+## 2026-11-15 guarded PDF-baseline cleanup implementation
+
+Added `core/management/commands/reset_to_pdf_baseline.py` on the feature branch.
+
+- Default invocation is **dry-run**; it prints a deletion graph/count by model and performs no writes.
+- `--apply` is required to delete legacy operational rows.
+- Explicitly preserves Django User accounts, Groups, Permissions, ContentTypes, UserProfiles, StaffProfiles, Departments, staff Designation/WorkArea master rows, PDF MaterialVariants/rate history, MachineRates and StaffCompensation.
+- The command uses Django's deletion collector to calculate cascades before deleting. If the collector reaches a protected model, it stops.
+- Cleanup runs in a database transaction and checks that User, UserProfile and StaffProfile row counts are unchanged; a mismatch raises and rolls back.
+- Old Products/prices/orders/stock/purchasing/finance/production/sales/QC/delivery/marketing/attendance/task/notification and other eligible legacy business rows are included in the cleanup scope.
+- This command has **not** been run against Neon, staging or production. No database rows were deleted. It still requires execution and verification on the isolated disposable clone, plus tests and a review of the printed dry-run report.
+- The old notes above about preserving customers, order requests and nonzero legacy stock are superseded by the user's final decision. Only the explicit protected models above remain preservation requirements.
