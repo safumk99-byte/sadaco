@@ -54,6 +54,11 @@ def _department_id(user):
     return profile.department_id if profile and profile.role == UserProfile.Role.MANAGER else None
 
 
+def _require_department(user):
+    if not _global_admin(user) and not _department_id(user):
+        raise PermissionDenied("Assign your manager account to a department first.")
+
+
 def _purchase_orders(user):
     qs = PurchaseOrder.objects.all()
     if _global_admin(user):
