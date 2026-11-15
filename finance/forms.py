@@ -24,6 +24,12 @@ class ExpenseForm(forms.ModelForm):
             "reference": forms.TextInput(attrs={"class": INPUT}), "description": forms.Textarea(attrs={"class": INPUT, "rows": 3}),
             "status": forms.Select(attrs={"class": INPUT}),
         }
+    def clean_amount(self):
+        amount = self.cleaned_data["amount"]
+        if amount <= 0:
+            raise ValidationError("Expense amount must be greater than zero.")
+        return amount
+
 
 class CustomerPaymentForm(forms.ModelForm):
     class Meta:
@@ -63,3 +69,9 @@ class SupplierPaymentForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["purchase_order"].queryset = PurchaseOrder.objects.exclude(status=PurchaseOrder.Status.CANCELLED).select_related("supplier").order_by("-order_date")
+    def clean_amount(self):
+        amount = self.cleaned_data["amount"]
+        if amount <= 0:
+            raise ValidationError("Supplier payment amount must be greater than zero.")
+        return amount
+
