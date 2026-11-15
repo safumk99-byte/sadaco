@@ -90,6 +90,8 @@ def api_logout(request):
 @require_GET
 @login_required
 def dashboard_api(request):
+    if getattr(request.user, "customer_profile", None) is not None:
+        return JsonResponse({"detail": "Customer accounts cannot access the internal dashboard."}, status=403)
     cache_key = f"dashboard_stats:{request.user.pk}"
     cached = cache.get(cache_key)
     if cached is not None:
@@ -97,6 +99,28 @@ def dashboard_api(request):
 
     today = timezone.localdate()
     staff_qs = staff_for_user(request.user)
+    customer_qs = Customer.objects.all()
+    enquiry_qs = Enquiry.objects.all()
+    order_request_qs = OrderRequest.objects.all()
+    order_qs = SalesOrder.objects.all()
+    role = getattr(getattr(request.user, "profile", None), "role", None)
+    if not request.user.is_superuser and role not in (UserProfile.Role.SUPER_ADMIN, UserProfile.Role.INSTITUTION_ADMIN):
+        if role == UserProfile.Role.MANAGER:
+            department_id = getattr(request.user.profile, "department_id", None)
+            customer_qs = customer_qs.filter(department_id=department_id) if department_id else customer_qs.none()
+            enquiry_qs = enquiry_qs.filter(customer__department_id=department_id) if department_id else enquiry_qs.none()
+            order_request_qs = order_request_qs.filter(Q(customer__department_id=department_id) | Q(assigned_to__profile__department_id=department_id)).distinct() if department_id else order_request_qs.none()
+            order_qs = order_qs.filter(customer__department_id=department_id) if department_id else order_qs.none()
+        elif role == UserProfile.Role.STAFF:
+            customer_qs = customer_qs.filter(Q(enquiries__assigned_to=request.user) | Q(orders__responsible_staff__user=request.user)).distinct()
+            enquiry_qs = enquiry_qs.filter(assigned_to=request.user)
+            order_request_qs = order_request_qs.filter(assigned_to=request.user)
+            order_qs = order_qs.filter(responsible_staff__user=request.user)
+        else:
+            customer_qs = customer_qs.none()
+            enquiry_qs = enquiry_qs.none()
+            order_request_qs = order_request_qs.none()
+            order_qs = order_qs.none()
     total_staff = staff_qs.count()
     active_staff = staff_qs.filter(status=StaffProfile.Status.ACTIVE).count()
     visible_tasks = task_queryset_for_user(request.user)
@@ -110,10 +134,10 @@ def dashboard_api(request):
         "open_tasks": visible_tasks.exclude(status__in=[StaffTask.Status.COMPLETED, StaffTask.Status.CANCELLED]).count(),
         "present_today": present_today,
         "attendance_rate": round((present_today / active_staff) * 100) if active_staff else 0,
-        "customers": Customer.objects.filter(status=Customer.Status.ACTIVE).count(),
-        "new_enquiries": Enquiry.objects.filter(status=Enquiry.Status.NEW).count(),
-        "pending_requests": OrderRequest.objects.filter(status__in=[OrderRequest.Status.NEW, OrderRequest.Status.REVIEWING, OrderRequest.Status.CONTACTED, OrderRequest.Status.QUOTATION]).count(),
-        "active_orders": SalesOrder.objects.exclude(status__in=[SalesOrder.Status.DELIVERED, SalesOrder.Status.CANCELLED]).count(),
+        "customers": customer_qs.filter(status=Customer.Status.ACTIVE).count(),
+        "new_enquiries": enquiry_qs.filter(status=Enquiry.Status.NEW).count(),
+        "pending_requests": order_request_qs.filter(status__in=[OrderRequest.Status.NEW, OrderRequest.Status.REVIEWING, OrderRequest.Status.CONTACTED, OrderRequest.Status.QUOTATION]).count(),
+        "active_orders": order_qs.exclude(status__in=[SalesOrder.Status.DELIVERED, SalesOrder.Status.CANCELLED]).count(),
     }
     cache.set(cache_key, stats, 15)
     return JsonResponse({"user": _user_payload(request.user), "stats": stats})
