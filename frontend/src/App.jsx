@@ -5,6 +5,7 @@ import AppLayout from './layouts/AppLayout'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import UsersManagement from './pages/UsersManagement'
+import DepartmentsManagement from './pages/DepartmentsManagement'
 import MyProfile from './pages/MyProfile'
 import StaffAttendance from './pages/StaffAttendance'
 import StaffPerformance from './pages/StaffPerformance'
@@ -65,6 +66,7 @@ export default function App() {
               <Route path="marketing" element={<MarketingManagement />} />
               <Route path="reports" element={<ReportsManagement />} />
               <Route path="users" element={<UsersManagement />} />
+              <Route path="departments" element={<DepartmentsManagement />} />
               <Route path="approvals" element={<ApprovalCenter />} />
               <Route path="audit-log" element={<AuditTrail />} />
               <Route path="profile" element={<MyProfile />} />
