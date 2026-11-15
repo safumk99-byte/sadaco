@@ -124,3 +124,24 @@ class GoodsReceiptLine(models.Model):
 
     def __str__(self):
         return f"{self.receipt.receipt_no} · item {self.purchase_item_id} · {self.received_quantity}"
+
+
+class MaterialStockLot(models.Model):
+    """Costed, receipt-backed quantity held in one department/location balance."""
+    receipt_line = models.OneToOneField(
+        GoodsReceiptLine, on_delete=models.PROTECT, related_name="stock_lot"
+    )
+    balance = models.ForeignKey(
+        "inventory.MaterialStockBalance", on_delete=models.PROTECT, related_name="cost_lots"
+    )
+    original_quantity = models.DecimalField(max_digits=14, decimal_places=3, validators=[MinValueValidator(0.001)])
+    remaining_quantity = models.DecimalField(max_digits=14, decimal_places=3, validators=[MinValueValidator(0)])
+    unit_cost = models.DecimalField(max_digits=14, decimal_places=2, validators=[MinValueValidator(0)])
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+        indexes = [models.Index(fields=["balance", "remaining_quantity"])]
+
+    def __str__(self):
+        return f"{self.receipt_line.receipt.receipt_no} · {self.remaining_quantity}/{self.original_quantity}"
