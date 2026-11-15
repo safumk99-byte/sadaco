@@ -38,7 +38,8 @@ def rng(request):
 @require_GET
 def dashboard(request):
     start,end=rng(request)
-    orders=SalesOrder.objects.filter(created_at__date__range=(start,end))
+    all_orders=SalesOrder.objects.all()
+    orders=all_orders.filter(created_at__date__range=(start,end))
     enquiries=Enquiry.objects.filter(created_at__date__range=(start,end))
     quotations=Quotation.objects.filter(created_at__date__range=(start,end))
     customers=Customer.objects.filter(created_at__date__range=(start,end))
@@ -53,10 +54,11 @@ def dashboard(request):
     if not _global_admin(request.user):
         department_id=_department_id(request.user)
         if not department_id:
-            orders=orders.none(); enquiries=enquiries.none(); quotations=quotations.none(); customers=customers.none()
+            all_orders=all_orders.none(); orders=orders.none(); enquiries=enquiries.none(); quotations=quotations.none(); customers=customers.none()
             staff=staff.none(); attendance=attendance.none(); tasks=tasks.none(); purchase_orders=purchase_orders.none()
             expenses=expenses.none(); campaigns=campaigns.none(); leads=leads.none(); stock=stock.none()
         else:
+            all_orders=all_orders.filter(customer__department_id=department_id)
             orders=orders.filter(customer__department_id=department_id)
             enquiries=enquiries.filter(customer__department_id=department_id)
             quotations=quotations.filter(customer__department_id=department_id)
@@ -70,7 +72,7 @@ def dashboard(request):
             leads=leads.filter(Q(created_by__profile__department_id=department_id)|Q(customer__department_id=department_id)|Q(enquiry__customer__department_id=department_id)).distinct()
             stock=stock.filter(created_by__profile__department_id=department_id)
 
-    payments=PaymentRecord.objects.filter(created_at__date__range=(start,end),status__in=['received','verified'],order__in=orders)
+    payments=PaymentRecord.objects.filter(created_at__date__range=(start,end),status__in=['received','verified'],order__in=all_orders)
     stats={
         'orders':orders.exclude(status='cancelled').count(),
         'order_revenue':str(money(orders.exclude(status='cancelled').aggregate(x=Sum('confirmed_price'))['x'])),
@@ -89,7 +91,7 @@ def dashboard(request):
         'purchase_open':purchase_orders.filter(status__in=['sent','partial']).count(),
         'purchase_value':str(money(purchase_orders.exclude(status='cancelled').aggregate(x=Sum('total'))['x'])),
         'paid_expenses':str(money(expenses.filter(status='paid',expense_date__range=(start,end)).aggregate(x=Sum('amount'))['x'])),
-        'delivery_pending':DeliveryRecord.objects.filter(order__in=orders,status__in=['pending','scheduled','ready','out']).count(),
+        'delivery_pending':DeliveryRecord.objects.filter(order__in=all_orders,status__in=['pending','scheduled','ready','out']).count(),
         'active_campaigns':campaigns.filter(status='active').count(),
         'open_leads':leads.filter(status__in=['new','contacted']).count(),
     }
