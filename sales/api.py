@@ -78,6 +78,15 @@ def _order_qs(user):
     return qs.filter(Q(created_by=user) | Q(responsible_staff__user=user))
 
 
+def _order_status_error(current_status, new_status):
+    if current_status == new_status:
+        return None
+    sales_managed = {SalesOrder.Status.CONFIRMED, SalesOrder.Status.DESIGN_PENDING}
+    if current_status in sales_managed and new_status in sales_managed | {SalesOrder.Status.CANCELLED}:
+        return None
+    return "Production, quality and delivery statuses can only be changed by their respective modules."
+
+
 def _restrict_form(form, user, model):
     if model == "enquiry":
         form.fields["customer"].queryset = _customer_qs(user).filter(status=Customer.Status.ACTIVE)
@@ -228,6 +237,8 @@ def order_create(request):
     if _guard(request.user, True): return _guard(request.user, True)
     import json; form=_restrict_form(SalesOrderForm(json.loads(request.body or '{}')), request.user, "order")
     if form.is_valid():
+        if form.cleaned_data["status"] not in (SalesOrder.Status.CONFIRMED, SalesOrder.Status.DESIGN_PENDING):
+            return JsonResponse({"detail": "A new sales order must start as Confirmed or Design Pending. Production and delivery statuses are managed by their respective modules."}, status=400)
         o=form.save(commit=False); o.created_by=request.user; o.save(); return JsonResponse({'order':_order(o)},status=201)
     return JsonResponse({'detail':'Validation failed.','errors':form.errors.get_json_data()},status=400)
 
@@ -236,5 +247,9 @@ def order_create(request):
 def order_update(request,pk):
     if _guard(request.user, True): return _guard(request.user, True)
     import json; o=get_object_or_404(_order_qs(request.user),pk=pk); form=_restrict_form(SalesOrderForm(json.loads(request.body or '{}'),instance=o), request.user, "order")
-    if form.is_valid(): return JsonResponse({'order':_order(form.save())})
+    if form.is_valid():
+        status_error = _order_status_error(o.status, form.cleaned_data["status"])
+        if status_error:
+            return JsonResponse({"detail": status_error}, status=400)
+        return JsonResponse({'order':_order(form.save())})
     return JsonResponse({'detail':'Validation failed.','errors':form.errors.get_json_data()},status=400)
