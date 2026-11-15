@@ -15,7 +15,10 @@ from .models import QualityCheck, ReworkRecord, PackingRecord
 
 
 def _is_manager(user):
-    return user.is_superuser or getattr(getattr(user, "profile", None), "role", None) in ("super_admin", "institution_admin", "manager")
+    profile = getattr(user, "profile", None)
+    return user.is_superuser or bool(
+        profile and profile.is_active and profile.role in ("super_admin", "institution_admin", "manager")
+    )
 
 
 def _require_manager(user):
