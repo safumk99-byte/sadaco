@@ -1,8 +1,10 @@
 from django.contrib.auth.decorators import login_required
+from django.db import transaction
 from django.db.models import Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 from django.views.decorators.http import require_GET, require_POST
+from django.utils.dateparse import parse_date
 from accounts.decorators import role_required
 from sales.models import CustomerFeedback, DeliveryRecord, SalesOrder
 
@@ -61,15 +63,62 @@ def detail(request, pk):
 @login_required
 @manager_required
 @require_POST
+@transaction.atomic
 def update(request, pk):
     import json
-    data=json.loads(request.body or '{}')
-    order=get_object_or_404(_visible_orders(request.user), pk=pk); d,_=DeliveryRecord.objects.get_or_create(order=order)
-    for f in ['delivery_date','address','transport','responsible_person','installation_required','installation_date','status','acknowledgement','completion_notes']:
-        if f in data: setattr(d,f,data[f] or None if f.endswith('_date') else data[f])
+    try:
+        data = json.loads(request.body or '{}')
+    except (TypeError, ValueError):
+        return JsonResponse({'detail': 'Invalid JSON.'}, status=400)
+    order = get_object_or_404(_visible_orders(request.user).select_for_update(), pk=pk)
+    d, _ = DeliveryRecord.objects.select_for_update().get_or_create(order=order)
+
+    date_fields = ('delivery_date', 'installation_date')
+    for field in date_fields:
+        if field in data:
+            raw = data[field]
+            parsed = parse_date(raw) if raw else None
+            if raw and parsed is None:
+                return JsonResponse({'detail': f'Invalid {field.replace("_", " ")}.'}, status=400)
+            setattr(d, field, parsed)
+
+    text_fields = ('address', 'transport', 'responsible_person', 'acknowledgement', 'completion_notes')
+    for field in text_fields:
+        if field in data:
+            setattr(d, field, str(data[field] or ''))
+
+    if 'installation_required' in data:
+        if not isinstance(data['installation_required'], bool):
+            return JsonResponse({'detail': 'installation_required must be true or false.'}, status=400)
+        d.installation_required = data['installation_required']
+
+    if 'status' in data:
+        requested = data['status']
+        valid_statuses = {value for value, _ in DeliveryRecord.Status.choices}
+        if requested not in valid_statuses:
+            return JsonResponse({'detail': 'Invalid delivery status.'}, status=400)
+        transitions = {
+            DeliveryRecord.Status.PENDING: {DeliveryRecord.Status.PENDING, DeliveryRecord.Status.SCHEDULED, DeliveryRecord.Status.CANCELLED},
+            DeliveryRecord.Status.SCHEDULED: {DeliveryRecord.Status.SCHEDULED, DeliveryRecord.Status.READY, DeliveryRecord.Status.OUT, DeliveryRecord.Status.CANCELLED},
+            DeliveryRecord.Status.READY: {DeliveryRecord.Status.READY, DeliveryRecord.Status.OUT, DeliveryRecord.Status.CANCELLED},
+            DeliveryRecord.Status.OUT: {DeliveryRecord.Status.OUT, DeliveryRecord.Status.DELIVERED, DeliveryRecord.Status.INSTALLED, DeliveryRecord.Status.CANCELLED},
+            DeliveryRecord.Status.DELIVERED: {DeliveryRecord.Status.DELIVERED, DeliveryRecord.Status.INSTALLED},
+            DeliveryRecord.Status.INSTALLED: {DeliveryRecord.Status.INSTALLED},
+            DeliveryRecord.Status.CANCELLED: {DeliveryRecord.Status.CANCELLED},
+        }
+        if requested not in transitions[d.status]:
+            return JsonResponse({'detail': 'This delivery status transition is not allowed.'}, status=400)
+        if requested in (DeliveryRecord.Status.READY, DeliveryRecord.Status.OUT, DeliveryRecord.Status.DELIVERED, DeliveryRecord.Status.INSTALLED) and order.status not in (SalesOrder.Status.READY, SalesOrder.Status.DELIVERED):
+            return JsonResponse({'detail': 'The Sales Order must pass Final QC and be marked Ready before delivery can proceed.'}, status=400)
+        if requested == DeliveryRecord.Status.INSTALLED and not d.installation_required:
+            return JsonResponse({'detail': 'Installation must be marked as required before an order can be marked Installed.'}, status=400)
+        d.status = requested
+
     d.save()
-    if d.status in ['delivered','installed']:
-        order.status=SalesOrder.Status.DELIVERED; order.save(update_fields=['status','updated_at'])
+    if d.status in (DeliveryRecord.Status.DELIVERED, DeliveryRecord.Status.INSTALLED):
+        if order.status != SalesOrder.Status.DELIVERED:
+            order.status = SalesOrder.Status.DELIVERED
+            order.save(update_fields=['status', 'updated_at'])
     return JsonResponse(_delivery(d))
 
 @login_required
@@ -77,7 +126,18 @@ def update(request, pk):
 @require_POST
 def feedback(request, pk):
     import json
-    data=json.loads(request.body or '{}'); order=get_object_or_404(_visible_orders(request.user), pk=pk)
+    try:
+        data=json.loads(request.body or '{}')
+    except (TypeError, ValueError):
+        return JsonResponse({'detail': 'Invalid JSON.'}, status=400)
+    order=get_object_or_404(_visible_orders(request.user), pk=pk)
+    raw_rating=data.get('rating')
+    try:
+        rating=int(raw_rating) if raw_rating not in (None, '') else None
+    except (TypeError, ValueError):
+        return JsonResponse({'detail': 'Rating must be an integer from 1 to 5.'}, status=400)
+    if rating is not None and not 1 <= rating <= 5:
+        return JsonResponse({'detail': 'Rating must be between 1 and 5.'}, status=400)
     fb,_=CustomerFeedback.objects.get_or_create(order=order)
-    fb.rating=data.get('rating') or None; fb.comment=data.get('comment',''); fb.save()
+    fb.rating=rating; fb.comment=str(data.get('comment','') or '')[:5000]; fb.save()
     return JsonResponse({'rating':fb.rating,'comment':fb.comment})
