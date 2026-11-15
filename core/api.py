@@ -198,6 +198,30 @@ from django.contrib.auth.models import User
 from django.utils.dateparse import parse_date
 from django.views.decorators.http import require_http_methods
 from staff.services import staff_for_user, can_manage_staff, task_queryset_for_user, attendance_queryset_for_user, performance_queryset_for_user
+
+def _department_options_for_user(user):
+    qs = Department.objects.filter(is_active=True)
+    profile = getattr(user, "profile", None)
+    if not user.is_superuser and profile and profile.role == UserProfile.Role.MANAGER:
+        return qs.filter(pk=profile.department_id) if profile.department_id else qs.none()
+    return qs
+
+
+def _staff_department_id_for_write(user, requested_id):
+    profile = getattr(user, "profile", None)
+    if not user.is_superuser and profile and profile.role == UserProfile.Role.MANAGER:
+        if not profile.department_id:
+            raise ValueError("Your account is not assigned to a department.")
+        if requested_id not in (None, "", str(profile.department_id), profile.department_id):
+            raise ValueError("You can only assign staff within your own department.")
+        return profile.department_id
+    if requested_id in (None, "", "null"):
+        return None
+    department = Department.objects.filter(pk=requested_id, is_active=True).first()
+    if not department:
+        raise ValueError("Select a valid active department.")
+    return department.pk
+
 from staff.decorators import staff_manager_required
 
 
@@ -252,7 +276,7 @@ def staff_api(request):
     return JsonResponse({"staff": [_staff_payload(x) for x in qs], "stats": stats,
                          "designations": _choice_payload(Designation.objects.filter(is_active=True)),
                          "work_areas": _choice_payload(WorkArea.objects.filter(is_active=True)),
-                         "departments": [{"id": d.id, "name": d.name, "code": d.code} for d in Department.objects.filter(is_active=True)],
+                         "departments": [{"id": d.id, "name": d.name, "code": d.code} for d in _department_options_for_user(request.user)],
                          "can_manage": can_manage_staff(request.user)})
 
 
@@ -283,7 +307,7 @@ def staff_options_api(request):
     return JsonResponse({"staff": [{"id":s.id,"name":str(s)} for s in staff_for_user(request.user).filter(status=StaffProfile.Status.ACTIVE)],
                          "designations": _choice_payload(Designation.objects.filter(is_active=True)),
                          "work_areas": _choice_payload(WorkArea.objects.filter(is_active=True)),
-                         "departments": [{"id": d.id, "name": d.name, "code": d.code} for d in Department.objects.filter(is_active=True)]})
+                         "departments": [{"id": d.id, "name": d.name, "code": d.code} for d in _department_options_for_user(request.user)]})
 
 
 @require_POST
@@ -296,11 +320,12 @@ def staff_create_api(request):
     if User.objects.filter(username=data["username"]).exists(): return JsonResponse({"detail":"Username already exists."}, status=400)
     if StaffProfile.objects.filter(staff_id=data["staff_id"]).exists(): return JsonResponse({"detail":"Staff ID already exists."}, status=400)
     try:
+        department_id = _staff_department_id_for_write(request.user, data.get("department"))
         with transaction.atomic():
             user=User.objects.create_user(username=data["username"],password=data["password"],first_name=data.get("first_name", ""),last_name=data.get("last_name", ""),email=data.get("email", ""))
             from accounts.models import UserProfile
-            UserProfile.objects.create(user=user, role=UserProfile.Role.STAFF, department_id=data.get("department") or None)
-            profile=StaffProfile.objects.create(user=user,staff_id=data["staff_id"],department_id=data.get("department") or None,designation_id=data.get("designation") or None,work_area_id=data.get("work_area") or None,phone=data.get("phone",""),joining_date=parse_date(data.get("joining_date")) if data.get("joining_date") else None,address=data.get("address",""),status=data.get("status") or StaffProfile.Status.ACTIVE,notes=data.get("notes",""),photo=request.FILES.get("photo"))
+            UserProfile.objects.create(user=user, role=UserProfile.Role.STAFF, department_id=department_id)
+            profile=StaffProfile.objects.create(user=user,staff_id=data["staff_id"],department_id=department_id,designation_id=data.get("designation") or None,work_area_id=data.get("work_area") or None,phone=data.get("phone",""),joining_date=parse_date(data.get("joining_date")) if data.get("joining_date") else None,address=data.get("address",""),status=data.get("status") or StaffProfile.Status.ACTIVE,notes=data.get("notes",""),photo=request.FILES.get("photo"))
     except Exception as exc:
         return JsonResponse({"detail": str(exc)}, status=400)
     return JsonResponse({"staff": _staff_payload(profile)}, status=201)
@@ -312,7 +337,11 @@ def staff_update_api(request, pk):
     profile=get_object_or_404(staff_for_user(request.user), pk=pk)
     data=request.POST
     if data.get("staff_id") and StaffProfile.objects.filter(staff_id=data["staff_id"]).exclude(pk=pk).exists(): return JsonResponse({"detail":"Staff ID already exists."},status=400)
-    profile.staff_id=data.get("staff_id",profile.staff_id); profile.department_id=data.get("department") or None; profile.designation_id=data.get("designation") or None; profile.work_area_id=data.get("work_area") or None; profile.phone=data.get("phone",profile.phone); profile.address=data.get("address",profile.address); profile.status=data.get("status",profile.status); profile.notes=data.get("notes",profile.notes)
+    try:
+        department_id = _staff_department_id_for_write(request.user, data.get("department", profile.department_id))
+    except ValueError as exc:
+        return JsonResponse({"detail": str(exc)}, status=400)
+    profile.staff_id=data.get("staff_id",profile.staff_id); profile.department_id=department_id; profile.designation_id=data.get("designation") or None; profile.work_area_id=data.get("work_area") or None; profile.phone=data.get("phone",profile.phone); profile.address=data.get("address",profile.address); profile.status=data.get("status",profile.status); profile.notes=data.get("notes",profile.notes)
     if data.get("joining_date"): profile.joining_date=parse_date(data["joining_date"])
     if "photo" in request.FILES: profile.photo=request.FILES["photo"]
     profile.save()
