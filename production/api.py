@@ -183,7 +183,18 @@ def update(request, pk):
         raise PermissionDenied
     job = get_object_or_404(_visible_jobs(request.user), pk=pk)
     if not _job_visible(request.user, job): raise PermissionDenied
-    form = ProductionJobForm(_data(request), instance=job)
+    data = _data(request)
+    # Reject lifecycle finalization from the raw request before ModelForm/model.save
+    # can normalize a completed job to 100 percent.
+    if (
+        data.get("status") == ProductionJob.Status.COMPLETED
+        or data.get("stage") == ProductionJob.Stage.COMPLETED
+    ) and not (
+        job.status == ProductionJob.Status.COMPLETED
+        and job.stage == ProductionJob.Stage.COMPLETED
+    ):
+        return JsonResponse({"detail": "Production jobs can only be finalized after a passing Final QC result in the Quality module."}, status=400)
+    form = ProductionJobForm(data, instance=job)
     if not form.is_valid(): return JsonResponse({'detail':'Validation failed.','errors':form.errors.get_json_data()}, status=400)
     assigned_staff = form.cleaned_data.get("assigned_staff")
     if assigned_staff and not _staff_in_manager_department(request.user, assigned_staff):
