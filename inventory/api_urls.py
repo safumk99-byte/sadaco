@@ -13,4 +13,7 @@ urlpatterns = [
     path("materials/issues/create/", api.production_material_issue_api, name="production_material_issue"),
     path("materials/returns/create/", api.production_material_return_api, name="production_material_return"),
     path("materials/wastage/create/", api.production_material_wastage_api, name="production_material_wastage"),
+    path("materials/stock-counts/", api.material_stock_counts_api, name="material_stock_counts"),
+    path("materials/stock-counts/submit/", api.material_stock_count_submit_api, name="material_stock_count_submit"),
+    path("materials/stock-counts/<int:pk>/review/", api.material_stock_count_review_api, name="material_stock_count_review"),
 ]
