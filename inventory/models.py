@@ -138,3 +138,29 @@ class ReusableOffcut(models.Model):
 
     def __str__(self):
         return f"{self.material} · {self.length_mm}×{self.width_mm} mm"
+
+
+class MaterialStockCount(models.Model):
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending Review"
+        APPROVED = "approved", "Approved"
+        REJECTED = "rejected", "Rejected"
+
+    balance = models.ForeignKey(MaterialStockBalance, on_delete=models.PROTECT, related_name="physical_counts")
+    system_quantity = models.DecimalField(max_digits=14, decimal_places=3)
+    counted_quantity = models.DecimalField(max_digits=14, decimal_places=3, validators=[MinValueValidator(0)])
+    variance = models.DecimalField(max_digits=14, decimal_places=3)
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.PENDING)
+    reason = models.TextField(blank=True)
+    submitted_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name="material_counts_submitted")
+    reviewed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="material_counts_reviewed")
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    correction_movement = models.OneToOneField("inventory.MaterialStockMovement", on_delete=models.PROTECT, null=True, blank=True, related_name="physical_count")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["status", "-created_at"])]
+
+    def __str__(self):
+        return f"Count #{self.pk} · {self.balance} · variance {self.variance}"
