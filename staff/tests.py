@@ -8,7 +8,8 @@ from PIL import Image
 from django.urls import reverse
 
 from accounts.models import UserProfile
-from .models import Designation, StaffAttendance, StaffProfile, StaffTask, WorkArea
+from core.models import Department
+from .models import Designation, PerformanceRecord, StaffAttendance, StaffProfile, StaffTask, WorkArea
 
 
 class StaffModuleTests(TestCase):
@@ -195,3 +196,77 @@ class StaffMediaRegressionTests(TestCase):
             photo=image,
         )
         self.assertTrue(profile.photo.url.startswith("/media/"))
+
+
+class DepartmentAccessScopeTests(TestCase):
+    def setUp(self):
+        from staff.services import (
+            staff_for_user, task_queryset_for_user,
+            attendance_queryset_for_user, performance_queryset_for_user,
+            dashboard_stats,
+        )
+        self.staff_for_user = staff_for_user
+        self.task_queryset_for_user = task_queryset_for_user
+        self.attendance_queryset_for_user = attendance_queryset_for_user
+        self.performance_queryset_for_user = performance_queryset_for_user
+        self.dashboard_stats = dashboard_stats
+
+        self.creatives = Department.objects.create(code="creatives", name="SADACO Creatives")
+        self.cnc = Department.objects.create(code="cnc", name="SADACO CNC")
+        self.manager_user = User.objects.create_user(username="creative_manager", password="StrongPass123!")
+        UserProfile.objects.create(
+            user=self.manager_user, role=UserProfile.Role.MANAGER, department=self.creatives
+        )
+        self.other_manager_user = User.objects.create_user(username="cnc_manager", password="StrongPass123!")
+        UserProfile.objects.create(
+            user=self.other_manager_user, role=UserProfile.Role.MANAGER, department=self.cnc
+        )
+        self.creative_user = User.objects.create_user(username="creative_staff", password="StrongPass123!")
+        UserProfile.objects.create(
+            user=self.creative_user, role=UserProfile.Role.STAFF, department=self.creatives
+        )
+        self.cnc_user = User.objects.create_user(username="cnc_staff", password="StrongPass123!")
+        UserProfile.objects.create(
+            user=self.cnc_user, role=UserProfile.Role.STAFF, department=self.cnc
+        )
+        self.creative_staff = StaffProfile.objects.create(
+            user=self.creative_user, staff_id="CRE-001", department=self.creatives
+        )
+        self.cnc_staff = StaffProfile.objects.create(
+            user=self.cnc_user, staff_id="CNC-001", department=self.cnc
+        )
+
+    def test_manager_sees_only_staff_in_own_department(self):
+        ids = set(self.staff_for_user(self.manager_user).values_list("id", flat=True))
+        self.assertEqual(ids, {self.creative_staff.id})
+
+    def test_manager_sees_only_own_department_tasks_attendance_and_performance(self):
+        creative_task = StaffTask.objects.create(title="Creative task", assigned_to=self.creative_staff)
+        StaffTask.objects.create(title="CNC task", assigned_to=self.cnc_staff)
+        creative_attendance = StaffAttendance.objects.create(
+            staff=self.creative_staff, date=date(2026, 11, 1), status=StaffAttendance.Status.PRESENT
+        )
+        StaffAttendance.objects.create(
+            staff=self.cnc_staff, date=date(2026, 11, 1), status=StaffAttendance.Status.PRESENT
+        )
+        creative_review = PerformanceRecord.objects.create(
+            staff=self.creative_staff, review_date=date(2026, 11, 1), score=90
+        )
+        PerformanceRecord.objects.create(
+            staff=self.cnc_staff, review_date=date(2026, 11, 1), score=70
+        )
+        self.assertEqual(list(self.task_queryset_for_user(self.manager_user)), [creative_task])
+        self.assertEqual(list(self.attendance_queryset_for_user(self.manager_user)), [creative_attendance])
+        self.assertEqual(list(self.performance_queryset_for_user(self.manager_user)), [creative_review])
+
+    def test_manager_without_department_has_no_cross_department_staff_access(self):
+        unassigned = User.objects.create_user(username="unassigned_manager", password="StrongPass123!")
+        UserProfile.objects.create(user=unassigned, role=UserProfile.Role.MANAGER)
+        self.assertFalse(self.staff_for_user(unassigned).exists())
+        self.assertFalse(self.task_queryset_for_user(unassigned).exists())
+        self.assertEqual(self.dashboard_stats(unassigned)["total_staff"], 0)
+
+    def test_global_admin_can_view_staff_across_departments(self):
+        admin = User.objects.create_superuser(username="root_admin", password="StrongPass123!")
+        ids = set(self.staff_for_user(admin).values_list("id", flat=True))
+        self.assertEqual(ids, {self.creative_staff.id, self.cnc_staff.id})
