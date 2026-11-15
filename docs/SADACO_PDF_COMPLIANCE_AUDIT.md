@@ -84,3 +84,10 @@ Read-only inspection of Neon staging branch `sadaco-reconciliation-staging` (`br
 
 **Required safe resolution:** compare the complete historical migration files and live table definitions for every affected app; map the deployed staging schema to the current model state; then create an explicit, forward-only reconciliation plan and test it against a fresh disposable clone before applying any staging migration. Do not run `migrate`, `--fake`, or hand-written DDL against staging or production until this plan is reviewed and validated.
 
+
+
+Additional read-only schema check on the same staging branch:
+
+- `accounts_userprofile`, `staff_staffprofile`, `sales_customer`, `sales_enquiry`, `sales_quotation`, and `sales_salesorder` currently have no `department_id` column.
+- `core_department` is not present in the inspected schema.
+- This confirms the department migrations recorded as pending on the feature branch have not been applied to staging. Because the staging migration history also differs from the branch history, do not simply apply those pending migrations until the migration graph and table state are reconciled.
