@@ -57,6 +57,7 @@ class FinanceTransaction(models.Model):
     description=models.TextField(blank=True)
     sales_payment=models.ForeignKey("sales.PaymentRecord",on_delete=models.SET_NULL,null=True,blank=True,related_name="finance_transactions")
     expense=models.ForeignKey(Expense,on_delete=models.SET_NULL,null=True,blank=True,related_name="finance_transactions")
+    supplier_payment=models.OneToOneField("finance.SupplierPayment",on_delete=models.SET_NULL,null=True,blank=True,related_name="finance_transaction")
     status=models.CharField(max_length=20,choices=Status.choices,default=Status.POSTED)
     created_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.SET_NULL,null=True,blank=True,related_name="finance_transactions")
     created_at=models.DateTimeField(auto_now_add=True)
