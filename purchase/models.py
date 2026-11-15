@@ -40,6 +40,7 @@ class PurchaseOrder(models.Model):
 
     po_no = models.CharField(max_length=30, unique=True, editable=False)
     supplier = models.ForeignKey(Supplier, on_delete=models.PROTECT, related_name="purchase_orders")
+    department = models.ForeignKey("core.Department", on_delete=models.PROTECT, null=True, blank=True, related_name="purchase_orders")
     order_date = models.DateField(default=timezone.localdate)
     expected_date = models.DateField(null=True, blank=True)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.DRAFT)
@@ -68,7 +69,8 @@ class PurchaseOrder(models.Model):
 
 class PurchaseItem(models.Model):
     purchase_order = models.ForeignKey(PurchaseOrder, on_delete=models.CASCADE, related_name="items")
-    product = models.ForeignKey("products.Product", on_delete=models.PROTECT, related_name="purchase_items")
+    product = models.ForeignKey("products.Product", on_delete=models.PROTECT, null=True, blank=True, related_name="purchase_items")
+    material_variant = models.ForeignKey("products.MaterialVariant", on_delete=models.PROTECT, null=True, blank=True, related_name="purchase_items")
     quantity = models.DecimalField(max_digits=12, decimal_places=2, validators=[MinValueValidator(0.01)])
     received_quantity = models.DecimalField(max_digits=12, decimal_places=2, default=0, validators=[MinValueValidator(0)])
     unit_cost = models.DecimalField(max_digits=14, decimal_places=2, validators=[MinValueValidator(0)])
