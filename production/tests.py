@@ -31,8 +31,8 @@ class ProductionDepartmentAccessTests(TestCase):
         self.cnc_staff = StaffProfile.objects.create(
             user=cnc_user, staff_id="CNC-PROD-01", department=self.cnc
         )
-        customer_a = Customer.objects.create(name="Creative Customer", phone="9000000001")
-        customer_b = Customer.objects.create(name="CNC Customer", phone="9000000002")
+        customer_a = Customer.objects.create(name="Creative Customer", phone="9000000001", department=self.creatives)
+        customer_b = Customer.objects.create(name="CNC Customer", phone="9000000002", department=self.cnc)
         order_a = SalesOrder.objects.create(
             customer=customer_a, item_description="Creative order", quantity=1, confirmed_price=1000,
             responsible_staff=self.creative_staff,
