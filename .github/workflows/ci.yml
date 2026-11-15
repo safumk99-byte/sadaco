@@ -78,6 +78,7 @@ jobs:
           marketing.tests.MarketingDepartmentAccessTests
           reports.tests.ReportsDepartmentAccessTests
           staff.tests.DepartmentAccessScopeTests
+          products.test_costing.MaterialCostingModelTests
 
   frontend-build:
     runs-on: ubuntu-latest
