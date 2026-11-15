@@ -65,10 +65,23 @@ class Command(BaseCommand):
         alias = using
         User = get_user_model()
 
-        before = {
-            "users": User.objects.using(alias).count(),
-            "user_profiles": UserProfile.objects.using(alias).count(),
-            "staff_profiles": StaffProfile.objects.using(alias).count(),
+        identity_models = (User, Group, Permission, UserProfile, StaffProfile)
+
+        def identity_snapshot():
+            snapshot = {}
+            for model in identity_models:
+                field_names = [field.attname for field in model._meta.concrete_fields]
+                rows = model._base_manager.using(alias).order_by(
+                    model._meta.pk.attname
+                ).values_list(*field_names)
+                snapshot[model._meta.label] = tuple(tuple(row) for row in rows)
+            return snapshot
+
+        before = identity_snapshot()
+        before_counts = {
+            User._meta.label: len(before[User._meta.label]),
+            UserProfile._meta.label: len(before[UserProfile._meta.label]),
+            StaffProfile._meta.label: len(before[StaffProfile._meta.label]),
         }
 
         eligible = []
@@ -111,8 +124,9 @@ class Command(BaseCommand):
         self.stdout.write(f"Database alias: {using}")
         self.stdout.write(
             "Protected before cleanup — "
-            f"Users: {before['users']}, UserProfiles: {before['user_profiles']}, "
-            f"StaffProfiles: {before['staff_profiles']}"
+            f"Users: {before_counts[User._meta.label]}, "
+            f"UserProfiles: {before_counts[UserProfile._meta.label]}, "
+            f"StaffProfiles: {before_counts[StaffProfile._meta.label]}"
         )
         if counts:
             for label, count in sorted(counts.items()):
@@ -145,18 +159,14 @@ class Command(BaseCommand):
                 )
             fresh.delete()
 
-            after = {
-                "users": User.objects.using(alias).count(),
-                "user_profiles": UserProfile.objects.using(alias).count(),
-                "staff_profiles": StaffProfile.objects.using(alias).count(),
-            }
+            after = identity_snapshot()
             if before != after:
                 raise CommandError(
-                    "Identity/staff row counts changed during cleanup; transaction rolled back. "
-                    f"Before={before}; after={after}"
+                    "Protected account/profile identity data changed during cleanup; "
+                    "transaction rolled back. Exact protected-row snapshots differ."
                 )
 
         self.stdout.write(self.style.SUCCESS(
-            "Cleanup completed. All User, UserProfile and StaffProfile row counts are unchanged. "
-            "PDF master data/configuration was excluded from deletion."
+            "Cleanup completed. Exact User, Group, Permission, UserProfile and StaffProfile "
+            "records are unchanged. PDF master data/configuration was excluded from deletion."
         ))
