@@ -11,8 +11,10 @@ from sales.models import CustomerFeedback, DeliveryRecord, SalesOrder
 manager_required = role_required('super_admin','institution_admin','manager')
 
 def _global_admin(user):
-    role = getattr(getattr(user, "profile", None), "role", None)
-    return user.is_superuser or role in ("super_admin", "institution_admin")
+    profile = getattr(user, "profile", None)
+    return user.is_superuser or bool(
+        profile and profile.is_active and profile.role in ("super_admin", "institution_admin")
+    )
 
 
 def _visible_orders(user):
