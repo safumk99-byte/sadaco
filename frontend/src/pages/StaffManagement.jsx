@@ -134,6 +134,7 @@ export default function StaffManagement() {
                   <th className="px-5 py-3">Staff</th>
                   <th className="px-5 py-3">Designation</th>
                   <th className="px-5 py-3">Work Area</th>
+                  <th className="px-5 py-3">Department</th>
                   <th className="px-5 py-3">Phone</th>
                   <th className="px-5 py-3">Status</th>
                   <th className="px-5 py-3"></th>
@@ -158,6 +159,9 @@ export default function StaffManagement() {
                     </td>
                     <td className="px-5 py-4 text-slate-600">
                       {s.work_area?.name || "—"}
+                    </td>
+                    <td className="px-5 py-4 text-slate-600">
+                      {s.department?.name || "Unassigned"}
                     </td>
                     <td className="px-5 py-4 text-slate-600">
                       {s.phone || "—"}
@@ -226,6 +230,7 @@ function StaffForm({ initial, data, onClose, onSaved }) {
     last_name: initial?.last_name || "",
     email: initial?.email || "",
     staff_id: initial?.staff_id || "",
+    department: initial?.department?.id || "",
     designation: initial?.designation?.id || "",
     work_area: initial?.work_area?.id || "",
     phone: initial?.phone || "",
@@ -332,6 +337,19 @@ function StaffForm({ initial, data, onClose, onSaved }) {
               />
             </label>
           )}
+          <label>
+            <span className="mb-1 block text-sm font-medium">Department</span>
+            <select
+              value={form.department}
+              onChange={(e) => set("department", e.target.value)}
+              className="w-full rounded-xl border border-slate-300 px-3 py-2.5"
+            >
+              <option value="">Unassigned</option>
+              {(data.departments || []).map((x) => (
+                <option key={x.id} value={x.id}>{x.name}</option>
+              ))}
+            </select>
+          </label>
           <label>
             <span className="mb-1 block text-sm font-medium">Designation</span>
             <select
