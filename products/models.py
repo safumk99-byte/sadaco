@@ -217,6 +217,12 @@ class MaterialVariant(models.Model):
             return None
         return self.purchase_rate / self.sheet_area_sqft
 
+    @property
+    def retail_rate_sqft(self):
+        if self.retail_rate is None or not self.sheet_area_sqft:
+            return None
+        return self.retail_rate / self.sheet_area_sqft
+
     def __str__(self):
         parts = [self.material_name, self.brand, f"{self.thickness_mm}mm" if self.thickness_mm else "", self.variant, self.get_colour_display()]
         return " - ".join(str(part) for part in parts if part)
