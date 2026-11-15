@@ -4,9 +4,10 @@ from django.test import TestCase
 from accounts.models import UserProfile
 from core.models import Department
 from purchase.models import PurchaseOrder, Supplier
-from sales.models import Customer, SalesOrder
+from sales.models import Customer, SalesOrder, PaymentRecord
+from .models import FinanceTransaction
 from .models import Expense, ExpenseCategory
-from .api import _department_expenses, _department_orders, _department_purchase_orders
+from .api import _department_expenses, _department_orders, _department_purchase_orders, _department_transactions
 
 
 class FinanceDepartmentAccessTests(TestCase):
@@ -38,3 +39,25 @@ class FinanceDepartmentAccessTests(TestCase):
         self.assertEqual(_department_expenses(admin).count(), 2)
         self.assertEqual(_department_orders(admin).count(), 2)
         self.assertEqual(_department_purchase_orders(admin).count(), 2)
+
+    def test_transactions_follow_linked_order_department_not_creator(self):
+        foreign_order = SalesOrder.objects.get(customer__department=self.b)
+        foreign_payment = PaymentRecord.objects.create(
+            order=foreign_order, payment_type=PaymentRecord.PaymentType.ADVANCE,
+            amount=100, status=PaymentRecord.Status.RECEIVED, created_by=self.manager,
+        )
+        leaked = FinanceTransaction.objects.create(
+            transaction_type=FinanceTransaction.Type.INCOME, amount=100,
+            sales_payment=foreign_payment, created_by=self.manager,
+        )
+        own_payment = PaymentRecord.objects.create(
+            order=self.own_order, payment_type=PaymentRecord.PaymentType.ADVANCE,
+            amount=50, status=PaymentRecord.Status.RECEIVED, created_by=self.other,
+        )
+        visible = FinanceTransaction.objects.create(
+            transaction_type=FinanceTransaction.Type.INCOME, amount=50,
+            sales_payment=own_payment, created_by=self.other,
+        )
+        ids = set(_department_transactions(self.manager).values_list("id", flat=True))
+        self.assertNotIn(leaked.id, ids)
+        self.assertIn(visible.id, ids)
