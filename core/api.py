@@ -674,7 +674,12 @@ def _set_user_department(user, department_id):
         department = Department.objects.filter(pk=department_id, is_active=True).first()
         if not department:
             raise Department.DoesNotExist
+        managed_department = Department.objects.filter(manager=user).first()
+        if managed_department and managed_department.pk != department.pk:
+            raise ValueError("This user manages another department. Reassign the department manager first.")
         profile.department = department
+    if department_id in (None, "", "null") and Department.objects.filter(manager=user).exists():
+        raise ValueError("This user manages a department. Reassign the department manager first.")
     profile.save(update_fields=["department", "updated_at"])
     if hasattr(user, "staff_profile"):
         user.staff_profile.department = profile.department
@@ -703,9 +708,9 @@ def user_create_api(request):
         email=user.email, phone=str(data.get("phone", "")).strip(), is_active=True)
     try:
         _set_user_department(user, data.get("department"))
-    except Department.DoesNotExist:
+    except (Department.DoesNotExist, ValueError) as exc:
         user.delete()
-        return JsonResponse({"detail": "Select an active department."}, status=400)
+        return JsonResponse({"detail": str(exc) or "Select an active department."}, status=400)
     return JsonResponse({"ok": True, "user": _user_admin_payload(user)}, status=201)
 
 
@@ -725,6 +730,8 @@ def user_update_api(request, pk):
         return JsonResponse({"detail": "You cannot deactivate your own account."}, status=400)
     if role not in dict(UserProfile.Role.choices) or not can_assign_role(request.user, role):
         return JsonResponse({"detail": "You cannot assign this role."}, status=403)
+    if Department.objects.filter(manager=target).exists() and role != UserProfile.Role.MANAGER:
+        return JsonResponse({"detail": "Reassign this user's department manager responsibility before changing the role."}, status=400)
     update_user(user=target, role=role,
         first_name=str(data.get("first_name", target.first_name)).strip(),
         last_name=str(data.get("last_name", target.last_name)).strip(),
@@ -734,8 +741,8 @@ def user_update_api(request, pk):
     if "department" in data:
         try:
             _set_user_department(target, data.get("department"))
-        except Department.DoesNotExist:
-            return JsonResponse({"detail": "Select an active department."}, status=400)
+        except (Department.DoesNotExist, ValueError) as exc:
+            return JsonResponse({"detail": str(exc) or "Select an active department."}, status=400)
     return JsonResponse({"ok": True, "user": _user_admin_payload(target)})
 
 
