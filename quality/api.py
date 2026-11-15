@@ -17,8 +17,42 @@ from .models import QualityCheck, ReworkRecord, PackingRecord
 def _is_manager(user):
     return user.is_superuser or getattr(getattr(user, "profile", None), "role", None) in ("super_admin", "institution_admin", "manager")
 
+
+def _global_admin(user):
+    role = getattr(getattr(user, "profile", None), "role", None)
+    return user.is_superuser or role in ("super_admin", "institution_admin")
+
+
+def _manager_department_id(user):
+    profile = getattr(user, "profile", None)
+    return profile.department_id if profile and profile.role == "manager" else None
+
+
+def _visible_jobs(user):
+    qs = ProductionJob.objects.select_related("order__customer", "assigned_staff__user", "order__responsible_staff")
+    if _global_admin(user):
+        return qs
+    if getattr(getattr(user, "profile", None), "role", None) == "manager":
+        department_id = _manager_department_id(user)
+        if not department_id:
+            return qs.none()
+        return qs.filter(
+            Q(assigned_staff__department_id=department_id)
+            | Q(order__responsible_staff__department_id=department_id)
+        ).distinct()
+    return qs.filter(assigned_staff__user=user)
+
+
 def _visible_job(user, job):
-    return _is_manager(user) or (hasattr(user, "staff_profile") and job.assigned_staff_id == user.staff_profile.id)
+    if _global_admin(user):
+        return True
+    if getattr(getattr(user, "profile", None), "role", None) == "manager":
+        department_id = _manager_department_id(user)
+        return bool(department_id and (
+            job.assigned_staff_id and job.assigned_staff.department_id == department_id
+            or job.order.responsible_staff_id and job.order.responsible_staff.department_id == department_id
+        ))
+    return hasattr(user, "staff_profile") and job.assigned_staff_id == user.staff_profile.id
 
 def _notify(job, title, message, priority="normal"):
     from accounts.models import Notification, UserProfile
@@ -153,13 +187,17 @@ def _job(j):
 def summary(request):
     if not _is_manager(request.user):
         raise PermissionDenied
+    jobs = _visible_jobs(request.user)
+    checks = QualityCheck.objects.filter(job__in=jobs)
+    reworks = ReworkRecord.objects.filter(job__in=jobs)
+    packing = PackingRecord.objects.filter(job__in=jobs)
     return JsonResponse({
         "stats": {
-            "pending": ProductionJob.objects.filter(stage=ProductionJob.Stage.QC_PENDING).exclude(status=ProductionJob.Status.CANCELLED).count(),
-            "passed": QualityCheck.objects.filter(result=QualityCheck.Result.PASS).count(),
-            "rework": ReworkRecord.objects.filter(status__in=[ReworkRecord.Status.OPEN, ReworkRecord.Status.IN_PROGRESS]).count(),
-            "packed": PackingRecord.objects.filter(status=PackingRecord.Status.PACKED).count(),
-            "failed": QualityCheck.objects.filter(result=QualityCheck.Result.FAIL).count(),
+            "pending": jobs.filter(stage=ProductionJob.Stage.QC_PENDING).exclude(status=ProductionJob.Status.CANCELLED).count(),
+            "passed": checks.filter(result=QualityCheck.Result.PASS).count(),
+            "rework": reworks.filter(status__in=[ReworkRecord.Status.OPEN, ReworkRecord.Status.IN_PROGRESS]).count(),
+            "packed": packing.filter(status=PackingRecord.Status.PACKED).count(),
+            "failed": checks.filter(result=QualityCheck.Result.FAIL).count(),
         }
     })
 
@@ -169,7 +207,7 @@ def summary(request):
 def checks(request):
     if not _is_manager(request.user):
         raise PermissionDenied
-    qs = QualityCheck.objects.select_related("job__order__customer", "inspector__user")
+    qs = QualityCheck.objects.filter(job__in=_visible_jobs(request.user)).select_related("job__order__customer", "inspector__user")
     q = request.GET.get("q", "").strip()
     result = request.GET.get("result", "").strip()
     check_type = request.GET.get("check_type", "").strip()
@@ -188,7 +226,11 @@ def options(request):
     if not _is_manager(request.user):
         raise PermissionDenied
     staff = StaffProfile.objects.filter(status=StaffProfile.Status.ACTIVE).select_related("user")
-    jobs = ProductionJob.objects.select_related("order__customer").filter(stage=ProductionJob.Stage.QC_PENDING).exclude(status=ProductionJob.Status.CANCELLED).order_by("deadline", "-created_at")[:300]
+    jobs = _visible_jobs(request.user).select_related("order__customer").filter(stage=ProductionJob.Stage.QC_PENDING).exclude(status=ProductionJob.Status.CANCELLED).order_by("deadline", "-created_at")
+    if not _global_admin(request.user):
+        department_id = _manager_department_id(request.user)
+        staff = staff.filter(department_id=department_id) if department_id else staff.none()
+    jobs = jobs[:300]
     return JsonResponse({
         "staff": [{"id": s.id, "name": str(s)} for s in staff],
         "jobs": [{"id": j.id, "job_no": j.job_no, "order_no": j.order.order_no, "customer": j.order.customer.name} for j in jobs],
@@ -202,7 +244,7 @@ def options(request):
 @require_GET
 @login_required
 def detail(request, pk):
-    job = get_object_or_404(ProductionJob.objects.select_related("order__customer", "assigned_staff__user").prefetch_related("quality_checks__inspector__user", "rework_records__assigned_staff__user", "packing"), pk=pk)
+    job = get_object_or_404(_visible_jobs(request.user).select_related("order__customer", "assigned_staff__user").prefetch_related("quality_checks__inspector__user", "rework_records__assigned_staff__user", "packing"), pk=pk)
     if not _visible_job(request.user, job):
         raise PermissionDenied
     return JsonResponse({
@@ -218,7 +260,7 @@ def detail(request, pk):
 @login_required
 def create_check(request):
     data = _data(request)
-    job = get_object_or_404(ProductionJob, pk=data.get("job"))
+    job = get_object_or_404(_visible_jobs(request.user), pk=data.get("job"))
     if not _visible_job(request.user, job):
         raise PermissionDenied
     form = QualityCheckForm(data)
@@ -305,7 +347,7 @@ def update_rework(request, pk):
 @require_POST
 @login_required
 def update_packing(request, pk):
-    job = get_object_or_404(ProductionJob, pk=pk)
+    job = get_object_or_404(_visible_jobs(request.user), pk=pk)
     if not _is_manager(request.user) and not _visible_job(request.user, job):
         raise PermissionDenied
     if job.status != ProductionJob.Status.COMPLETED:
