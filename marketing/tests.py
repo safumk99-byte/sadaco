@@ -40,3 +40,50 @@ class MarketingDepartmentAccessTests(TestCase):
         foreign_customer = Customer.objects.create(name="Foreign Customer", phone="9000000099", department=self.b)
         lead = MarketingLead.objects.create(source="Legacy import", customer=foreign_customer, created_by=self.manager)
         self.assertFalse(_leads(self.manager).filter(pk=lead.pk).exists())
+
+
+    def test_campaign_create_rejects_invalid_date_range_and_negative_budget(self):
+        import json
+        self.client.force_login(self.manager)
+        response = self.client.post(
+            "/api/marketing/campaigns/create/",
+            data=json.dumps({
+                "name": "Invalid campaign",
+                "channel": "Social",
+                "start_date": "2026-12-10",
+                "end_date": "2026-12-01",
+                "budget": "-10",
+                "status": "planned",
+            }),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(Campaign.objects.filter(name="Invalid campaign").exists())
+
+    def test_campaign_create_rejects_unknown_status(self):
+        import json
+        self.client.force_login(self.manager)
+        response = self.client.post(
+            "/api/marketing/campaigns/create/",
+            data=json.dumps({
+                "name": "Unknown status campaign",
+                "channel": "Social",
+                "budget": "0",
+                "status": "made_up",
+            }),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(Campaign.objects.filter(name="Unknown status campaign").exists())
+
+    def test_lead_create_rejects_foreign_department_customer(self):
+        import json
+        foreign = Customer.objects.create(name="Foreign Lead Customer", phone="9000000098", department=self.b)
+        self.client.force_login(self.manager)
+        response = self.client.post(
+            "/api/marketing/leads/create/",
+            data=json.dumps({"source": "Referral", "customer": foreign.pk, "status": "new"}),
+            content_type="application/json",
+        )
+        self.assertIn(response.status_code, (400, 404))
+        self.assertFalse(MarketingLead.objects.filter(customer=foreign).exists())
