@@ -63,3 +63,14 @@ class ProductionDepartmentAccessTests(TestCase):
         admin = User.objects.create_superuser(username="root", password="StrongPass123!")
         visible_ids = set(_visible_jobs(admin).values_list("id", flat=True))
         self.assertEqual(visible_ids, {self.creative_job.id, self.cnc_job.id})
+
+    def test_assigned_staff_cannot_edit_production_job_configuration(self):
+        self.client.force_login(self.creative_staff.user)
+        response = self.client.post(
+            f"/api/production/jobs/{self.creative_job.pk}/update/",
+            data='{"status":"completed"}',
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 403)
+        self.creative_job.refresh_from_db()
+        self.assertNotEqual(self.creative_job.status, ProductionJob.Status.COMPLETED)
