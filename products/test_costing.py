@@ -27,7 +27,7 @@ class MaterialCostingModelTests(TestCase):
         material._rate_changed_by = user
         material.save()
         self.assertEqual(material.rate_history.count(), 2)
-        latest = material.rate_history.order_by("-created_at").first()
+        latest = material.rate_history.order_by("-pk").first()
         self.assertEqual(latest.purchase_rate, Decimal("125.00"))
         self.assertEqual(latest.changed_by, user)
 
