@@ -428,6 +428,33 @@ function JobDetail({ data, close, refresh }) {
     notes: "",
   });
   const [busy, setBusy] = useState(false);
+  const [stockBalances, setStockBalances] = useState([]);
+  const [stockLots, setStockLots] = useState([]);
+  const [issueForm, setIssueForm] = useState({ material_line: "", balance: "", lot: "", quantity: "1" });
+  const [issueError, setIssueError] = useState("");
+  useEffect(() => {
+    api.get("/inventory/materials/stock/")
+      .then((r) => setStockBalances(r.data.items || []))
+      .catch((e) => setIssueError(e.response?.data?.detail || "Unable to load material stock."));
+  }, []);
+  useEffect(() => {
+    if (!issueForm.balance) { setStockLots([]); return; }
+    api.get("/inventory/materials/lots/", { params: { balance: issueForm.balance } })
+      .then((r) => setStockLots(r.data.items || []))
+      .catch((e) => setIssueError(e.response?.data?.detail || "Unable to load receipt batches."));
+  }, [issueForm.balance]);
+  const selectedMaterialLine = data.materials.find((m) => String(m.id) === String(issueForm.material_line));
+  const eligibleBalances = stockBalances.filter((b) => b.material_id === selectedMaterialLine?.material_variant_id);
+  const submitMaterialIssue = async () => {
+    setIssueError("");
+    try {
+      await api.post("/inventory/materials/issues/create/", issueForm);
+      refresh();
+      close();
+    } catch (e) {
+      setIssueError(e.response?.data?.detail || "Unable to issue material.");
+    }
+  };
   const saveProgress = async () => {
     setBusy(true);
     try {
@@ -581,6 +608,27 @@ function JobDetail({ data, close, refresh }) {
                 </span>
               </div>
             ))}
+          </div>
+          <div className="mt-4 rounded-xl border border-indigo-100 bg-indigo-50/60 p-4">
+            <h4 className="font-semibold text-slate-900">Issue from receipt batch</h4>
+            <p className="mt-1 text-xs text-slate-600">Select a material line, stock location and exact purchase receipt batch. The batch purchase cost is recorded against this issue.</p>
+            <div className="mt-3 grid gap-2 md:grid-cols-4">
+              <select className={input} value={issueForm.material_line} onChange={(e) => setIssueForm({ material_line: e.target.value, balance: "", lot: "", quantity: "1" })}>
+                <option value="">Select material line</option>
+                {data.materials.filter((m) => m.material_variant_id).map((m) => <option key={m.id} value={m.id}>{m.material_name} · Pending {m.pending_quantity} {m.unit}</option>)}
+              </select>
+              <select className={input} value={issueForm.balance} onChange={(e) => setIssueForm((x) => ({ ...x, balance: e.target.value, lot: "" }))} disabled={!issueForm.material_line}>
+                <option value="">Select location</option>
+                {eligibleBalances.map((b) => <option key={b.id} value={b.id}>{b.department} · {b.location} · Available {b.quantity} {b.unit}</option>)}
+              </select>
+              <select className={input} value={issueForm.lot} onChange={(e) => setIssueForm((x) => ({ ...x, lot: e.target.value }))} disabled={!issueForm.balance}>
+                <option value="">Select receipt batch</option>
+                {stockLots.map((lot) => <option key={lot.id} value={lot.id}>{lot.receipt_no} · {lot.received_date} · {lot.remaining_quantity} available · ₹{lot.unit_cost}/{selectedMaterialLine?.unit || "unit"}</option>)}
+              </select>
+              <input className={input} type="number" min="0.001" step="0.001" value={issueForm.quantity} onChange={(e) => setIssueForm((x) => ({ ...x, quantity: e.target.value }))} placeholder="Issue quantity" />
+            </div>
+            {issueError && <p className="mt-2 text-sm text-red-700">{issueError}</p>}
+            <button onClick={submitMaterialIssue} disabled={!issueForm.material_line || !issueForm.balance || !issueForm.lot || !issueForm.quantity} className="mt-3 rounded-xl bg-indigo-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40">Issue Selected Batch</button>
           </div>
         </div>
         <div>
