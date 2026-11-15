@@ -109,7 +109,7 @@ def dashboard_api(request):
             department_id = getattr(request.user.profile, "department_id", None)
             customer_qs = customer_qs.filter(department_id=department_id) if department_id else customer_qs.none()
             enquiry_qs = enquiry_qs.filter(customer__department_id=department_id) if department_id else enquiry_qs.none()
-            order_request_qs = order_request_qs.filter(Q(customer__department_id=department_id) | Q(assigned_to__profile__department_id=department_id)).distinct() if department_id else order_request_qs.none()
+            order_request_qs = order_request_qs.filter(customer__department_id=department_id) if department_id else order_request_qs.none()
             order_qs = order_qs.filter(customer__department_id=department_id) if department_id else order_qs.none()
         elif role == UserProfile.Role.STAFF:
             customer_qs = customer_qs.filter(Q(enquiries__assigned_to=request.user) | Q(orders__responsible_staff__user=request.user)).distinct()
