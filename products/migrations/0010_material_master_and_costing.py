@@ -52,7 +52,7 @@ MATERIALS = [
 
     # Indian sheet, 4x3 ft. Retail values were not supplied.
     *[
-        ("Acrylic", "", thickness, "", "na", rate, None, 4, 3)
+        ("Indian Sheet", "", thickness, "", "na", rate, None, 4, 3)
         for thickness, rate in [
             ("2.00", "455.00"), ("3.00", "560.00"), ("4.00", "796.00"),
             ("5.00", "1060.00"), ("6.00", "1200.00"),
@@ -70,7 +70,9 @@ MATERIALS = [
 
 def seed_materials_and_machine_rates(apps, schema_editor):
     MaterialVariant = apps.get_model("products", "MaterialVariant")
+    MaterialRateHistory = apps.get_model("products", "MaterialRateHistory")
     MachineRate = apps.get_model("products", "MachineRate")
+    from django.utils import timezone
 
     for material, brand, thickness, variant, colour, purchase, retail, width, height in MATERIALS:
         lookup = {
@@ -80,7 +82,7 @@ def seed_materials_and_machine_rates(apps, schema_editor):
             "variant": variant,
             "colour": colour,
         }
-        MaterialVariant.objects.get_or_create(
+        material_record, created = MaterialVariant.objects.get_or_create(
             **lookup,
             defaults={
                 "sheet_width_ft": Decimal(width),
@@ -91,6 +93,14 @@ def seed_materials_and_machine_rates(apps, schema_editor):
                 "is_active": True,
             },
         )
+        if created and (purchase is not None or retail is not None):
+            MaterialRateHistory.objects.create(
+                material=material_record,
+                purchase_rate=material_record.purchase_rate,
+                retail_rate=material_record.retail_rate,
+                effective_from=timezone.now().date(),
+                note="Initial rate from approved SADACO requirements",
+            )
 
     machine_rates = [
         ("laser_cutting", "", None, "20.00", "minute"),
