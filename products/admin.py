@@ -40,7 +40,16 @@ class MaterialVariantAdmin(admin.ModelAdmin):
 @admin.register(MaterialRateHistory)
 class MaterialRateHistoryAdmin(admin.ModelAdmin):
     list_display = ("material", "purchase_rate", "retail_rate", "effective_from", "changed_by")
-    readonly_fields = ("created_at",)
+    readonly_fields = (
+        "material", "purchase_rate", "retail_rate", "effective_from",
+        "changed_by", "note", "created_at",
+    )
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(MachineRate)
