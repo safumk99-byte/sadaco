@@ -315,6 +315,9 @@ def staff_update_api(request, pk):
     if data.get("joining_date"): profile.joining_date=parse_date(data["joining_date"])
     if "photo" in request.FILES: profile.photo=request.FILES["photo"]
     profile.save()
+    user_profile = get_or_create_profile(profile.user)
+    user_profile.department_id = profile.department_id
+    user_profile.save(update_fields=["department", "updated_at"])
     user=profile.user; user.first_name=data.get("first_name",user.first_name); user.last_name=data.get("last_name",user.last_name); user.email=data.get("email",user.email); user.save(update_fields=["first_name","last_name","email"])
     return JsonResponse({"staff":_staff_payload(profile)})
 
@@ -662,6 +665,19 @@ def users_api(request):
 @require_POST
 @login_required
 
+def _set_user_department(user, department_id):
+    profile = get_or_create_profile(user)
+    if department_id in (None, "", "null"):
+        profile.department = None
+    else:
+        profile.department = get_object_or_404(Department, pk=department_id, is_active=True)
+    profile.save(update_fields=["department", "updated_at"])
+    if hasattr(user, "staff_profile"):
+        user.staff_profile.department = profile.department
+        user.staff_profile.save(update_fields=["department", "updated_at"])
+    return profile
+
+
 def user_create_api(request):
     if not _can_manage_users(request.user):
         return JsonResponse({"detail": "You do not have permission to manage users."}, status=403)
@@ -681,6 +697,11 @@ def user_create_api(request):
     get_or_create_profile(user)
     update_user(user=user, role=role, first_name=user.first_name, last_name=user.last_name,
         email=user.email, phone=str(data.get("phone", "")).strip(), is_active=True)
+    try:
+        _set_user_department(user, data.get("department"))
+    except Department.DoesNotExist:
+        user.delete()
+        return JsonResponse({"detail": "Select an active department."}, status=400)
     return JsonResponse({"ok": True, "user": _user_admin_payload(user)}, status=201)
 
 
@@ -706,6 +727,11 @@ def user_update_api(request, pk):
         email=str(data.get("email", target.email)).strip(),
         phone=str(data.get("phone", get_or_create_profile(target).phone)).strip(),
         is_active=active)
+    if "department" in data:
+        try:
+            _set_user_department(target, data.get("department"))
+        except Department.DoesNotExist:
+            return JsonResponse({"detail": "Select an active department."}, status=400)
     return JsonResponse({"ok": True, "user": _user_admin_payload(target)})
 
 
