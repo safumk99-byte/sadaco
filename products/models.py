@@ -146,3 +146,102 @@ class StockTransaction(models.Model):
 
     def __str__(self):
         return f"{self.product.sku} - {self.get_transaction_type_display()} - {self.quantity}"
+
+
+
+class MaterialVariant(models.Model):
+    """Purchasable material master; purchase and retail rates are independent."""
+    class Colour(models.TextChoices):
+        CLEAR = "clear", "Clear"
+        COLOUR = "colour", "Colour"
+        NOT_APPLICABLE = "na", "Not applicable"
+
+    material_name = models.CharField(max_length=120)
+    brand = models.CharField(max_length=120, blank=True)
+    thickness_mm = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
+    variant = models.CharField(max_length=120, blank=True)
+    colour = models.CharField(max_length=12, choices=Colour.choices, default=Colour.NOT_APPLICABLE)
+    sheet_width_ft = models.DecimalField(max_digits=7, decimal_places=2, default=8)
+    sheet_height_ft = models.DecimalField(max_digits=7, decimal_places=2, default=4)
+    purchase_rate = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    retail_rate = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    supplier_name = models.CharField(max_length=180, blank=True)
+    stock_quantity = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    unit = models.CharField(max_length=30, default="Sheet")
+    is_active = models.BooleanField(default=True)
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["material_name", "brand", "thickness_mm", "variant", "colour"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["material_name", "brand", "thickness_mm", "variant", "colour"],
+                name="products_material_variant_unique",
+            )
+        ]
+
+    @property
+    def sheet_area_sqft(self):
+        return self.sheet_width_ft * self.sheet_height_ft
+
+    @property
+    def purchase_rate_sqft(self):
+        if self.purchase_rate is None or not self.sheet_area_sqft:
+            return None
+        return self.purchase_rate / self.sheet_area_sqft
+
+    def __str__(self):
+        parts = [self.material_name, self.brand, f"{self.thickness_mm}mm" if self.thickness_mm else "", self.variant, self.get_colour_display()]
+        return " - ".join(str(part) for part in parts if part)
+
+
+class MaterialRateHistory(models.Model):
+    material = models.ForeignKey(MaterialVariant, on_delete=models.CASCADE, related_name="rate_history")
+    purchase_rate = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    retail_rate = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    effective_from = models.DateField()
+    changed_by = models.ForeignKey("auth.User", on_delete=models.SET_NULL, null=True, blank=True)
+    note = models.CharField(max_length=255, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-effective_from", "-created_at"]
+
+
+class MachineRate(models.Model):
+    class Operation(models.TextChoices):
+        LASER_CUTTING = "laser_cutting", "Laser Cutting"
+        LASER_ENGRAVING = "laser_engraving", "Laser Engraving"
+        CNC_CUTTING = "cnc_cutting", "CNC Cutting"
+
+    operation = models.CharField(max_length=30, choices=Operation.choices)
+    material_name = models.CharField(max_length=120, blank=True)
+    thickness_mm = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
+    rate = models.DecimalField(max_digits=12, decimal_places=2)
+    unit = models.CharField(max_length=20, default="minute")
+    is_active = models.BooleanField(default=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["operation", "material_name", "thickness_mm"]
+
+
+class StaffCompensation(models.Model):
+    class PaymentType(models.TextChoices):
+        MONTHLY = "monthly", "Monthly Salary"
+        PER_WORK = "per_work", "Work-based Payment"
+
+    staff = models.OneToOneField("staff.StaffProfile", on_delete=models.CASCADE, related_name="compensation")
+    payment_type = models.CharField(max_length=20, choices=PaymentType.choices)
+    monthly_salary = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+    notes = models.TextField(blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    @property
+    def hourly_cost(self):
+        if self.payment_type != self.PaymentType.MONTHLY or self.monthly_salary is None:
+            return None
+        return self.monthly_salary / 214.5
