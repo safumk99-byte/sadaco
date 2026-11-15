@@ -164,3 +164,66 @@ def sync_reorder_alerts():
             alert.is_open = False
             alert.save(update_fields=["is_open", "updated_at"])
     return alerts
+
+
+@transaction.atomic
+def return_issued_material(*, material_id, quantity, balance_id, user=None, reference="", remarks="", employee=None):
+    """Return unused issued material to the exact department/location stock balance."""
+    quantity = Decimal(str(quantity))
+    if quantity <= 0:
+        raise ValidationError("Return quantity must be greater than zero.")
+    material = ProductionMaterial.objects.select_for_update().select_related(
+        "material_variant", "job__order__customer"
+    ).get(pk=material_id)
+    if not material.material_variant_id:
+        raise ValidationError("Returns through this workflow require a Material Master-linked job line.")
+    outstanding = material.issued_quantity - material.returned_quantity
+    if quantity > outstanding:
+        raise ValidationError(f"Return exceeds unreturned issued quantity: {outstanding} {material.unit}.")
+    department_id = material.job.order.customer.department_id
+    balance = MaterialStockBalance.objects.select_for_update().get(
+        pk=balance_id, material_id=material.material_variant_id, department_id=department_id
+    )
+    if employee and employee.department_id != department_id:
+        raise ValidationError("The selected employee does not belong to the job department.")
+    movement = record_material_movement(
+        balance_id=balance.pk, movement_type=MaterialStockMovement.Type.RETURN,
+        quantity=quantity, user=user, job=material.job, order=material.job.order,
+        employee=employee, reference=reference or material.job.job_no,
+        remarks=remarks or f"Unused material returned from {material.job.job_no}.",
+    )
+    material.returned_quantity += quantity
+    material.save(update_fields=["returned_quantity"])
+    return movement
+
+
+@transaction.atomic
+def record_issued_wastage(*, material_id, quantity, balance_id, user=None, reference="", remarks="", employee=None):
+    """Record wastage from already-issued stock without deducting stock a second time."""
+    quantity = Decimal(str(quantity))
+    if quantity <= 0:
+        raise ValidationError("Wastage quantity must be greater than zero.")
+    material = ProductionMaterial.objects.select_for_update().select_related(
+        "material_variant", "job__order__customer"
+    ).get(pk=material_id)
+    if not material.material_variant_id:
+        raise ValidationError("Wastage through this workflow requires a Material Master-linked job line.")
+    remaining_issued = material.issued_quantity - material.returned_quantity - material.wastage_quantity
+    if quantity > remaining_issued:
+        raise ValidationError(f"Wastage exceeds unreturned, unaccounted issued quantity: {remaining_issued} {material.unit}.")
+    department_id = material.job.order.customer.department_id
+    balance = MaterialStockBalance.objects.select_for_update().get(
+        pk=balance_id, material_id=material.material_variant_id, department_id=department_id
+    )
+    if employee and employee.department_id != department_id:
+        raise ValidationError("The selected employee does not belong to the job department.")
+    movement = MaterialStockMovement.objects.create(
+        balance=balance, movement_type=MaterialStockMovement.Type.WASTAGE,
+        quantity=quantity, balance_after=balance.quantity, job=material.job,
+        order=material.job.order, employee=employee, reference=reference or material.job.job_no,
+        remarks=remarks or f"Wastage recorded against {material.job.job_no}; issued stock was already deducted.",
+        created_by=user,
+    )
+    material.wastage_quantity += quantity
+    material.save(update_fields=["wastage_quantity"])
+    return movement
