@@ -46,9 +46,9 @@ export default function MaterialCosting() {
     try{await api.post(machineEditing?`/costing/machine-rates/${machineEditing}/update/`:"/costing/machine-rates/create/",machineForm);setMachineEditing(null);setMachineForm({operation:"laser_cutting",rate:"",unit:"minute"});setNotice("Machine rate saved.");await load();}
     catch(e){setError(e.response?.data?.detail||"Unable to save machine rate.");}finally{setBusy(false);}
   }
-  async function saveStaff(id,paymentType,salary){
+  async function saveStaff(id,paymentType,salary,workingDays,productiveHours){
     setError("");setNotice("");
-    try{await api.post(`/costing/staff/${id}/compensation/`,{payment_type:paymentType,monthly_salary:salary});setNotice("Staff compensation updated.");await load();}
+    try{await api.post(`/costing/staff/${id}/compensation/`,{payment_type:paymentType,monthly_salary:salary,working_days_per_month:workingDays,productive_hours_per_day:productiveHours});setNotice("Staff compensation updated.");await load();}
     catch(e){setError(e.response?.data?.detail||"Unable to save staff compensation.");}
   }
   const visible=materials.filter(x=>[x.material_name,x.brand,x.thickness_mm,x.variant,x.colour_label].join(" ").toLowerCase().includes(filter.toLowerCase()));
@@ -97,9 +97,9 @@ export default function MaterialCosting() {
       </table></div>
     </section>}
     {tab==="staff"&&<section className="space-y-3">
-      <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-900">Hourly cost for monthly salary staff = monthly salary ÷ 214.5 productive hours. Salary is a company expense; job labour allocation must not add the salary expense a second time.</div>
+      <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-900">Hourly cost = monthly salary ÷ monthly productive hours. Default basis: 26 working days × 8.25 productive hours = 214.5 hours. Authorized managers can adjust the working basis. Salary is a company expense; job labour allocation must not add the salary expense a second time.</div>
       <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white"><table className="w-full min-w-[750px] text-left text-sm">
-        <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="px-4 py-3">Staff</th><th className="px-4 py-3">Staff ID</th><th className="px-4 py-3">Payment Type</th><th className="px-4 py-3">Monthly Salary</th><th className="px-4 py-3">Hourly Cost</th><th className="px-4 py-3">Action</th></tr></thead>
+        <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="px-4 py-3">Staff</th><th className="px-4 py-3">Staff ID</th><th className="px-4 py-3">Payment Type</th><th className="px-4 py-3">Monthly Salary</th><th className="px-4 py-3">Productive Basis</th><th className="px-4 py-3">Hourly Cost</th><th className="px-4 py-3">Action</th></tr></thead>
         <tbody className="divide-y divide-slate-100">{staff.map(x=><StaffRow key={x.staff_id} item={x} canManage={canManage} onSave={saveStaff}/>)}</tbody>
       </table></div>
     </section>}
@@ -120,9 +120,12 @@ export default function MaterialCosting() {
 function StaffRow({item,canManage,onSave}){
   const [type,setType]=useState(item.payment_type||"monthly");
   const [salary,setSalary]=useState(item.monthly_salary||"");
+  const [days,setDays]=useState(String(item.working_days_per_month||26));
+  const [hours,setHours]=useState(String(item.productive_hours_per_day||"8.25"));
   return <tr><td className="px-4 py-3 font-semibold">{item.name}</td><td className="px-4 py-3">{item.staff_code}</td>
     <td className="px-4 py-3">{canManage?<select value={type} onChange={e=>setType(e.target.value)} className="rounded-lg border px-2 py-2"><option value="monthly">Monthly salary</option><option value="per_work">Per work</option></select>:type||"Not set"}</td>
     <td className="px-4 py-3">{type==="monthly"&&canManage?<input type="number" min="0" step="0.01" value={salary} onChange={e=>setSalary(e.target.value)} className="w-32 rounded-lg border px-2 py-2"/>:type==="monthly"?money(item.monthly_salary):"—"}</td>
+    <td className="px-4 py-3">{type==="monthly"&&canManage?<div className="flex items-center gap-1"><input aria-label="Working days per month" title="Working days per month" type="number" min="1" max="31" value={days} onChange={e=>setDays(e.target.value)} className="w-16 rounded-lg border px-2 py-2"/><span>×</span><input aria-label="Productive hours per day" title="Productive hours per day" type="number" min="0.01" step="0.01" value={hours} onChange={e=>setHours(e.target.value)} className="w-20 rounded-lg border px-2 py-2"/><span className="text-xs text-slate-500">h</span></div>:type==="monthly"?`${item.working_hours_month||"214.5"} h/month`:"—"}</td>
     <td className="px-4 py-3">{type==="monthly"?money(item.hourly_cost):"Work-based"}</td>
-    <td className="px-4 py-3">{canManage&&<button onClick={()=>onSave(item.staff_id,type,salary)} className="font-semibold text-indigo-600">Save</button>}</td></tr>;
+    <td className="px-4 py-3">{canManage&&<button onClick={()=>onSave(item.staff_id,type,salary,days,hours)} className="font-semibold text-indigo-600">Save</button>}</td></tr>;
 }
