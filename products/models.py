@@ -1,3 +1,4 @@
+from datetime import date
 from decimal import Decimal
 
 from django.core.validators import MinValueValidator
@@ -187,6 +188,28 @@ class MaterialVariant(models.Model):
     @property
     def sheet_area_sqft(self):
         return self.sheet_width_ft * self.sheet_height_ft
+
+    def save(self, *args, **kwargs):
+        previous_rates = None
+        if self.pk:
+            previous_rates = type(self).objects.filter(pk=self.pk).values(
+                "purchase_rate", "retail_rate"
+            ).first()
+        super().save(*args, **kwargs)
+        current_rates = (self.purchase_rate, self.retail_rate)
+        old_rates = (
+            (previous_rates["purchase_rate"], previous_rates["retail_rate"])
+            if previous_rates else None
+        )
+        if old_rates != current_rates:
+            MaterialRateHistory.objects.create(
+                material=self,
+                purchase_rate=self.purchase_rate,
+                retail_rate=self.retail_rate,
+                effective_from=date.today(),
+                changed_by=getattr(self, "_rate_changed_by", None),
+                note="Initial rate record" if old_rates is None else "Rate updated",
+            )
 
     @property
     def purchase_rate_sqft(self):
