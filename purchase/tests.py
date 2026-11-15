@@ -61,7 +61,7 @@ class PurchaseDepartmentAccessTests(TestCase):
         )
         request = RequestFactory().post(
             f"/api/purchase/orders/{self.own.pk}/receive/",
-            data=json.dumps({"location": "Main Store", "supplier_reference": "INV-001"}),
+            data=json.dumps({"received_date": "2026-11-15", "location": "Main Store", "supplier_reference": "INV-001"}),
             content_type="application/json",
         )
         request.user = self.manager
