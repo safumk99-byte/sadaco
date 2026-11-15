@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django.core.validators import MinValueValidator
 from django.db import models
 
@@ -237,11 +239,20 @@ class StaffCompensation(models.Model):
     payment_type = models.CharField(max_length=20, choices=PaymentType.choices)
     monthly_salary = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     is_active = models.BooleanField(default=True)
+    working_days_per_month = models.PositiveSmallIntegerField(default=26)
+    productive_hours_per_day = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("8.25"))
     notes = models.TextField(blank=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    @property
+    def monthly_productive_hours(self):
+        return Decimal(self.working_days_per_month) * self.productive_hours_per_day
 
     @property
     def hourly_cost(self):
         if self.payment_type != self.PaymentType.MONTHLY or self.monthly_salary is None:
             return None
-        return self.monthly_salary / Decimal("214.5")
+        hours = self.monthly_productive_hours
+        if hours <= 0:
+            return None
+        return self.monthly_salary / hours
