@@ -1,8 +1,8 @@
-from datetime import date
 from decimal import Decimal
 
 from django.core.validators import MinValueValidator
 from django.db import models
+from django.utils import timezone
 
 
 class ProductCategory(models.Model):
@@ -206,7 +206,7 @@ class MaterialVariant(models.Model):
                 material=self,
                 purchase_rate=self.purchase_rate,
                 retail_rate=self.retail_rate,
-                effective_from=date.today(),
+                effective_from=timezone.localdate(),
                 changed_by=getattr(self, "_rate_changed_by", None),
                 note="Initial rate record" if old_rates is None else "Rate updated",
             )
@@ -284,4 +284,4 @@ class StaffCompensation(models.Model):
         hours = self.monthly_productive_hours
         if hours <= 0:
             return None
-        return self.monthly_salary / hours
+        return (self.monthly_salary / hours).quantize(Decimal("0.01"))
