@@ -8,10 +8,10 @@ import django.utils.timezone
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("core", "0001_initial"),
+        ("core", "0002_department"),
         ("products", "0013_configurable_labour_hours"),
         ("production", "0001_initial"),
-        ("sales", "0006_orderrequest"),
+        ("sales", "0007_customer_department"),
         ("staff", "0001_initial"),
         ("inventory", "0001_initial"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
