@@ -15,8 +15,8 @@ class WorkAreaAdmin(admin.ModelAdmin):
 
 @admin.register(StaffProfile)
 class StaffProfileAdmin(admin.ModelAdmin):
-    list_display = ("staff_id", "user", "designation", "work_area", "status", "joining_date")
-    list_filter = ("status", "designation", "work_area")
+    list_display = ("staff_id", "user", "department", "designation", "work_area", "status", "joining_date")
+    list_filter = ("status", "department", "designation", "work_area")
     search_fields = ("staff_id", "user__username", "user__first_name", "user__last_name")
 
 @admin.register(StaffTask)
