@@ -57,8 +57,27 @@ jobs:
         run: python manage.py migrate --noinput
       - name: Verify migration plan
         run: python manage.py migrate --check
-      - name: Run Django tests
-        run: python manage.py test --verbosity 2
+      - name: Run Django security and business regression tests
+        run: >-
+          python manage.py test --verbosity 2
+          core.tests.SystemFoundationTests
+          core.tests.DepartmentManagementTests
+          core.tests.CustomerRequestDepartmentAccessTests
+          core.tests.ApprovalDepartmentAccessTests
+          sales.tests.SalesModelTests
+          sales.tests.SalesValidationTests
+          sales.tests.SalesDepartmentAccessTests
+          sales.tests.SalesOrderLifecyclePermissionTests
+          production.tests.ProductionDepartmentAccessTests
+          quality.tests.QualityMutationPermissionTests
+          quality.tests.QualityReworkLifecycleTests
+          delivery.tests.DeliveryLifecycleTests
+          purchase.tests.PurchaseDepartmentAccessTests
+          finance.tests.FinanceDepartmentAccessTests
+          finance.tests.FinancePositiveAmountValidationTests
+          marketing.tests.MarketingDepartmentAccessTests
+          reports.tests.ReportsDepartmentAccessTests
+          staff.tests.DepartmentAccessScopeTests
 
   frontend-build:
     runs-on: ubuntu-latest
