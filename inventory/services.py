@@ -42,7 +42,7 @@ def record_material_movement(*, balance_id, movement_type, quantity, user=None, 
 
 
 @transaction.atomic
-def issue_material(*, material_id, quantity, user=None, reference="", remarks="", balance_id=None, employee=None):
+def issue_material(*, material_id, quantity, user=None, reference="", remarks="", balance_id=None, lot_id=None, employee=None):
     """
     Issue a production material from the department's MaterialStockBalance ledger.
     Legacy Product-based issue remains available only for old lines not yet linked
@@ -76,32 +76,39 @@ def issue_material(*, material_id, quantity, user=None, reference="", remarks=""
         if len(matching) > 1 and not balance_id:
             raise ValidationError("Select the stock location for this material issue.")
         balance = matching[0]
-        if balance.quantity < quantity:
-            raise ValidationError(f"Insufficient stock at {balance.location}. Available: {balance.quantity} {material.unit}.")
         if employee and employee.department_id != department_id:
             raise ValidationError("The selected employee does not belong to the job department.")
-        unit_rate = material.material_variant.purchase_rate
-        if unit_rate is None:
-            raise ValidationError("A purchase rate must be recorded before this material can be issued for job costing.")
+        if not lot_id:
+            raise ValidationError("Select a costed receipt batch before issuing material.")
+        from purchase.models import MaterialStockLot
+        lot = MaterialStockLot.objects.select_for_update().select_related("balance").filter(
+            pk=lot_id, balance_id=balance.pk, balance__material_id=material.material_variant_id,
+            balance__department_id=department_id,
+        ).first()
+        if not lot:
+            raise ValidationError("The selected receipt batch does not belong to this material, department and location.")
+        if lot.remaining_quantity < quantity:
+            raise ValidationError(
+                f"Insufficient quantity in selected batch. Available: {lot.remaining_quantity} {material.unit}."
+            )
+        if balance.quantity < quantity:
+            raise ValidationError(f"Insufficient stock at {balance.location}. Available: {balance.quantity} {material.unit}.")
         movement = record_material_movement(
-            balance_id=balance.pk,
-            movement_type=MaterialStockMovement.Type.JOB_ISSUE,
-            quantity=quantity,
-            user=user,
-            job=material.job,
-            order=material.job.order,
-            employee=employee or material.job.assigned_staff,
-            reference=reference or material.job.job_no,
+            balance_id=balance.pk, movement_type=MaterialStockMovement.Type.JOB_ISSUE,
+            quantity=quantity, user=user, job=material.job, order=material.job.order,
+            employee=employee or material.job.assigned_staff, reference=reference or material.job.job_no,
             remarks=remarks or f"Material issued to {material.job.job_no}.",
         )
+        lot.remaining_quantity -= quantity
+        lot.save(update_fields=["remaining_quantity"])
         material.issued_quantity += quantity
         if material.issue_unit_rate is None:
-            material.issue_unit_rate = unit_rate
+            material.issue_unit_rate = lot.unit_cost
         material.save(update_fields=["issued_quantity", "issue_unit_rate"])
         issue = MaterialIssue.objects.create(
             job=material.job, material=material, quantity=quantity,
-            status=MaterialIssue.Status.ISSUED, reference=reference,
-            remarks=remarks, issued_by=user,
+            status=MaterialIssue.Status.ISSUED, reference=reference, remarks=remarks,
+            issued_by=user, stock_lot=lot, unit_rate=lot.unit_cost, stock_movement=movement,
         )
         all_ready = not material.job.materials.filter(issued_quantity__lt=F("quantity_required")).exists()
         if all_ready and not material.job.material_ready:
