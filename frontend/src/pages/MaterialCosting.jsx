@@ -17,6 +17,7 @@ export default function MaterialCosting() {
   const [filter,setFilter] = useState("");
   const [form,setForm] = useState({});
   const [machineForm,setMachineForm] = useState({operation:"laser_cutting",rate:"",unit:"minute"});
+  const [machineEditing,setMachineEditing] = useState(null);
 
   async function load() {
     setError("");
@@ -42,7 +43,7 @@ export default function MaterialCosting() {
   }
   async function saveMachine(e){
     e.preventDefault();setBusy(true);setError("");setNotice("");
-    try{await api.post("/costing/machine-rates/create/",machineForm);setMachineForm({operation:"laser_cutting",rate:"",unit:"minute"});setNotice("Machine rate saved.");await load();}
+    try{await api.post(machineEditing?`/costing/machine-rates/${machineEditing}/update/`:"/costing/machine-rates/create/",machineForm);setMachineEditing(null);setMachineForm({operation:"laser_cutting",rate:"",unit:"minute"});setNotice("Machine rate saved.");await load();}
     catch(e){setError(e.response?.data?.detail||"Unable to save machine rate.");}finally{setBusy(false);}
   }
   async function saveStaff(id,paymentType,salary){
@@ -88,11 +89,11 @@ export default function MaterialCosting() {
         <input value={machineForm.material_name||""} onChange={e=>setMachineForm({...machineForm,material_name:e.target.value})} placeholder="Material (e.g. Multy Wood)" className="rounded-xl border border-slate-300 px-3 py-2.5 text-sm"/>
         <input value={machineForm.thickness_mm||""} onChange={e=>setMachineForm({...machineForm,thickness_mm:e.target.value})} placeholder="Thickness mm" type="number" step="0.01" className="rounded-xl border border-slate-300 px-3 py-2.5 text-sm"/>
         <input required value={machineForm.rate} onChange={e=>setMachineForm({...machineForm,rate:e.target.value})} placeholder="Rate ₹" type="number" min="0" step="0.01" className="rounded-xl border border-slate-300 px-3 py-2.5 text-sm"/>
-        <button disabled={busy} className="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white">Add Rate</button>
+        <button disabled={busy} className="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white">{machineEditing?"Save Rate":"Add Rate"}</button>
       </form>}
       <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white"><table className="w-full min-w-[650px] text-left text-sm">
-        <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="px-4 py-3">Operation</th><th className="px-4 py-3">Material</th><th className="px-4 py-3">Thickness</th><th className="px-4 py-3">Rate</th><th className="px-4 py-3">Unit</th></tr></thead>
-        <tbody className="divide-y divide-slate-100">{rates.map(x=><tr key={x.id}><td className="px-4 py-3 font-semibold">{x.operation_label}</td><td className="px-4 py-3">{x.material_name||"All materials"}</td><td className="px-4 py-3">{x.thickness_mm?x.thickness_mm+" mm":"—"}</td><td className="px-4 py-3">{money(x.rate)}</td><td className="px-4 py-3">/{x.unit}</td></tr>)}</tbody>
+        <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="px-4 py-3">Operation</th><th className="px-4 py-3">Material</th><th className="px-4 py-3">Thickness</th><th className="px-4 py-3">Rate</th><th className="px-4 py-3">Unit</th><th className="px-4 py-3"></th></tr></thead>
+        <tbody className="divide-y divide-slate-100">{rates.map(x=><tr key={x.id}><td className="px-4 py-3 font-semibold">{x.operation_label}</td><td className="px-4 py-3">{x.material_name||"All materials"}</td><td className="px-4 py-3">{x.thickness_mm?x.thickness_mm+" mm":"—"}</td><td className="px-4 py-3">{money(x.rate)}</td><td className="px-4 py-3">/{x.unit}</td><td className="px-4 py-3 text-right">{canManage&&<button onClick={()=>{setMachineEditing(x.id);setMachineForm({operation:x.operation,material_name:x.material_name,thickness_mm:x.thickness_mm,rate:x.rate,unit:x.unit});}} className="font-semibold text-indigo-600">Edit</button>}</td></tr>)}</tbody>
       </table></div>
     </section>}
     {tab==="staff"&&<section className="space-y-3">
