@@ -26,6 +26,7 @@ export default function AppLayout() {
   const navContent = <>
     <NavLink to="/" end className={navClass} onClick={handleNavClick}><span className="nav-icon">{icons.Dashboard}</span><span>Dashboard</span></NavLink>
     {management && <NavLink to="/users" className={navClass} onClick={handleNavClick}><span className="nav-icon">{icons.Users}</span><span>Users & Roles</span></NavLink>}
+    {management && <NavLink to="/departments" className={navClass} onClick={handleNavClick}><span className="nav-icon">▦</span><span>Departments</span></NavLink>}
     {links.map(([to, label]) => <NavLink key={to} to={to} className={navClass} onClick={handleNavClick}><span className="nav-icon">{label === 'Reports & Analytics' ? icons.Reports : label.split(' ')[0] === 'Stock' ? icons.Stock : '•'}</span><span>{label}</span></NavLink>)}
     {management && <NavLink to="/approvals" className={navClass} onClick={handleNavClick}><span className="nav-icon">{icons.Approvals}</span><span>Approval Center</span></NavLink>}
     {management && <NavLink to="/audit-log" className={navClass} onClick={handleNavClick}><span className="nav-icon">{icons.Audit}</span><span>Audit Trail</span></NavLink>}
