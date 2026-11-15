@@ -18,6 +18,7 @@ function requiresManagementAccess(pathname) {
   if (pathname === '/staff' || staffPath) return true
 
   if (
+    pathname === '/costing' || pathname.startsWith('/costing/') ||
     pathname === '/products' || pathname.startsWith('/products/') ||
     pathname === '/sales' ||
     pathname === '/production' ||
