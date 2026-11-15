@@ -77,17 +77,28 @@ class ProductionDepartmentAccessTests(TestCase):
         self.assertNotEqual(self.creative_job.status, ProductionJob.Status.COMPLETED)
         self.assertEqual(self.creative_job.progress_percent, 0)
 
-    def test_manager_can_finalize_production_job(self):
+    def test_manager_cannot_finalize_job_without_final_qc(self):
         self.client.force_login(self.creative_manager)
         response = self.client.post(
             f"/api/production/jobs/{self.creative_job.pk}/progress/",
-            data='{"stage":"completed","progress_percent":100,"note":"Manager verified completion"}',
+            data='{"stage":"completed","progress_percent":100,"note":"Attempted bypass"}',
             content_type="application/json",
         )
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 400)
         self.creative_job.refresh_from_db()
-        self.assertEqual(self.creative_job.status, ProductionJob.Status.COMPLETED)
-        self.assertEqual(self.creative_job.progress_percent, 100)
+        self.assertNotEqual(self.creative_job.status, ProductionJob.Status.COMPLETED)
+        self.assertEqual(self.creative_job.progress_percent, 0)
+
+    def test_manager_cannot_set_completed_status_in_job_update_without_final_qc(self):
+        self.client.force_login(self.creative_manager)
+        response = self.client.post(
+            f"/api/production/jobs/{self.creative_job.pk}/update/",
+            data='{"station":"custom","stage":"completed","status":"completed","priority":"normal","safety_checked":true,"design_checked":true,"material_ready":true}',
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.creative_job.refresh_from_db()
+        self.assertNotEqual(self.creative_job.status, ProductionJob.Status.COMPLETED)
 
     def test_staff_cannot_mark_completed_stage_at_99_percent(self):
         self.client.force_login(self.creative_staff.user)
