@@ -128,6 +128,8 @@ def create(request):
     _deny(request.user); _require_department(request.user); data=_data(request)
     po_form=PurchaseOrderForm(data); item_form=PurchaseItemForm(data)
     if po_form.is_valid() and item_form.is_valid():
+        if po_form.cleaned_data["status"] not in (PurchaseOrder.Status.DRAFT, PurchaseOrder.Status.SENT):
+            return JsonResponse({"detail": "A new purchase order must be Draft or Sent. Use Goods Receipt to record received stock."}, status=400)
         po=po_form.save(commit=False); po.created_by=request.user
         po.subtotal=item_form.cleaned_data['quantity'] * item_form.cleaned_data['unit_cost']; po.save()
         item=item_form.save(commit=False); item.purchase_order=po; item.save()
@@ -139,6 +141,10 @@ def create(request):
 @transaction.atomic
 def receive(request, pk):
     _deny(request.user); po=get_object_or_404(_purchase_orders(request.user).select_for_update().prefetch_related('items__product'), pk=pk)
+    if po.status in (PurchaseOrder.Status.CANCELLED, PurchaseOrder.Status.RECEIVED):
+        return JsonResponse({"detail": "Cancelled or already received purchase orders cannot receive goods again."}, status=400)
+    if po.status not in (PurchaseOrder.Status.SENT, PurchaseOrder.Status.PARTIAL):
+        return JsonResponse({"detail": "Only Sent or Partially Received purchase orders can receive goods."}, status=400)
     form=GoodsReceiptForm(_data(request))
     if not form.is_valid(): return JsonResponse({'detail':'Validation failed.','errors':form.errors.get_json_data()},status=400)
     receipt=form.save(commit=False); receipt.purchase_order=po; receipt.received_by=request.user; receipt.save()
