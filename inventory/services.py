@@ -49,7 +49,7 @@ def issue_material(*, material_id, quantity, user=None, reference="", remarks=""
     to MaterialVariant, so existing historical workflows are not silently broken.
     """
     quantity = Decimal(str(quantity))
-    material = ProductionMaterial.objects.select_for_update().select_related(
+    material = ProductionMaterial.objects.select_for_update(of=("self",)).select_related(
         "product", "material_variant", "job", "job__order__customer"
     ).get(pk=material_id)
 
