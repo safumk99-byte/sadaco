@@ -7,6 +7,24 @@ from sales.models import CustomerFeedback, DeliveryRecord, SalesOrder
 
 manager_required = role_required('super_admin','institution_admin','manager')
 
+def _global_admin(user):
+    role = getattr(getattr(user, "profile", None), "role", None)
+    return user.is_superuser or role in ("super_admin", "institution_admin")
+
+
+def _visible_orders(user):
+    qs = SalesOrder.objects.select_related("customer", "responsible_staff__department")
+    if _global_admin(user):
+        return qs
+    profile = getattr(user, "profile", None)
+    department_id = profile.department_id if profile and profile.role == "manager" else None
+    return qs.filter(responsible_staff__department_id=department_id) if department_id else qs.none()
+
+
+def _visible_deliveries(user):
+    return DeliveryRecord.objects.filter(order__in=_visible_orders(user))
+
+
 def _delivery(d):
     return {'id': d.id, 'order_id': d.order_id, 'order_no': d.order.order_no, 'customer': d.order.customer.name,
             'delivery_date': d.delivery_date.isoformat() if d.delivery_date else '', 'address': d.address,
@@ -19,15 +37,21 @@ def _delivery(d):
 @require_GET
 def summary(request):
     q=request.GET.get('q','').strip()
-    qs=DeliveryRecord.objects.select_related('order__customer').all()
+    qs=_visible_deliveries(request.user).select_related('order__customer')
     if q: qs=qs.filter(Q(order__order_no__icontains=q)|Q(order__customer__name__icontains=q))
-    return JsonResponse({'stats': {'pending': DeliveryRecord.objects.filter(status='pending').count(), 'scheduled': DeliveryRecord.objects.filter(status='scheduled').count(), 'out': DeliveryRecord.objects.filter(status='out').count(), 'delivered': DeliveryRecord.objects.filter(status__in=['delivered','installed']).count(), 'installations': DeliveryRecord.objects.filter(installation_required=True,status__in=['scheduled','out']).count()}, 'deliveries': [_delivery(x) for x in qs[:100]]})
+    return JsonResponse({'stats': {
+        'pending': qs.filter(status='pending').count(),
+        'scheduled': qs.filter(status='scheduled').count(),
+        'out': qs.filter(status='out').count(),
+        'delivered': qs.filter(status__in=['delivered','installed']).count(),
+        'installations': qs.filter(installation_required=True,status__in=['scheduled','out']).count(),
+    }, 'deliveries': [_delivery(x) for x in qs[:100]]})
 
 @login_required
 @manager_required
 @require_GET
 def detail(request, pk):
-    order=SalesOrder.objects.select_related('customer').get(pk=pk)
+    order=get_object_or_404(_visible_orders(request.user), pk=pk)
     d,_=DeliveryRecord.objects.get_or_create(order=order)
     fb=CustomerFeedback.objects.filter(order=order).first()
     data=_delivery(d); data['feedback']={'rating': fb.rating if fb else '', 'comment': fb.comment if fb else ''}
@@ -39,7 +63,7 @@ def detail(request, pk):
 def update(request, pk):
     import json
     data=json.loads(request.body or '{}')
-    order=SalesOrder.objects.get(pk=pk); d,_=DeliveryRecord.objects.get_or_create(order=order)
+    order=get_object_or_404(_visible_orders(request.user), pk=pk); d,_=DeliveryRecord.objects.get_or_create(order=order)
     for f in ['delivery_date','address','transport','responsible_person','installation_required','installation_date','status','acknowledgement','completion_notes']:
         if f in data: setattr(d,f,data[f] or None if f.endswith('_date') else data[f])
     d.save()
@@ -52,7 +76,7 @@ def update(request, pk):
 @require_POST
 def feedback(request, pk):
     import json
-    data=json.loads(request.body or '{}'); order=SalesOrder.objects.get(pk=pk)
+    data=json.loads(request.body or '{}'); order=get_object_or_404(_visible_orders(request.user), pk=pk)
     fb,_=CustomerFeedback.objects.get_or_create(order=order)
     fb.rating=data.get('rating') or None; fb.comment=data.get('comment',''); fb.save()
     return JsonResponse({'rating':fb.rating,'comment':fb.comment})
