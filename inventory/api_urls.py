@@ -9,4 +9,6 @@ urlpatterns = [
     path("materials/balances/create/", api.material_balance_create_api, name="material_balance_create"),
     path("materials/offcuts/", api.offcuts_api, name="material_offcuts"),
     path("materials/issues/create/", api.production_material_issue_api, name="production_material_issue"),
+    path("materials/returns/create/", api.production_material_return_api, name="production_material_return"),
+    path("materials/wastage/create/", api.production_material_wastage_api, name="production_material_wastage"),
 ]
