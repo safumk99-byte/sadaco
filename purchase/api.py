@@ -69,6 +69,7 @@ def _purchase_orders(user):
 @require_GET
 @login_required
 def summary(request):
+    _deny(request.user)
     visible = _purchase_orders(request.user)
     orders = visible.exclude(status=PurchaseOrder.Status.CANCELLED)
     return JsonResponse({'stats': {
