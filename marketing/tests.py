@@ -3,8 +3,9 @@ from django.test import TestCase
 
 from accounts.models import UserProfile
 from core.models import Department
-from .models import Campaign
-from .api_views import _campaigns
+from sales.models import Customer
+from .models import Campaign, MarketingContent, MarketingLead
+from .api_views import _campaigns, _contents, _leads
 
 
 class MarketingDepartmentAccessTests(TestCase):
@@ -29,3 +30,13 @@ class MarketingDepartmentAccessTests(TestCase):
         user = User.objects.create_user(username="marketing_unassigned", password="StrongPass123!")
         UserProfile.objects.create(user=user, role=UserProfile.Role.MANAGER)
         self.assertFalse(_campaigns(user).exists())
+
+    def test_content_created_here_cannot_expose_foreign_campaign(self):
+        foreign_campaign = Campaign.objects.get(name="Campaign B")
+        content = MarketingContent.objects.create(title="Legacy content", channel="Social", campaign=foreign_campaign, created_by=self.manager)
+        self.assertFalse(_contents(self.manager).filter(pk=content.pk).exists())
+
+    def test_lead_created_here_cannot_expose_foreign_customer(self):
+        foreign_customer = Customer.objects.create(name="Foreign Customer", phone="9000000099", department=self.b)
+        lead = MarketingLead.objects.create(source="Legacy import", customer=foreign_customer, created_by=self.manager)
+        self.assertFalse(_leads(self.manager).filter(pk=lead.pk).exists())
