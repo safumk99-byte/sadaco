@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import NotificationBell from '../components/NotificationBell'
 
 const managementLinks = [
-  ['/staff', 'Staff Management'], ['/products', 'Products'], ['/products/stock', 'Stock Management'], ['/sales', 'Sales'], ['/production', 'Production'],
+  ['/staff', 'Staff Management'], ['/products', 'Products'], ['/costing', 'Material & Costing'], ['/products/stock', 'Stock Management'], ['/sales', 'Sales'], ['/production', 'Production'],
   ['/quality', 'Quality'], ['/inventory', 'Inventory'], ['/purchase', 'Purchase'], ['/finance', 'Finance'],
   ['/delivery', 'Delivery'], ['/marketing', 'Marketing'], ['/reports', 'Reports & Analytics'],
 ]
