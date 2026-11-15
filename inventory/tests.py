@@ -92,3 +92,53 @@ class MaterialLedgerWorkflowTests(TestCase):
         )
         with self.assertRaises(MaterialStockBalance.DoesNotExist):
             return_issued_material(material_id=self.line.pk, quantity="1", balance_id=foreign.pk, user=self.manager)
+
+
+from inventory.models import MaterialStockCount
+from inventory.services import submit_material_stock_count, review_material_stock_count
+
+
+class MaterialStockCountTests(TestCase):
+    def setUp(self):
+        self.department = Department.objects.create(code="count-a", name="Count A")
+        self.admin = User.objects.create_superuser(username="count-admin", password="StrongPass123!")
+        self.manager = User.objects.create_user(username="count-manager", password="StrongPass123!")
+        UserProfile.objects.create(user=self.manager, role=UserProfile.Role.MANAGER, department=self.department)
+        material = MaterialVariant.objects.create(material_name="Count Sheet", purchase_rate=Decimal("200"))
+        self.balance = MaterialStockBalance.objects.create(
+            material=material, department=self.department, location="Store 1", quantity=Decimal("12")
+        )
+
+    def test_count_submission_does_not_change_stock_until_approval(self):
+        count = submit_material_stock_count(
+            balance_id=self.balance.pk, counted_quantity="10", user=self.manager, reason="Physical count"
+        )
+        self.balance.refresh_from_db()
+        self.assertEqual(self.balance.quantity, Decimal("12"))
+        self.assertEqual(count.variance, Decimal("-2"))
+        self.assertEqual(count.status, MaterialStockCount.Status.PENDING)
+
+    def test_approval_applies_variance_and_writes_correction_movement(self):
+        count = submit_material_stock_count(balance_id=self.balance.pk, counted_quantity="10", user=self.manager)
+        reviewed = review_material_stock_count(count_id=count.pk, approve=True, user=self.admin)
+        self.balance.refresh_from_db()
+        self.assertEqual(self.balance.quantity, Decimal("10"))
+        self.assertEqual(reviewed.status, MaterialStockCount.Status.APPROVED)
+        self.assertEqual(reviewed.correction_movement.movement_type, MaterialStockMovement.Type.CORRECTION)
+        self.assertEqual(reviewed.correction_movement.quantity, Decimal("2"))
+
+    def test_reject_does_not_change_stock(self):
+        count = submit_material_stock_count(balance_id=self.balance.pk, counted_quantity="15", user=self.manager)
+        reviewed = review_material_stock_count(count_id=count.pk, approve=False, user=self.admin)
+        self.balance.refresh_from_db()
+        self.assertEqual(self.balance.quantity, Decimal("12"))
+        self.assertEqual(reviewed.status, MaterialStockCount.Status.REJECTED)
+
+    def test_stale_count_cannot_be_approved(self):
+        count = submit_material_stock_count(balance_id=self.balance.pk, counted_quantity="10", user=self.manager)
+        self.balance.quantity = Decimal("11")
+        self.balance.save(update_fields=["quantity", "updated_at"])
+        with self.assertRaisesMessage(ValidationError, "Stock changed after this count"):
+            review_material_stock_count(count_id=count.pk, approve=True, user=self.admin)
+        self.balance.refresh_from_db()
+        self.assertEqual(self.balance.quantity, Decimal("11"))
