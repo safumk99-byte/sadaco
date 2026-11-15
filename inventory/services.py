@@ -227,3 +227,49 @@ def record_issued_wastage(*, material_id, quantity, balance_id, user=None, refer
     material.wastage_quantity += quantity
     material.save(update_fields=["wastage_quantity"])
     return movement
+
+
+@transaction.atomic
+def submit_material_stock_count(*, balance_id, counted_quantity, user=None, reason=""):
+    from .models import MaterialStockCount
+    counted = Decimal(str(counted_quantity))
+    if counted < 0:
+        raise ValidationError("Counted quantity cannot be negative.")
+    balance = MaterialStockBalance.objects.select_for_update().get(pk=balance_id)
+    variance = counted - balance.quantity
+    return MaterialStockCount.objects.create(
+        balance=balance, system_quantity=balance.quantity, counted_quantity=counted,
+        variance=variance, reason=reason.strip(), submitted_by=user,
+    )
+
+
+@transaction.atomic
+def review_material_stock_count(*, count_id, approve, user=None, review_note=""):
+    from .models import MaterialStockCount
+    count = MaterialStockCount.objects.select_for_update().select_related("balance").get(pk=count_id)
+    if count.status != MaterialStockCount.Status.PENDING:
+        raise ValidationError("This physical count has already been reviewed.")
+    balance = MaterialStockBalance.objects.select_for_update().get(pk=count.balance_id)
+    if approve:
+        if balance.quantity != count.system_quantity:
+            raise ValidationError(
+                "Stock changed after this count was submitted. Submit a fresh physical count before approval."
+            )
+        if count.variance:
+            balance.quantity = count.counted_quantity
+            balance.save(update_fields=["quantity", "updated_at"])
+            movement = MaterialStockMovement.objects.create(
+                balance=balance, movement_type=MaterialStockMovement.Type.CORRECTION,
+                quantity=abs(count.variance), balance_after=count.counted_quantity,
+                reference=f"PHYSICAL-COUNT-{count.pk}",
+                remarks=(count.reason + " " + review_note).strip() or "Approved physical stock count variance.",
+                created_by=user,
+            )
+            count.correction_movement = movement
+        count.status = MaterialStockCount.Status.APPROVED
+    else:
+        count.status = MaterialStockCount.Status.REJECTED
+    count.reviewed_by = user
+    count.reviewed_at = timezone.now()
+    count.save(update_fields=["status", "reviewed_by", "reviewed_at", "correction_movement"])
+    return count
