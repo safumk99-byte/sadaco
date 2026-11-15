@@ -66,7 +66,7 @@ class PurchaseDepartmentAccessTests(TestCase):
         )
         request.user = self.manager
         response = receive(request, self.own.pk)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.content.decode())
         line = GoodsReceiptLine.objects.get(receipt__purchase_order=self.own, purchase_item=item)
         self.assertEqual(line.received_quantity, Decimal("4"))
         self.assertEqual(line.unit_cost, Decimal("125"))
