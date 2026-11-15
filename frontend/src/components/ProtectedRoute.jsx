@@ -5,7 +5,18 @@ const MANAGEMENT_ROLES = ['super_admin', 'institution_admin', 'manager']
 const GLOBAL_ADMIN_ROLES = ['super_admin', 'institution_admin']
 
 function requiresManagementAccess(pathname) {
-  if (pathname === '/staff' || /^\\/staff\\/[^/]+$/.test(pathname)) return true
+  // These staff workspaces remain available to ordinary staff accounts.
+  if (
+    ['/staff/tasks', '/staff/attendance', '/staff/performance',
+      '/sales/customer-requests', '/sales/enquiries', '/production/jobs'].some(
+      (path) => pathname === path || pathname.startsWith(path + '/')
+    )
+  ) return false
+
+  const staffPath = pathname.startsWith('/staff/') &&
+    pathname.split('/').filter(Boolean).length === 2
+  if (pathname === '/staff' || staffPath) return true
+
   if (
     pathname === '/products' || pathname.startsWith('/products/') ||
     pathname === '/sales' ||
@@ -14,14 +25,6 @@ function requiresManagementAccess(pathname) {
       (path) => pathname === path || pathname.startsWith(path + '/')
     )
   ) return true
-
-  // These staff workspaces remain available to ordinary staff accounts.
-  if (
-    ['/staff/tasks', '/staff/attendance', '/staff/performance',
-      '/sales/customer-requests', '/sales/enquiries', '/production/jobs'].some(
-      (path) => pathname === path || pathname.startsWith(path + '/')
-    )
-  ) return false
 
   return false
 }
