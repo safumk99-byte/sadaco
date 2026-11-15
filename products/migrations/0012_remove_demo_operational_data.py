@@ -64,8 +64,7 @@ def remove_demo_operational_data(apps, schema_editor):
             break
         Category.objects.filter(pk__in=leaf_ids).delete()
 
-    # Demo customer profiles are removed; their linked login accounts remain.
-    clear("sales", "Customer")
+    # Customer profiles are retained so any existing customer login remains linked.
 
     # Remove demo staff activity while retaining the staff accounts and profiles.
     clear("staff", "StaffTask")
