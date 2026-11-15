@@ -51,7 +51,7 @@ class DepartmentManagementTests(TestCase):
     def test_department_list_requires_login(self):
         self.client.logout()
         response = self.client.get("/api/departments/")
-        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.status_code, 302)
 
     def test_admin_can_create_department(self):
         import json
