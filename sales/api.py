@@ -126,7 +126,15 @@ def summary(request):
 def customers(request):
     q = request.GET.get('q','').strip(); qs = _customer_qs(request.user)
     if q: qs = qs.filter(Q(name__icontains=q)|Q(phone__icontains=q)|Q(email__icontains=q))
-    return JsonResponse({'customers': [_customer(x) for x in qs[:250]], 'can_manage': _manager(request.user)})
+    departments = Department.objects.filter(is_active=True)
+    if not _global_admin(request.user):
+        department_id = _department_id(request.user)
+        departments = departments.filter(pk=department_id) if department_id else departments.none()
+    return JsonResponse({
+        'customers': [_customer(x) for x in qs.select_related("department")[:250]],
+        'can_manage': _manager(request.user),
+        'departments': [{'id': d.id, 'name': d.name, 'code': d.code} for d in departments],
+    })
 
 @require_http_methods(['POST'])
 @login_required
