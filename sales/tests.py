@@ -356,3 +356,112 @@ class SalesDepartmentAccessTests(TestCase):
         self.assertEqual(self.enquiry_qs(admin).count(), 2)
         self.assertEqual(self.quotation_qs(admin).count(), 2)
         self.assertEqual(self.order_qs(admin).count(), 2)
+
+
+class SalesOrderLifecyclePermissionTests(TestCase):
+    def setUp(self):
+        self.department = Department.objects.create(code="sales-lifecycle", name="Sales Lifecycle")
+        self.manager = User.objects.create_user(username="sales_lifecycle_mgr", password="StrongPass123!")
+        UserProfile.objects.create(
+            user=self.manager,
+            role=UserProfile.Role.MANAGER,
+            department=self.department,
+        )
+        self.customer = Customer.objects.create(
+            name="Lifecycle Customer",
+            phone="9000000088",
+            department=self.department,
+        )
+
+    def _payload(self, status, notes=""):
+        return {
+            "customer": self.customer.pk,
+            "quotation": "",
+            "item_description": "Lifecycle Item",
+            "quantity": "1",
+            "confirmed_price": "1000",
+            "design_reference": "",
+            "delivery_date": "",
+            "deadline": "",
+            "responsible_staff": "",
+            "advance_required": "0",
+            "status": status,
+            "notes": notes,
+        }
+
+    def test_sales_cannot_create_order_as_delivered(self):
+        from django.test import RequestFactory
+        from .api import order_create
+        request = RequestFactory().post(
+            "/api/sales/orders/create/",
+            data=json.dumps(self._payload(SalesOrder.Status.DELIVERED)),
+            content_type="application/json",
+        )
+        request.user = self.manager
+        response = order_create(request)
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(SalesOrder.objects.filter(customer=self.customer).exists())
+
+    def test_sales_cannot_move_confirmed_order_directly_to_ready(self):
+        from django.test import RequestFactory
+        from .api import order_update
+        order = SalesOrder.objects.create(
+            customer=self.customer,
+            item_description="Lifecycle Item",
+            quantity=1,
+            confirmed_price=1000,
+            status=SalesOrder.Status.CONFIRMED,
+        )
+        request = RequestFactory().post(
+            f"/api/sales/orders/{order.pk}/update/",
+            data=json.dumps(self._payload(SalesOrder.Status.READY)),
+            content_type="application/json",
+        )
+        request.user = self.manager
+        response = order_update(request, order.pk)
+        self.assertEqual(response.status_code, 400)
+        order.refresh_from_db()
+        self.assertEqual(order.status, SalesOrder.Status.CONFIRMED)
+
+    def test_sales_cannot_rewind_delivered_order_to_confirmed(self):
+        from django.test import RequestFactory
+        from .api import order_update
+        order = SalesOrder.objects.create(
+            customer=self.customer,
+            item_description="Delivered Item",
+            quantity=1,
+            confirmed_price=1000,
+            status=SalesOrder.Status.DELIVERED,
+        )
+        request = RequestFactory().post(
+            f"/api/sales/orders/{order.pk}/update/",
+            data=json.dumps(self._payload(SalesOrder.Status.CONFIRMED, notes="Edited notes")),
+            content_type="application/json",
+        )
+        request.user = self.manager
+        response = order_update(request, order.pk)
+        self.assertEqual(response.status_code, 400)
+        order.refresh_from_db()
+        self.assertEqual(order.status, SalesOrder.Status.DELIVERED)
+
+    def test_sales_can_edit_non_lifecycle_fields_without_changing_delivered_status(self):
+        from django.test import RequestFactory
+        from .api import order_update
+        order = SalesOrder.objects.create(
+            customer=self.customer,
+            item_description="Delivered Item",
+            quantity=1,
+            confirmed_price=1000,
+            status=SalesOrder.Status.DELIVERED,
+        )
+        request = RequestFactory().post(
+            f"/api/sales/orders/{order.pk}/update/",
+            data=json.dumps(self._payload(SalesOrder.Status.DELIVERED, notes="Updated note")),
+            content_type="application/json",
+        )
+        request.user = self.manager
+        response = order_update(request, order.pk)
+        self.assertEqual(response.status_code, 200)
+        order.refresh_from_db()
+        self.assertEqual(order.status, SalesOrder.Status.DELIVERED)
+        self.assertEqual(order.notes, "Updated note")
