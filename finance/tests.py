@@ -61,3 +61,40 @@ class FinanceDepartmentAccessTests(TestCase):
         ids = set(_department_transactions(self.manager).values_list("id", flat=True))
         self.assertNotIn(leaked.id, ids)
         self.assertIn(visible.id, ids)
+
+
+class FinancePositiveAmountValidationTests(TestCase):
+    def setUp(self):
+        from datetime import date
+        from .forms import ExpenseForm, SupplierPaymentForm
+        self.ExpenseForm = ExpenseForm
+        self.SupplierPaymentForm = SupplierPaymentForm
+        self.category = ExpenseCategory.objects.create(name="Positive Amount Category")
+        supplier = Supplier.objects.create(name="Positive Amount Supplier")
+        self.purchase_order = PurchaseOrder.objects.create(supplier=supplier)
+
+    def test_zero_expense_amount_is_rejected(self):
+        form = self.ExpenseForm(data={
+            "category": self.category.pk,
+            "amount": "0",
+            "expense_date": "2026-11-15",
+            "payment_method": "cash",
+            "reference": "",
+            "description": "",
+            "status": "paid",
+        })
+        self.assertFalse(form.is_valid())
+        self.assertIn("amount", form.errors)
+
+    def test_zero_supplier_payment_amount_is_rejected(self):
+        form = self.SupplierPaymentForm(data={
+            "purchase_order": self.purchase_order.pk,
+            "amount": "0",
+            "payment_date": "2026-11-15",
+            "payment_method": "cash",
+            "reference": "",
+            "status": "paid",
+            "notes": "",
+        })
+        self.assertFalse(form.is_valid())
+        self.assertIn("amount", form.errors)
