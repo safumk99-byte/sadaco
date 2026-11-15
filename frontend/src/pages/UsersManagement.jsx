@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import api from "../services/api";
 
 export default function UsersManagement() {
-  const [data, setData] = useState({ users: [], roles: [] });
+  const [data, setData] = useState({ users: [], roles: [], departments: [] });
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -22,13 +22,22 @@ export default function UsersManagement() {
   }, []);
   const toggle = async (u) => {
     try {
-      await api.post(`/users/${u.id}/update/`, {
-        is_active: !u.is_active,
-        role: u.role,
+      await api.post("/users/" + u.id + "/update/", {
+        is_active: !u.is_active, role: u.role, department: u.department?.id || "",
       });
       load();
     } catch (e) {
       setError(e.response?.data?.detail || "Update failed.");
+    }
+  };
+  const assignDepartment = async (u, department) => {
+    try {
+      await api.post("/users/" + u.id + "/update/", {
+        is_active: u.is_active, role: u.role, department,
+      });
+      load();
+    } catch (e) {
+      setError(e.response?.data?.detail || "Department assignment failed.");
     }
   };
   return (
@@ -58,6 +67,7 @@ export default function UsersManagement() {
               <th>User</th>
               <th>Role</th>
               <th>Email</th>
+              <th>Department</th>
               <th>Status</th>
               <th></th>
             </tr>
@@ -65,7 +75,7 @@ export default function UsersManagement() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan="5">Loading…</td>
+                <td colSpan="6">Loading…</td>
               </tr>
             ) : (
               data.users.map((u) => (
@@ -76,6 +86,7 @@ export default function UsersManagement() {
                   </td>
                   <td>{u.role_label}</td>
                   <td>{u.email || "—"}</td>
+                  <td><select className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs" value={u.department?.id || ""} onChange={(e) => assignDepartment(u, e.target.value)}><option value="">Unassigned</option>{(data.departments || []).map(d => <option key={d.id} value={d.id}>{d.name}</option>)}</select></td>
                   <td>{u.is_active ? "Active" : "Inactive"}</td>
                   <td>
                     <button className="btn-secondary" onClick={() => toggle(u)}>
