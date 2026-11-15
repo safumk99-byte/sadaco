@@ -26,6 +26,27 @@ def _department_id(user):
     return profile.department_id if profile and profile.role == UserProfile.Role.MANAGER else None
 
 
+def _department_leads(user):
+    qs = MarketingLead.objects.all()
+    if _global_admin(user):
+        return qs
+    department_id = _department_id(user)
+    if not department_id:
+        return qs.none()
+    return qs.filter(
+        Q(created_by__profile__department_id=department_id)
+        | Q(customer__department_id=department_id)
+        | Q(enquiry__customer__department_id=department_id)
+    ).filter(
+        Q(customer__isnull=True) | Q(customer__department_id=department_id)
+    ).filter(
+        Q(enquiry__isnull=True) | Q(enquiry__customer__department_id=department_id)
+    ).filter(
+        Q(campaign__isnull=True)
+        | Q(campaign__created_by__profile__department_id=department_id)
+    ).distinct()
+
+
 def rng(request):
     today=timezone.localdate(); s=request.GET.get('start'); e=request.GET.get('end')
     try: s=date.fromisoformat(s) if s else today-timedelta(days=29)
@@ -49,7 +70,7 @@ def dashboard(request):
     purchase_orders=PurchaseOrder.objects.all()
     expenses=Expense.objects.all()
     campaigns=Campaign.objects.all()
-    leads=MarketingLead.objects.all()
+    leads=_department_leads(request.user)
     stock=StockTransaction.objects.filter(created_at__date__range=(start,end))
     if not _global_admin(request.user):
         department_id=_department_id(request.user)
@@ -69,18 +90,6 @@ def dashboard(request):
             purchase_orders=purchase_orders.filter(created_by__profile__department_id=department_id)
             expenses=expenses.filter(created_by__profile__department_id=department_id)
             campaigns=campaigns.filter(created_by__profile__department_id=department_id)
-            leads=leads.filter(
-                Q(created_by__profile__department_id=department_id)
-                | Q(customer__department_id=department_id)
-                | Q(enquiry__customer__department_id=department_id)
-            ).filter(
-                Q(customer__isnull=True) | Q(customer__department_id=department_id)
-            ).filter(
-                Q(enquiry__isnull=True) | Q(enquiry__customer__department_id=department_id)
-            ).filter(
-                Q(campaign__isnull=True)
-                | Q(campaign__created_by__profile__department_id=department_id)
-            ).distinct()
             stock=stock.filter(created_by__profile__department_id=department_id)
 
     payments=PaymentRecord.objects.filter(created_at__date__range=(start,end),status__in=['received','verified'],order__in=all_orders)
