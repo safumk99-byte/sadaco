@@ -59,11 +59,16 @@ def _department_transactions(user):
     qs = FinanceTransaction.objects.all()
     if _global_admin(user): return qs
     department_id = _department_id(user)
+    if not department_id:
+        return qs.none()
+    # Use the linked business record as the source of truth whenever one exists.
+    # Only standalone transactions (e.g. supplier payments) are scoped by creator.
     return qs.filter(
-        Q(created_by__profile__department_id=department_id)
-        | Q(sales_payment__order__customer__department_id=department_id)
+        Q(sales_payment__order__customer__department_id=department_id)
         | Q(expense__created_by__profile__department_id=department_id)
-    ).distinct() if department_id else qs.none()
+        | Q(sales_payment__isnull=True, expense__isnull=True,
+            created_by__profile__department_id=department_id)
+    ).distinct()
 def _choices(c): return [{'value':v,'label':l} for v,l in c]
 def _data(r):
     try:return json.loads(r.body or '{}')
