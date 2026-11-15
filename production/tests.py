@@ -11,8 +11,8 @@ from .models import ProductionJob
 
 class ProductionDepartmentAccessTests(TestCase):
     def setUp(self):
-        self.creatives = Department.objects.create(code="creatives", name="SADACO Creatives")
-        self.cnc = Department.objects.create(code="cnc", name="SADACO CNC")
+        self.creatives = Department.objects.get_or_create(code="creatives", defaults={"name": "SADACO Creatives"})[0]
+        self.cnc = Department.objects.get_or_create(code="cnc", defaults={"name": "SADACO CNC"})[0]
         self.creative_manager = User.objects.create_user(username="creative_mgr", password="StrongPass123!")
         UserProfile.objects.create(
             user=self.creative_manager, role=UserProfile.Role.MANAGER, department=self.creatives
