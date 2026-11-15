@@ -124,7 +124,7 @@ def detail(request, pk):
 @login_required
 @transaction.atomic
 def create(request):
-    _deny(request.user); data=_data(request)
+    _deny(request.user); _require_department(request.user); data=_data(request)
     po_form=PurchaseOrderForm(data); item_form=PurchaseItemForm(data)
     if po_form.is_valid() and item_form.is_valid():
         po=po_form.save(commit=False); po.created_by=request.user
