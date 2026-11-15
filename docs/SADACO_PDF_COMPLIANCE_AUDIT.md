@@ -66,7 +66,7 @@ Status labels: **Partial** = a basic model/page exists but does not satisfy the 
 
 ## Current execution notes
 
-- Initial costing access hardening committed on this branch; inactive profile access is now denied and a regression test was added.
-- Demo catalogue cleanup migration was narrowed and further guarded against purchase, production, stock-count and reorder references.
+- Costing, production, sales, quality, purchasing, finance, reports and delivery privileged-data helpers now require an active UserProfile (superusers remain supported). A costing regression test covers inactive managers.
+- Demo catalogue cleanup migration was narrowed and further guarded against customer-request, purchase, production, stock-count, reorder and stock-ledger references.
 - CI status is not yet available for the latest commits; no test pass is claimed.
 - Neon staging migration has not been run. Production database and `main` remain untouched.
