@@ -13,6 +13,12 @@ class ProductionProgressForm(forms.ModelForm):
         fields = ["stage","progress_percent","note"]
         widgets = {"progress_percent": forms.NumberInput(attrs={"min":0,"max":100}), "note": forms.Textarea(attrs={"rows":3})}
 
+    def clean_progress_percent(self):
+        value = self.cleaned_data["progress_percent"]
+        if value < 0 or value > 100:
+            raise forms.ValidationError("Progress must be between 0 and 100.")
+        return value
+
 class ProductionMaterialForm(forms.ModelForm):
     class Meta:
         model = ProductionMaterial
