@@ -847,6 +847,10 @@ def audit_api(request):
     if getattr(getattr(request.user, "profile", None), "role", None) not in ("super_admin", "institution_admin", "manager") and not request.user.is_superuser:
         return JsonResponse({"detail": "You do not have permission to view audit logs."}, status=403)
     qs = AuditLog.objects.select_related("user")
+    role = getattr(getattr(request.user, "profile", None), "role", None)
+    if role == UserProfile.Role.MANAGER and not request.user.is_superuser:
+        department_id = getattr(request.user.profile, "department_id", None)
+        qs = qs.filter(user__profile__department_id=department_id) if department_id else qs.none()
     module = request.GET.get("module", "").strip(); action = request.GET.get("action", "").strip()
     if module: qs = qs.filter(module__icontains=module)
     if action: qs = qs.filter(action=action)
@@ -864,6 +868,9 @@ def customer_requests_api(request):
     role = getattr(getattr(request.user, "profile", None), "role", None)
     if role == UserProfile.Role.STAFF and not request.user.is_superuser:
         qs = qs.filter(assigned_to=request.user)
+    elif role == UserProfile.Role.MANAGER and not request.user.is_superuser:
+        department_id = getattr(request.user.profile, "department_id", None)
+        qs = qs.filter(Q(customer__department_id=department_id) | Q(assigned_to__profile__department_id=department_id)).distinct() if department_id else qs.none()
     q = request.GET.get("q", "").strip(); status = request.GET.get("status", "").strip()
     if q: qs = qs.filter(Q(request_no__icontains=q) | Q(customer__name__icontains=q) | Q(product_name__icontains=q))
     if status: qs = qs.filter(status=status)
@@ -878,8 +885,14 @@ def customer_requests_api(request):
 @login_required
 
 def customer_request_update_api(request, pk):
-    item = get_object_or_404(OrderRequest, pk=pk)
     role = getattr(getattr(request.user, "profile", None), "role", None)
+    request_qs = OrderRequest.objects.select_related("customer", "assigned_to")
+    if role == UserProfile.Role.MANAGER and not request.user.is_superuser:
+        department_id = getattr(request.user.profile, "department_id", None)
+        request_qs = request_qs.filter(Q(customer__department_id=department_id) | Q(assigned_to__profile__department_id=department_id)).distinct() if department_id else request_qs.none()
+    elif role == UserProfile.Role.STAFF and not request.user.is_superuser:
+        request_qs = request_qs.filter(assigned_to=request.user)
+    item = get_object_or_404(request_qs, pk=pk)
     if role == UserProfile.Role.STAFF and item.assigned_to_id != request.user.id:
         return JsonResponse({"detail": "You cannot update this request."}, status=403)
     data = _request_data(request)
