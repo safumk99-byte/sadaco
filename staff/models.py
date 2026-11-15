@@ -39,6 +39,10 @@ class StaffProfile(models.Model):
 
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="staff_profile")
     staff_id = models.CharField(max_length=30, unique=True)
+    department = models.ForeignKey(
+        "core.Department", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="staff_members",
+    )
     designation = models.ForeignKey(
         Designation, on_delete=models.SET_NULL, null=True, blank=True, related_name="staff_members"
     )
