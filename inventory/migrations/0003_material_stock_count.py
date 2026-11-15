@@ -1,6 +1,7 @@
 from django.conf import settings
 from django.db import migrations, models
 import django.db.models.deletion
+import django.core.validators
 
 
 class Migration(migrations.Migration):
@@ -15,7 +16,7 @@ class Migration(migrations.Migration):
             fields=[
                 ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
                 ("system_quantity", models.DecimalField(decimal_places=3, max_digits=14)),
-                ("counted_quantity", models.DecimalField(decimal_places=3, max_digits=14, validators=[__import__("django.core.validators", fromlist=["MinValueValidator"]).MinValueValidator(0)])),
+                ("counted_quantity", models.DecimalField(decimal_places=3, max_digits=14, validators=[django.core.validators.MinValueValidator(0)])),
                 ("variance", models.DecimalField(decimal_places=3, max_digits=14)),
                 ("status", models.CharField(choices=[("pending","Pending Review"),("approved","Approved"),("rejected","Rejected")], default="pending", max_length=16)),
                 ("reason", models.TextField(blank=True)),
