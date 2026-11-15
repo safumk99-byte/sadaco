@@ -141,7 +141,7 @@ class MaterialStockLot(models.Model):
 
     class Meta:
         ordering = ["created_at", "id"]
-        indexes = [models.Index(fields=["balance", "remaining_quantity"])]
+        indexes = [models.Index(fields=["balance", "remaining_quantity"], name="purch_lot_bal_rem_idx")]
 
     def __str__(self):
         return f"{self.receipt_line.receipt.receipt_no} · {self.remaining_quantity}/{self.original_quantity}"
