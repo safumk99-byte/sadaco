@@ -11,7 +11,17 @@ def remove_demo_catalog_data(apps, schema_editor):
 
     # Existing order requests are retained. Keep any product that is referenced
     # by a request rather than breaking that request's product relation.
-    demo_products = Product.objects.exclude(customer_order_requests__isnull=False)
+    # A product can be absent from the sales-request relation and still be
+    # referenced by purchasing, production, stock counts or reorder workflows.
+    # Preserve every such row; this migration must never orphan operational data.
+    demo_products = (
+        Product.objects
+        .exclude(customer_order_requests__isnull=False)
+        .exclude(purchase_items__isnull=False)
+        .exclude(production_materials__isnull=False)
+        .exclude(stock_counts__isnull=False)
+        .exclude(inventory_reorder_alert__isnull=False)
+    )
     if StockTransaction.objects.filter(product__in=demo_products).exists():
         raise RuntimeError(
             "Demo catalogue cleanup stopped: product stock transactions exist and require review."
