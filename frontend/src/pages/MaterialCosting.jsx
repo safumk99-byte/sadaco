@@ -1,0 +1,127 @@
+import { useEffect, useState } from "react";
+import api from "../services/api";
+
+const tabs = [["materials","Material Master"],["machines","Machine Rates"],["staff","Staff Salary"]];
+const money = (value) => value === "" || value == null ? "—" : `₹${Number(value).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+
+export default function MaterialCosting() {
+  const [tab,setTab] = useState("materials");
+  const [materials,setMaterials] = useState([]);
+  const [rates,setRates] = useState([]);
+  const [staff,setStaff] = useState([]);
+  const [canManage,setCanManage] = useState(false);
+  const [busy,setBusy] = useState(false);
+  const [error,setError] = useState("");
+  const [notice,setNotice] = useState("");
+  const [editing,setEditing] = useState(null);
+  const [filter,setFilter] = useState("");
+  const [form,setForm] = useState({});
+  const [machineForm,setMachineForm] = useState({operation:"laser_cutting",rate:"",unit:"minute"});
+
+  async function load() {
+    setError("");
+    try {
+      const [m,r,s] = await Promise.all([
+        api.get("/costing/materials/"), api.get("/costing/machine-rates/"), api.get("/costing/staff/")
+      ]);
+      setMaterials(m.data.materials || []); setRates(r.data.rates || []); setStaff(s.data.staff || []);
+      setCanManage(Boolean(m.data.can_manage && r.data.can_manage && s.data.can_manage));
+    } catch(e) { setError(e.response?.data?.detail || "Unable to load costing master data."); }
+  }
+  useEffect(()=>{load();},[]);
+  const setField=(key,value)=>setForm(old=>({...old,[key]:value}));
+  function startNew(){setEditing("new");setForm({material_name:"",brand:"",thickness_mm:"",variant:"",colour:"na",sheet_width_ft:"8",sheet_height_ft:"4",purchase_rate:"",retail_rate:"",unit:"Sheet",is_active:true});}
+  function startEdit(item){setEditing(item.id);setForm({...item});}
+  async function saveMaterial(e){
+    e.preventDefault();setBusy(true);setError("");setNotice("");
+    try{
+      await api.post(editing==="new"?"/costing/materials/create/":`/costing/materials/${editing}/update/`,form);
+      setEditing(null);setNotice("Material master saved.");await load();
+    }catch(e){setError(e.response?.data?.detail||"Unable to save material.");}
+    finally{setBusy(false);}
+  }
+  async function saveMachine(e){
+    e.preventDefault();setBusy(true);setError("");setNotice("");
+    try{await api.post("/costing/machine-rates/create/",machineForm);setMachineForm({operation:"laser_cutting",rate:"",unit:"minute"});setNotice("Machine rate saved.");await load();}
+    catch(e){setError(e.response?.data?.detail||"Unable to save machine rate.");}finally{setBusy(false);}
+  }
+  async function saveStaff(id,paymentType,salary){
+    setError("");setNotice("");
+    try{await api.post(`/costing/staff/${id}/compensation/`,{payment_type:paymentType,monthly_salary:salary});setNotice("Staff compensation updated.");await load();}
+    catch(e){setError(e.response?.data?.detail||"Unable to save staff compensation.");}
+  }
+  const visible=materials.filter(x=>[x.material_name,x.brand,x.thickness_mm,x.variant,x.colour_label].join(" ").toLowerCase().includes(filter.toLowerCase()));
+  return <div className="space-y-6">
+    <header className="rounded-3xl bg-gradient-to-br from-slate-900 via-indigo-950 to-blue-900 p-6 text-white">
+      <p className="text-xs font-bold uppercase tracking-[.2em] text-blue-200">SADACO • Cost Control</p>
+      <h1 className="mt-2 text-2xl font-bold sm:text-3xl">Material Master & Job Costing</h1>
+      <p className="mt-2 max-w-3xl text-sm text-blue-100">Purchase rates, retail rates, sheet-area costing, machine charges and staff compensation. All rates remain editable by authorized management.</p>
+    </header>
+    <div className="flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white p-2">
+      {tabs.map(([key,label])=><button key={key} onClick={()=>setTab(key)} className={`rounded-xl px-4 py-2.5 text-sm font-semibold ${tab===key?"bg-indigo-600 text-white":"text-slate-600 hover:bg-slate-100"}`}>{label}</button>)}
+    </div>
+    {error&&<div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+    {notice&&<div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{notice}</div>}
+    {tab==="materials"&&<section className="space-y-4">
+      <div className="flex flex-col gap-3 sm:flex-row">
+        <input value={filter} onChange={e=>setFilter(e.target.value)} placeholder="Search material, brand, thickness or variant" className="min-w-0 flex-1 rounded-xl border border-slate-300 px-4 py-3 text-sm"/>
+        {canManage&&<button onClick={startNew} className="rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white">+ Add Material Variant</button>}
+      </div>
+      <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
+        <table className="w-full min-w-[1050px] text-left text-sm">
+          <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>{["Material","Brand","Thickness","Variant / Colour","Sheet","Purchase Rate","₹ / Sq.ft","Retail Rate","Stock",""].map(x=><th key={x} className="px-4 py-3">{x}</th>)}</tr></thead>
+          <tbody className="divide-y divide-slate-100">{visible.map(x=><tr key={x.id} className="hover:bg-slate-50">
+            <td className="px-4 py-3 font-semibold text-slate-900">{x.material_name}</td><td className="px-4 py-3">{x.brand||"—"}</td><td className="px-4 py-3">{x.thickness_mm?x.thickness_mm+" mm":"—"}</td>
+            <td className="px-4 py-3">{[x.variant,x.colour_label==="Not applicable"?"":x.colour_label].filter(Boolean).join(" / ")||"—"}</td>
+            <td className="px-4 py-3">{x.sheet_width_ft} × {x.sheet_height_ft} ft</td><td className="px-4 py-3 font-semibold">{money(x.purchase_rate)}</td>
+            <td className="px-4 py-3">{money(x.purchase_rate_sqft)}</td><td className="px-4 py-3">{money(x.retail_rate)}</td><td className="px-4 py-3">{x.stock_quantity} {x.unit}</td>
+            <td className="px-4 py-3 text-right">{canManage&&<button onClick={()=>startEdit(x)} className="font-semibold text-indigo-600">Edit</button>}</td>
+          </tr>)}</tbody>
+        </table>
+        {!visible.length&&<p className="p-8 text-center text-sm text-slate-500">No material variants found.</p>}
+      </div>
+      <p className="text-xs text-slate-500">Sq.ft rate is calculated automatically from purchase rate ÷ sheet area. Retail rates and unavailable supplier rates are intentionally left blank.</p>
+    </section>}
+    {tab==="machines"&&<section className="space-y-4">
+      {canManage&&<form onSubmit={saveMachine} className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 sm:grid-cols-5">
+        <select value={machineForm.operation} onChange={e=>setMachineForm({...machineForm,operation:e.target.value,unit:e.target.value==="cnc_cutting"?"sqft":"minute"})} className="rounded-xl border border-slate-300 px-3 py-2.5 text-sm"><option value="laser_cutting">Laser Cutting</option><option value="laser_engraving">Laser Engraving</option><option value="cnc_cutting">CNC Cutting</option></select>
+        <input value={machineForm.material_name||""} onChange={e=>setMachineForm({...machineForm,material_name:e.target.value})} placeholder="Material (e.g. Multy Wood)" className="rounded-xl border border-slate-300 px-3 py-2.5 text-sm"/>
+        <input value={machineForm.thickness_mm||""} onChange={e=>setMachineForm({...machineForm,thickness_mm:e.target.value})} placeholder="Thickness mm" type="number" step="0.01" className="rounded-xl border border-slate-300 px-3 py-2.5 text-sm"/>
+        <input required value={machineForm.rate} onChange={e=>setMachineForm({...machineForm,rate:e.target.value})} placeholder="Rate ₹" type="number" min="0" step="0.01" className="rounded-xl border border-slate-300 px-3 py-2.5 text-sm"/>
+        <button disabled={busy} className="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white">Add Rate</button>
+      </form>}
+      <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white"><table className="w-full min-w-[650px] text-left text-sm">
+        <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="px-4 py-3">Operation</th><th className="px-4 py-3">Material</th><th className="px-4 py-3">Thickness</th><th className="px-4 py-3">Rate</th><th className="px-4 py-3">Unit</th></tr></thead>
+        <tbody className="divide-y divide-slate-100">{rates.map(x=><tr key={x.id}><td className="px-4 py-3 font-semibold">{x.operation_label}</td><td className="px-4 py-3">{x.material_name||"All materials"}</td><td className="px-4 py-3">{x.thickness_mm?x.thickness_mm+" mm":"—"}</td><td className="px-4 py-3">{money(x.rate)}</td><td className="px-4 py-3">/{x.unit}</td></tr>)}</tbody>
+      </table></div>
+    </section>}
+    {tab==="staff"&&<section className="space-y-3">
+      <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-900">Hourly cost for monthly salary staff = monthly salary ÷ 214.5 productive hours. Salary is a company expense; job labour allocation must not add the salary expense a second time.</div>
+      <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white"><table className="w-full min-w-[750px] text-left text-sm">
+        <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="px-4 py-3">Staff</th><th className="px-4 py-3">Staff ID</th><th className="px-4 py-3">Payment Type</th><th className="px-4 py-3">Monthly Salary</th><th className="px-4 py-3">Hourly Cost</th><th className="px-4 py-3">Action</th></tr></thead>
+        <tbody className="divide-y divide-slate-100">{staff.map(x=><StaffRow key={x.staff_id} item={x} canManage={canManage} onSave={saveStaff}/>)}</tbody>
+      </table></div>
+    </section>}
+    {editing!==null&&<div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4"><form onSubmit={saveMaterial} className="max-h-[92vh] w-full max-w-3xl space-y-4 overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl">
+      <div className="flex items-center justify-between"><h2 className="text-xl font-bold">{editing==="new"?"Add Material Variant":"Edit Material Variant"}</h2><button type="button" onClick={()=>setEditing(null)} className="rounded-lg px-3 py-2 hover:bg-slate-100">✕</button></div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {[
+          ["material_name","Material Name","text"],["brand","Brand","text"],["thickness_mm","Thickness (mm)","number"],["variant","Variant / Supplier Code","text"],["sheet_width_ft","Sheet Width (ft)","number"],["sheet_height_ft","Sheet Height (ft)","number"],["purchase_rate","Purchase Rate (₹)","number"],["retail_rate","Retail Rate (₹)","number"],["supplier_name","Supplier","text"],["stock_quantity","Stock Quantity","number"]
+        ].map(([key,label,type])=><label key={key} className="text-sm font-medium text-slate-700">{label}<input type={type} step="0.01" value={form[key]??""} onChange={e=>setField(key,e.target.value)} className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2.5"/></label>)}
+        <label className="text-sm font-medium text-slate-700">Colour<select value={form.colour||"na"} onChange={e=>setField("colour",e.target.value)} className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2.5"><option value="na">Not applicable</option><option value="clear">Clear</option><option value="colour">Colour</option></select></label>
+        <label className="text-sm font-medium text-slate-700">Unit<input value={form.unit||"Sheet"} onChange={e=>setField("unit",e.target.value)} className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2.5"/></label>
+      </div>
+      <div className="flex justify-end gap-2"><button type="button" onClick={()=>setEditing(null)} className="rounded-xl border px-4 py-2.5">Cancel</button><button disabled={busy} className="rounded-xl bg-indigo-600 px-5 py-2.5 font-semibold text-white">{busy?"Saving…":"Save Material"}</button></div>
+    </form></div>}
+  </div>;
+}
+
+function StaffRow({item,canManage,onSave}){
+  const [type,setType]=useState(item.payment_type||"monthly");
+  const [salary,setSalary]=useState(item.monthly_salary||"");
+  return <tr><td className="px-4 py-3 font-semibold">{item.name}</td><td className="px-4 py-3">{item.staff_code}</td>
+    <td className="px-4 py-3">{canManage?<select value={type} onChange={e=>setType(e.target.value)} className="rounded-lg border px-2 py-2"><option value="monthly">Monthly salary</option><option value="per_work">Per work</option></select>:type||"Not set"}</td>
+    <td className="px-4 py-3">{type==="monthly"&&canManage?<input type="number" min="0" step="0.01" value={salary} onChange={e=>setSalary(e.target.value)} className="w-32 rounded-lg border px-2 py-2"/>:type==="monthly"?money(item.monthly_salary):"—"}</td>
+    <td className="px-4 py-3">{type==="monthly"?money(item.hourly_cost):"Work-based"}</td>
+    <td className="px-4 py-3">{canManage&&<button onClick={()=>onSave(item.staff_id,type,salary)} className="font-semibold text-indigo-600">Save</button>}</td></tr>;
+}
