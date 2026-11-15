@@ -100,6 +100,17 @@ class ProductionDepartmentAccessTests(TestCase):
         self.creative_job.refresh_from_db()
         self.assertNotEqual(self.creative_job.stage, ProductionJob.Stage.COMPLETED)
 
+    def test_manager_100_percent_requires_completed_stage(self):
+        self.client.force_login(self.creative_manager)
+        response = self.client.post(
+            f"/api/production/jobs/{self.creative_job.pk}/progress/",
+            data='{"stage":"production","progress_percent":100,"note":"Incorrect final stage"}',
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.creative_job.refresh_from_db()
+        self.assertNotEqual(self.creative_job.status, ProductionJob.Status.COMPLETED)
+
     def test_manager_completed_stage_requires_100_percent(self):
         self.client.force_login(self.creative_manager)
         response = self.client.post(
