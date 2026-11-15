@@ -134,21 +134,19 @@ class PdfBaselineCleanupCommandTests(TestCase):
         self.assertFalse(Customer.objects.filter(pk=self.customer.pk).exists())
         self.assertEqual(before, self.protected_snapshot())
 
-    def test_collector_refuses_cascade_into_protected_user(self):
-        notification = Notification.objects.create(
-            user=self.user,
-            title="Legacy notification",
-            message="Must not cause user deletion",
-        )
+    def test_collector_refuses_cascade_into_protected_staff_compensation(self):
         output = StringIO()
+        protected = reset_to_pdf_baseline.PRESERVED_MODELS.copy()
+        protected.remove(StaffProfile)
 
-        with patch.object(
-            reset_to_pdf_baseline.apps, "get_models", return_value=[Notification]
+        with (
+            patch.object(reset_to_pdf_baseline.apps, "get_models", return_value=[StaffProfile]),
+            patch.object(reset_to_pdf_baseline, "PRESERVED_MODELS", protected),
         ):
             with self.assertRaises(CommandError):
                 call_command("reset_to_pdf_baseline", apply=True, stdout=output)
 
-        self.assertTrue(Notification.objects.filter(pk=notification.pk).exists())
-        self.assertTrue(User.objects.filter(pk=self.user.pk).exists())
-        self.assertTrue(UserProfile.objects.filter(pk=self.user_profile.pk).exists())
         self.assertTrue(StaffProfile.objects.filter(pk=self.staff_profile.pk).exists())
+        self.assertTrue(
+            StaffCompensation.objects.filter(pk=self.staff_compensation.pk).exists()
+        )
