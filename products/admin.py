@@ -32,6 +32,10 @@ class MaterialVariantAdmin(admin.ModelAdmin):
     list_filter = ("material_name", "brand", "colour", "is_active")
     search_fields = ("material_name", "brand", "variant", "supplier_name")
 
+    def save_model(self, request, obj, form, change):
+        obj._rate_changed_by = request.user
+        super().save_model(request, obj, form, change)
+
 
 @admin.register(MaterialRateHistory)
 class MaterialRateHistoryAdmin(admin.ModelAdmin):
