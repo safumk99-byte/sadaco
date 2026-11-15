@@ -14,10 +14,12 @@ from .models import Designation, PerformanceRecord, StaffAttendance, StaffProfil
 
 class StaffModuleTests(TestCase):
     def setUp(self):
+        self.department = Department.objects.create(code="staff-module-test", name="Staff Module Test")
         self.admin = User.objects.create_user(username="manager", password="StrongPass123!")
         UserProfile.objects.create(
             user=self.admin,
             role=UserProfile.Role.MANAGER,
+            department=self.department,
         )
         self.designation = Designation.objects.create(name="Manager")
         self.area = WorkArea.objects.create(name="Administration")
@@ -27,10 +29,11 @@ class StaffModuleTests(TestCase):
             first_name="Test",
             last_name="Staff",
         )
-        UserProfile.objects.create(user=self.staff_user, role=UserProfile.Role.STAFF)
+        UserProfile.objects.create(user=self.staff_user, role=UserProfile.Role.STAFF, department=self.department)
         self.staff = StaffProfile.objects.create(
             user=self.staff_user,
             staff_id="ST001",
+            department=self.department,
             designation=self.designation,
             work_area=self.area,
         )
@@ -96,19 +99,21 @@ class StaffModuleTests(TestCase):
 
 class StaffOperationalRegressionTests(TestCase):
     def setUp(self):
+        self.department = Department.objects.create(code="staff-ops-test", name="Staff Ops Test")
         self.manager = User.objects.create_user(
             username="opsmanager", password="StrongPass123!"
         )
-        UserProfile.objects.create(user=self.manager, role=UserProfile.Role.MANAGER)
+        UserProfile.objects.create(user=self.manager, role=UserProfile.Role.MANAGER, department=self.department)
         self.designation = Designation.objects.create(name="Operations")
         self.area = WorkArea.objects.create(name="Operations Area")
         self.staff_user = User.objects.create_user(
             username="opsstaff", password="StrongPass123!"
         )
-        UserProfile.objects.create(user=self.staff_user, role=UserProfile.Role.STAFF)
+        UserProfile.objects.create(user=self.staff_user, role=UserProfile.Role.STAFF, department=self.department)
         self.staff = StaffProfile.objects.create(
             user=self.staff_user,
             staff_id="OPS001",
+            department=self.department,
             designation=self.designation,
             work_area=self.area,
         )
