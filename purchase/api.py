@@ -12,7 +12,7 @@ from accounts.models import UserProfile
 from products.models import Product
 from products.inventory import record_stock_transaction
 from .forms import SupplierForm, PurchaseOrderForm, PurchaseItemForm, GoodsReceiptForm
-from .models import Supplier, PurchaseOrder, PurchaseItem, GoodsReceipt, GoodsReceiptLine
+from .models import Supplier, PurchaseOrder, PurchaseItem, GoodsReceipt, GoodsReceiptLine, MaterialStockLot
 
 MANAGER_ROLES = {UserProfile.Role.SUPER_ADMIN, UserProfile.Role.INSTITUTION_ADMIN, UserProfile.Role.MANAGER}
 
@@ -166,13 +166,16 @@ def receive(request, pk):
     if not form.is_valid(): return JsonResponse({'detail':'Validation failed.','errors':form.errors.get_json_data()},status=400)
     data = _data(request)
     location = str(data.get("location", "")).strip()
-    if any(item.material_variant_id for item in po.items.all()) and not location:
+    pending_items = list(po.items.select_related("material_variant", "product").all())
+    if any(item.pending_quantity > 0 and not (item.material_variant_id or item.product_id) for item in pending_items):
+        return JsonResponse({"detail": "Every pending purchase item must be linked to a stock item before receiving."}, status=400)
+    if any(item.material_variant_id and item.pending_quantity > 0 for item in pending_items) and not location:
         return JsonResponse({"detail": "A stock location is required to receive material master items."}, status=400)
     receipt=form.save(commit=False); receipt.purchase_order=po; receipt.received_by=request.user; receipt.save()
     from inventory.models import MaterialStockBalance, MaterialStockMovement
     from inventory.services import record_material_movement
     from products.models import MaterialVariant
-    for item in po.items.select_related("material_variant", "product").all():
+    for item in pending_items:
         qty=item.pending_quantity
         if qty <= 0: continue
         if item.material_variant_id:
@@ -194,11 +197,16 @@ def receive(request, pk):
                                       reference=receipt.receipt_no, remarks=f'Goods received for {po.po_no}.')
         else:
             return JsonResponse({"detail": f"Purchase item {item.pk} has no stock item linked."}, status=400)
-        GoodsReceiptLine.objects.create(
+        receipt_line = GoodsReceiptLine.objects.create(
             receipt=receipt, purchase_item=item, received_quantity=qty,
             unit_cost=item.unit_cost, line_total=qty * item.unit_cost,
             material_stock_movement=movement if item.material_variant_id else None,
         )
+        if item.material_variant_id:
+            MaterialStockLot.objects.create(
+                receipt_line=receipt_line, balance=balance,
+                original_quantity=qty, remaining_quantity=qty, unit_cost=item.unit_cost,
+            )
         item.received_quantity += qty; item.save(update_fields=['received_quantity'])
     from django.db.models import F
     remaining = po.items.filter(received_quantity__lt=F('quantity')).exists()
