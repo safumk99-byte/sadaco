@@ -9,6 +9,7 @@ from django.views.decorators.http import require_GET, require_POST
 from products.models import MaterialVariant, MachineRate, StaffCompensation
 from staff.models import StaffProfile
 from accounts.models import UserProfile
+from core.models import AuditLog
 
 
 def _can_manage_costing(user):
@@ -125,6 +126,13 @@ def machine_rate_save_api(request, pk=None):
         return JsonResponse({"detail": "You do not have permission to edit machine rates."}, status=403)
     data = _data(request)
     rate = get_object_or_404(MachineRate, pk=pk) if pk else MachineRate()
+    previous = {
+        "operation": rate.operation,
+        "material_name": rate.material_name,
+        "thickness_mm": rate.thickness_mm,
+        "rate": rate.rate,
+        "unit": rate.unit,
+    } if pk else None
     try:
         rate.operation = str(data.get("operation", rate.operation)).strip()
         if rate.operation not in dict(MachineRate.Operation.choices):
@@ -137,6 +145,17 @@ def machine_rate_save_api(request, pk=None):
         rate.save()
     except (ValueError, InvalidOperation) as exc:
         return JsonResponse({"detail": str(exc)}, status=400)
+    AuditLog.objects.create(
+        user=request.user,
+        module="machine_rates",
+        action=AuditLog.Action.UPDATE if previous else AuditLog.Action.CREATE,
+        reference=f"MachineRate:{rate.pk}",
+        description=(
+            f"Operation={rate.operation}; material={rate.material_name}; "
+            f"thickness={rate.thickness_mm}; rate={rate.rate}/{rate.unit}; "
+            f"previous={previous}"
+        ),
+    )
     return JsonResponse({"ok": True, "id": rate.id}, status=201 if not pk else 200)
 
 
@@ -187,6 +206,13 @@ def staff_compensation_save_api(request, staff_id):
             raise ValueError("Working days must be 1–31 and productive hours must be greater than zero.")
     except (ValueError, InvalidOperation) as exc:
         return JsonResponse({"detail": str(exc)}, status=400)
+    previous = StaffCompensation.objects.filter(staff=staff).first()
+    previous_values = {
+        "payment_type": previous.payment_type,
+        "monthly_salary": str(previous.monthly_salary) if previous.monthly_salary is not None else None,
+        "working_days_per_month": previous.working_days_per_month,
+        "productive_hours_per_day": str(previous.productive_hours_per_day),
+    } if previous else None
     comp, _ = StaffCompensation.objects.update_or_create(
         staff=staff,
         defaults={
@@ -194,5 +220,16 @@ def staff_compensation_save_api(request, staff_id):
             "working_days_per_month": working_days,
             "productive_hours_per_day": productive_hours,
         },
+    )
+    AuditLog.objects.create(
+        user=request.user,
+        module="staff_compensation",
+        action=AuditLog.Action.UPDATE if previous_values else AuditLog.Action.CREATE,
+        reference=staff.staff_id,
+        description=(
+            f"Payment type={comp.payment_type}; monthly salary="
+            f"{comp.monthly_salary}; working days={comp.working_days_per_month}; "
+            f"productive hours/day={comp.productive_hours_per_day}; previous={previous_values}"
+        ),
     )
     return JsonResponse({"ok": True, "payment_type": comp.payment_type, "monthly_salary": str(comp.monthly_salary) if comp.monthly_salary is not None else ""})
