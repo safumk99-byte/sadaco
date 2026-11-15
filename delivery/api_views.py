@@ -73,6 +73,8 @@ def update(request, pk):
     order = get_object_or_404(_visible_orders(request.user).select_for_update(), pk=pk)
     d = DeliveryRecord.objects.select_for_update().filter(order=order).first()
     current_status = d.status if d else DeliveryRecord.Status.PENDING
+    if d is None:
+        d = DeliveryRecord(order=order)
 
     date_fields = ('delivery_date', 'installation_date')
     for field in date_fields:
@@ -115,8 +117,6 @@ def update(request, pk):
             return JsonResponse({'detail': 'Installation must be marked as required before an order can be marked Installed.'}, status=400)
         d.status = requested
 
-    if d is None:
-        d = DeliveryRecord(order=order)
     d.save()
     if d.status in (DeliveryRecord.Status.DELIVERED, DeliveryRecord.Status.INSTALLED):
         if order.status != SalesOrder.Status.DELIVERED:
