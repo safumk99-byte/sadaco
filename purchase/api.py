@@ -17,7 +17,8 @@ from .models import Supplier, PurchaseOrder, PurchaseItem, GoodsReceipt
 MANAGER_ROLES = {UserProfile.Role.SUPER_ADMIN, UserProfile.Role.INSTITUTION_ADMIN, UserProfile.Role.MANAGER}
 
 def _manager(user):
-    return user.is_superuser or getattr(getattr(user, 'profile', None), 'role', None) in MANAGER_ROLES
+    profile = getattr(user, "profile", None)
+    return user.is_superuser or bool(profile and profile.is_active and profile.role in MANAGER_ROLES)
 
 def _choices(choices): return [{'value': v, 'label': l} for v, l in choices]
 def _supplier(s):
