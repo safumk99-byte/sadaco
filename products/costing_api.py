@@ -1,5 +1,4 @@
 import json
-from datetime import date
 from decimal import Decimal, InvalidOperation
 
 from django.contrib.auth.decorators import login_required
@@ -7,14 +6,14 @@ from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 from django.views.decorators.http import require_GET, require_POST
 
-from products.models import MaterialVariant, MaterialRateHistory, MachineRate, StaffCompensation
+from products.models import MaterialVariant, MachineRate, StaffCompensation
 from staff.models import StaffProfile
 from accounts.models import UserProfile
 
 
 def _can_manage_costing(user):
     role = getattr(getattr(user, "profile", None), "role", None)
-    return user.is_superuser or role in (UserProfile.Role.SUPER_ADMIN, UserProfile.Role.INSTITUTION_ADMIN)
+    return user.is_superuser or role in (UserProfile.Role.SUPER_ADMIN, UserProfile.Role.INSTITUTION_ADMIN, UserProfile.Role.MANAGER)
 
 
 def _data(request):
@@ -77,7 +76,6 @@ def material_master_save_api(request, pk=None):
         return JsonResponse({"detail": "You do not have permission to edit material rates."}, status=403)
     data = _data(request)
     item = get_object_or_404(MaterialVariant, pk=pk) if pk else MaterialVariant()
-    old_purchase, old_retail = item.purchase_rate, item.retail_rate
     try:
         item.material_name = str(data.get("material_name", item.material_name)).strip()
         if not item.material_name:
@@ -97,16 +95,11 @@ def material_master_save_api(request, pk=None):
         item.supplier_name = str(data.get("supplier_name", item.supplier_name)).strip()
         item.unit = str(data.get("unit", item.unit or "Sheet")).strip() or "Sheet"
         item.is_active = str(data.get("is_active", item.is_active)).lower() not in ("false", "0", "no")
+        item._rate_changed_by = request.user
         item.save()
     except (ValueError, InvalidOperation) as exc:
         return JsonResponse({"detail": str(exc)}, status=400)
 
-    if old_purchase != item.purchase_rate or old_retail != item.retail_rate:
-        MaterialRateHistory.objects.create(
-            material=item, purchase_rate=item.purchase_rate, retail_rate=item.retail_rate,
-            effective_from=date.today(), changed_by=request.user,
-            note="Initial rate" if not pk else "Rate updated",
-        )
     return JsonResponse({"ok": True, "material": _material_payload(item)}, status=201 if not pk else 200)
 
 
@@ -155,9 +148,12 @@ def staff_compensation_api(request):
             "staff_code": staff.staff_id,
             "payment_type": comp.payment_type if comp else "",
             "monthly_salary": str(comp.monthly_salary) if comp and comp.monthly_salary is not None else "",
-            "hourly_cost": str(comp.hourly_cost.quantize(Decimal("0.01"))) if comp and comp.hourly_cost is not None else "",
+            "hourly_cost": str(comp.hourly_cost) if comp and comp.hourly_cost is not None else "",
+            "working_days_per_month": comp.working_days_per_month if comp else 26,
+            "productive_hours_per_day": str(comp.productive_hours_per_day) if comp else "8.25",
+            "working_hours_month": str(comp.monthly_productive_hours) if comp else "214.5",
         })
-    return JsonResponse({"staff": rows, "working_hours_month": "214.5", "can_manage": _can_manage_costing(request.user)})
+    return JsonResponse({"staff": rows, "can_manage": _can_manage_costing(request.user)})
 
 
 @require_POST
@@ -178,7 +174,19 @@ def staff_compensation_save_api(request, staff_id):
                 raise ValueError("Monthly salary must be greater than zero.")
     except (ValueError, InvalidOperation) as exc:
         return JsonResponse({"detail": str(exc)}, status=400)
+    try:
+        working_days = int(data.get("working_days_per_month", 26))
+        productive_hours = _decimal(data.get("productive_hours_per_day", "8.25"), "Productive hours per day")
+        if not 1 <= working_days <= 31 or productive_hours <= 0:
+            raise ValueError("Working days must be 1–31 and productive hours must be greater than zero.")
+    except (ValueError, InvalidOperation) as exc:
+        return JsonResponse({"detail": str(exc)}, status=400)
     comp, _ = StaffCompensation.objects.update_or_create(
-        staff=staff, defaults={"payment_type": payment_type, "monthly_salary": salary, "is_active": True},
+        staff=staff,
+        defaults={
+            "payment_type": payment_type, "monthly_salary": salary, "is_active": True,
+            "working_days_per_month": working_days,
+            "productive_hours_per_day": productive_hours,
+        },
     )
     return JsonResponse({"ok": True, "payment_type": comp.payment_type, "monthly_salary": str(comp.monthly_salary) if comp.monthly_salary is not None else ""})
