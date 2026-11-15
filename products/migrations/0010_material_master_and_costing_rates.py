@@ -1,14 +1,16 @@
 from decimal import Decimal
 from django.db import migrations, models
+from django.utils import timezone
 import django.db.models.deletion
 
 
 def seed_material_master(apps, schema_editor):
     Material = apps.get_model("products", "MaterialVariant")
+    MaterialRateHistory = apps.get_model("products", "MaterialRateHistory")
     MachineRate = apps.get_model("products", "MachineRate")
 
     def add(name, brand="", thickness=None, variant="", colour="na", width="8", height="4", rate=None):
-        Material.objects.update_or_create(
+        material, _ = Material.objects.update_or_create(
             material_name=name, brand=brand, thickness_mm=Decimal(str(thickness)) if thickness is not None else None,
             variant=variant, colour=colour,
             defaults={
@@ -17,6 +19,16 @@ def seed_material_master(apps, schema_editor):
                 "retail_rate": None, "unit": "Sheet", "stock_quantity": Decimal("0"), "is_active": True,
             },
         )
+        if rate is not None:
+            MaterialRateHistory.objects.get_or_create(
+                material_id=material.pk,
+                effective_from=timezone.localdate(),
+                defaults={
+                    "purchase_rate": material.purchase_rate,
+                    "retail_rate": material.retail_rate,
+                    "note": "Initial rate from approved SADACO requirements",
+                },
+            )
 
     # ASTARI acrylic, 8 x 4 ft sheets. 1.8mm supplier variants are distinct names.
     for variant, rate in [("402", 3085), ("434", 3085), ("441", 3160), ("136", 3085), ("502", 3085)]:
