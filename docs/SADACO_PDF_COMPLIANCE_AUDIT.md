@@ -233,3 +233,13 @@ The current CI run #108 for commit `4a1107ec683035f970835d77fbb7e868c0a7e389` co
 - CI applies the complete migration chain to a fresh PostgreSQL 16 database and runs the listed regression tests. It does **not** connect to the Neon backup clone, so it is not a substitute for the legacy-baseline migration test.
 
 **Remaining verification:** execute `python manage.py migrate --plan`, `python manage.py migrate --noinput`, and `python manage.py migrate --check` using the exact feature-branch code and the isolated Neon test branch; then compare every affected table, constraint, index, sequence and row count. Do not run this test against production. The migration test has not yet been executed; no success is claimed.
+
+
+## 2026-11-15 — Department API isolation follow-up
+
+- Restricted `products/costing_api.py` staff compensation reads and writes to active staff in the requesting manager's own department. Superusers and global administrators retain cross-department access.
+- Finance API review: sales receipts are scoped through the linked sales order's customer department; supplier payments are scoped through their linked purchase order; expense records are scoped through the creator's department. No Finance API changes were made in this pass.
+- Purchase API review: purchase orders are scoped by the creator's department. Supplier and product records are shared master data in the current schema; no division ownership field exists for either. They remain shared rather than imposing a misleading division filter.
+- Material variants and machine rates are currently global shared rate masters. Staff compensation is now department-scoped; do not assume material/machine rates should be duplicated per division without a business rule.
+- Inventory products and stock are also global in the current schema. True division-level inventory isolation requires an explicit ownership/stock-location data model and migration; filtering by creator would be incorrect for shared stock.
+- Verification limitation: GitHub commit status for the compensation-scope commit has not yet reported CI checks. No production database writes, merge to `main`, or Render deployment were performed.
