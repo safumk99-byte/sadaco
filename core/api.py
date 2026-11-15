@@ -14,7 +14,7 @@ from products.models import Product
 from staff.models import StaffAttendance, StaffProfile, StaffTask, Designation, WorkArea, PerformanceRecord
 from sales.models import Customer, Enquiry, SalesOrder, OrderRequest
 from accounts.models import Notification, UserProfile, PushSubscription
-from core.models import Department
+from core.models import Department, ApprovalRequest
 
 
 def _user_payload(user):
@@ -839,13 +839,23 @@ def _approval_payload(item):
         "reviewed_at": item.reviewed_at.isoformat() if item.reviewed_at else None}
 
 
+def _approval_requests_for_user(user):
+    qs = ApprovalRequest.objects.all()
+    role = getattr(getattr(user, "profile", None), "role", None)
+    if user.is_superuser or role in (UserProfile.Role.SUPER_ADMIN, UserProfile.Role.INSTITUTION_ADMIN):
+        return qs
+    if role == UserProfile.Role.MANAGER:
+        department_id = getattr(user.profile, "department_id", None)
+        return qs.filter(requested_by__profile__department_id=department_id) if department_id else qs.none()
+    return qs.none()
+
+
 @require_GET
 @login_required
-
 def approvals_api(request):
     if getattr(getattr(request.user, "profile", None), "role", None) not in ("super_admin", "institution_admin", "manager") and not request.user.is_superuser:
         return JsonResponse({"detail": "You do not have permission to view approvals."}, status=403)
-    qs = ApprovalRequest.objects.select_related("requested_by", "reviewed_by")
+    qs = _approval_requests_for_user(request.user).select_related("requested_by", "reviewed_by")
     status = request.GET.get("status", "").strip()
     if status: qs = qs.filter(status=status)
     return JsonResponse({"items": [_approval_payload(x) for x in qs[:300]], "can_review": True})
@@ -853,11 +863,10 @@ def approvals_api(request):
 
 @require_POST
 @login_required
-
 def approval_review_api(request, pk):
     if getattr(getattr(request.user, "profile", None), "role", None) not in ("super_admin", "institution_admin", "manager") and not request.user.is_superuser:
         return JsonResponse({"detail": "You do not have permission to review approvals."}, status=403)
-    item = get_object_or_404(ApprovalRequest, pk=pk)
+    item = get_object_or_404(_approval_requests_for_user(request.user), pk=pk)
     data = _request_data(request)
     status = str(data.get("status", "")).strip()
     if status not in (ApprovalRequest.Status.APPROVED, ApprovalRequest.Status.REJECTED):
