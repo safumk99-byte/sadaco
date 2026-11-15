@@ -21,6 +21,9 @@ def remove_demo_catalog_data(apps, schema_editor):
         .exclude(production_materials__isnull=False)
         .exclude(stock_counts__isnull=False)
         .exclude(inventory_reorder_alert__isnull=False)
+        # A non-zero balance is operational stock even when the legacy ledger
+        # has no transaction rows. Never discard it as catalogue demo data.
+        .exclude(stock_quantity__gt=0)
     )
     if StockTransaction.objects.filter(product__in=demo_products).exists():
         raise RuntimeError(
