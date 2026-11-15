@@ -91,6 +91,8 @@ def material_movement_create_api(request):
         scope = _manager_department(request.user)
         if scope is False:
             return JsonResponse({"detail": "You do not have permission to manage material stock."}, status=403)
+        if data.get("type") == MaterialStockMovement.Type.JOB_ISSUE:
+            return JsonResponse({"detail": "Use the production material issue workflow so the job requirement and stock ledger stay synchronized."}, status=400)
         job = ProductionJob.objects.filter(pk=data.get("job")).select_related("order__customer").first() if data.get("job") else None
         if data.get("job") and not job:
             return JsonResponse({"detail": "Production job not found."}, status=404)
@@ -159,3 +161,41 @@ def offcuts_api(request):
         "status": x.status, "source_job": x.source_job.job_no if x.source_job_id else None,
         "used_for_job": x.used_for_job.job_no if x.used_for_job_id else None, "notes": x.notes,
     } for x in qs[:500]]})
+
+
+@require_POST
+@login_required
+def production_material_issue_api(request):
+    from .services import issue_material
+    try:
+        data = json.loads(request.body or "{}")
+        scope = _manager_department(request.user)
+        if scope is False:
+            return JsonResponse({"detail": "You do not have permission to issue material."}, status=403)
+        material_line = ProductionJob.objects.none()
+        from production.models import ProductionMaterial
+        lines = ProductionMaterial.objects.select_related("job__order__customer")
+        if scope is not None:
+            lines = lines.filter(job__order__customer__department_id=scope)
+        line = lines.filter(pk=data.get("material_line")).first()
+        if not line:
+            return JsonResponse({"detail": "Production material line not found in your department."}, status=404)
+        employee = StaffProfile.objects.filter(pk=data.get("employee")).first() if data.get("employee") else None
+        if data.get("employee") and not employee:
+            return JsonResponse({"detail": "Employee not found."}, status=404)
+        issue, movement = issue_material(
+            material_id=line.pk,
+            quantity=data.get("quantity"),
+            balance_id=data.get("balance"),
+            user=request.user,
+            employee=employee,
+            reference=str(data.get("reference", "")),
+            remarks=str(data.get("remarks", "")),
+        )
+        return JsonResponse({
+            "ok": True, "issue_id": issue.pk, "movement_id": movement.pk,
+            "issued_quantity": str(line.issued_quantity),
+            "balance_after": str(movement.balance_after),
+        }, status=201)
+    except (ValueError, TypeError, InvalidOperation, ValidationError) as exc:
+        return JsonResponse({"detail": str(exc)}, status=400)
