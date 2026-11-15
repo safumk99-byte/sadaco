@@ -59,7 +59,21 @@ def _notify(job, title, message, priority="normal"):
     users=[]
     if job.assigned_staff_id: users.append(job.assigned_staff.user)
     if job.created_by_id: users.append(job.created_by)
-    users += list(UserProfile.objects.filter(role__in=[UserProfile.Role.SUPER_ADMIN,UserProfile.Role.INSTITUTION_ADMIN,UserProfile.Role.MANAGER],is_active=True).values_list("user",flat=True))
+    users += list(UserProfile.objects.filter(
+        role__in=[UserProfile.Role.SUPER_ADMIN, UserProfile.Role.INSTITUTION_ADMIN],
+        is_active=True,
+    ).values_list("user", flat=True))
+    department_id = (
+        job.assigned_staff.department_id if job.assigned_staff_id
+        else job.order.responsible_staff.department_id if job.order.responsible_staff_id
+        else None
+    )
+    if department_id:
+        users += list(UserProfile.objects.filter(
+            role=UserProfile.Role.MANAGER,
+            department_id=department_id,
+            is_active=True,
+        ).values_list("user", flat=True))
     seen=set()
     for item in users:
         uid=getattr(item,"pk",item)
