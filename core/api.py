@@ -941,16 +941,26 @@ def customer_request_update_api(request, pk):
     status = str(data.get("status", item.status)).strip()
     if status not in dict(OrderRequest.Status.choices): return JsonResponse({"detail": "Invalid status."}, status=400)
     item.status = status
-    item.manager_notes = str(data.get("manager_notes", item.manager_notes)).strip()
-    if data.get("assigned_to") and role != UserProfile.Role.STAFF:
+    if role != UserProfile.Role.STAFF:
+        item.manager_notes = str(data.get("manager_notes", item.manager_notes)).strip()
+    elif "manager_notes" in data and str(data.get("manager_notes", "")) != item.manager_notes:
+        return JsonResponse({"detail": "Only managers can edit manager notes."}, status=403)
+
+    if data.get("assigned_to"):
+        if role == UserProfile.Role.STAFF:
+            return JsonResponse({"detail": "Only managers can assign customer requests."}, status=403)
+        eligible_staff = User.objects.filter(
+            is_active=True,
+            profile__is_active=True,
+            profile__role=UserProfile.Role.STAFF,
+        )
         if role == UserProfile.Role.MANAGER and not request.user.is_superuser:
             department_id = getattr(request.user.profile, "department_id", None)
             if not department_id:
                 return JsonResponse({"detail": "Your account is not assigned to a department."}, status=400)
-            assigned_user = get_object_or_404(User.objects.filter(profile__department_id=department_id), pk=data.get("assigned_to"))
-            item.assigned_to = assigned_user
-        else:
-            item.assigned_to_id = data.get("assigned_to")
+            eligible_staff = eligible_staff.filter(profile__department_id=department_id)
+        assigned_user = get_object_or_404(eligible_staff, pk=data.get("assigned_to"))
+        item.assigned_to = assigned_user
     item.save(update_fields=["status", "manager_notes", "assigned_to", "updated_at"])
     return JsonResponse({"ok": True})
 
