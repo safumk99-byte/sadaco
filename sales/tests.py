@@ -6,6 +6,7 @@ from django.test import TestCase
 from django.urls import reverse
 
 from accounts.models import UserProfile
+from core.models import Department
 from products.models import ProductCategory
 from staff.models import Designation, StaffProfile, WorkArea
 
@@ -275,3 +276,83 @@ class CustomerSalesWorkflowTests(TestCase):
         )
         self.assertEqual(response.status_code, 302)
         self.assertTrue(CustomerFeedback.objects.filter(order=order, rating=5).exists())
+
+
+class SalesDepartmentAccessTests(TestCase):
+    def setUp(self):
+        from .api import _customer_qs, _enquiry_qs, _quotation_qs, _order_qs
+        self.customer_qs = _customer_qs
+        self.enquiry_qs = _enquiry_qs
+        self.quotation_qs = _quotation_qs
+        self.order_qs = _order_qs
+        self.creatives = Department.objects.create(code="sales-creatives", name="Sales Creatives")
+        self.cnc = Department.objects.create(code="sales-cnc", name="Sales CNC")
+        self.manager = User.objects.create_user(username="sales_creatives_mgr", password="StrongPass123!")
+        UserProfile.objects.create(user=self.manager, role=UserProfile.Role.MANAGER, department=self.creatives)
+        self.other_manager = User.objects.create_user(username="sales_cnc_mgr", password="StrongPass123!")
+        UserProfile.objects.create(user=self.other_manager, role=UserProfile.Role.MANAGER, department=self.cnc)
+        self.creative_customer = Customer.objects.create(
+            name="Creative Customer", phone="9000000001", department=self.creatives
+        )
+        self.cnc_customer = Customer.objects.create(
+            name="CNC Customer", phone="9000000002", department=self.cnc
+        )
+        self.creative_enquiry = Enquiry.objects.create(
+            customer=self.creative_customer, channel=Enquiry.Channel.PHONE,
+            product_type="Creative item", quantity=1, created_by=self.manager
+        )
+        self.cnc_enquiry = Enquiry.objects.create(
+            customer=self.cnc_customer, channel=Enquiry.Channel.PHONE,
+            product_type="CNC item", quantity=1, created_by=self.other_manager
+        )
+        self.creative_quotation = Quotation.objects.create(
+            customer=self.creative_customer, item_description="Creative item",
+            quantity=1, quoted_price=1000, created_by=self.manager
+        )
+        self.cnc_quotation = Quotation.objects.create(
+            customer=self.cnc_customer, item_description="CNC item",
+            quantity=1, quoted_price=2000, created_by=self.other_manager
+        )
+        self.creative_order = SalesOrder.objects.create(
+            customer=self.creative_customer, item_description="Creative item",
+            quantity=1, confirmed_price=1000, created_by=self.manager
+        )
+        self.cnc_order = SalesOrder.objects.create(
+            customer=self.cnc_customer, item_description="CNC item",
+            quantity=1, confirmed_price=2000, created_by=self.other_manager
+        )
+
+    def test_manager_sees_only_department_customers(self):
+        self.assertEqual(
+            set(self.customer_qs(self.manager).values_list("id", flat=True)),
+            {self.creative_customer.id},
+        )
+
+    def test_manager_sees_only_department_enquiries_quotations_and_orders(self):
+        self.assertEqual(
+            set(self.enquiry_qs(self.manager).values_list("id", flat=True)),
+            {self.creative_enquiry.id},
+        )
+        self.assertEqual(
+            set(self.quotation_qs(self.manager).values_list("id", flat=True)),
+            {self.creative_quotation.id},
+        )
+        self.assertEqual(
+            set(self.order_qs(self.manager).values_list("id", flat=True)),
+            {self.creative_order.id},
+        )
+
+    def test_unassigned_manager_has_no_sales_data(self):
+        user = User.objects.create_user(username="sales_unassigned", password="StrongPass123!")
+        UserProfile.objects.create(user=user, role=UserProfile.Role.MANAGER)
+        self.assertFalse(self.customer_qs(user).exists())
+        self.assertFalse(self.enquiry_qs(user).exists())
+        self.assertFalse(self.quotation_qs(user).exists())
+        self.assertFalse(self.order_qs(user).exists())
+
+    def test_global_admin_sees_all_sales_departments(self):
+        admin = User.objects.create_superuser(username="sales_root", password="StrongPass123!")
+        self.assertEqual(self.customer_qs(admin).count(), 2)
+        self.assertEqual(self.enquiry_qs(admin).count(), 2)
+        self.assertEqual(self.quotation_qs(admin).count(), 2)
+        self.assertEqual(self.order_qs(admin).count(), 2)
