@@ -877,11 +877,15 @@ def audit_api(request):
 def customer_requests_api(request):
     qs = OrderRequest.objects.select_related("customer", "product", "assigned_to")
     role = getattr(getattr(request.user, "profile", None), "role", None)
-    if role == UserProfile.Role.STAFF and not request.user.is_superuser:
+    if request.user.is_superuser or role in (UserProfile.Role.SUPER_ADMIN, UserProfile.Role.INSTITUTION_ADMIN):
+        pass
+    elif role == UserProfile.Role.STAFF:
         qs = qs.filter(assigned_to=request.user)
-    elif role == UserProfile.Role.MANAGER and not request.user.is_superuser:
+    elif role == UserProfile.Role.MANAGER:
         department_id = getattr(request.user.profile, "department_id", None)
         qs = qs.filter(Q(customer__department_id=department_id) | Q(assigned_to__profile__department_id=department_id)).distinct() if department_id else qs.none()
+    else:
+        qs = qs.none()
     q = request.GET.get("q", "").strip(); status = request.GET.get("status", "").strip()
     if q: qs = qs.filter(Q(request_no__icontains=q) | Q(customer__name__icontains=q) | Q(product_name__icontains=q))
     if status: qs = qs.filter(status=status)
@@ -898,11 +902,15 @@ def customer_requests_api(request):
 def customer_request_update_api(request, pk):
     role = getattr(getattr(request.user, "profile", None), "role", None)
     request_qs = OrderRequest.objects.select_related("customer", "assigned_to")
-    if role == UserProfile.Role.MANAGER and not request.user.is_superuser:
+    if request.user.is_superuser or role in (UserProfile.Role.SUPER_ADMIN, UserProfile.Role.INSTITUTION_ADMIN):
+        pass
+    elif role == UserProfile.Role.MANAGER:
         department_id = getattr(request.user.profile, "department_id", None)
         request_qs = request_qs.filter(Q(customer__department_id=department_id) | Q(assigned_to__profile__department_id=department_id)).distinct() if department_id else request_qs.none()
-    elif role == UserProfile.Role.STAFF and not request.user.is_superuser:
+    elif role == UserProfile.Role.STAFF:
         request_qs = request_qs.filter(assigned_to=request.user)
+    else:
+        request_qs = request_qs.none()
     item = get_object_or_404(request_qs, pk=pk)
     if role == UserProfile.Role.STAFF and item.assigned_to_id != request.user.id:
         return JsonResponse({"detail": "You cannot update this request."}, status=403)
