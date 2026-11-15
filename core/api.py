@@ -96,16 +96,18 @@ def dashboard_api(request):
         return JsonResponse({"user": _user_payload(request.user), "stats": cached})
 
     today = timezone.localdate()
-    staff_qs = StaffProfile.objects.all()
+    staff_qs = staff_for_user(request.user)
     total_staff = staff_qs.count()
     active_staff = staff_qs.filter(status=StaffProfile.Status.ACTIVE).count()
-    present_today = StaffAttendance.objects.filter(date=today, status=StaffAttendance.Status.PRESENT).count()
+    visible_tasks = task_queryset_for_user(request.user)
+    visible_attendance = attendance_queryset_for_user(request.user)
+    present_today = visible_attendance.filter(date=today, status=StaffAttendance.Status.PRESENT).count()
     stats = {
         "total_staff": total_staff,
         "active_staff": active_staff,
         "total_products": Product.objects.count(),
         "low_stock": Product.objects.filter(status=Product.Status.ACTIVE, stock_quantity__lte=F("low_stock_threshold")).count(),
-        "open_tasks": StaffTask.objects.exclude(status__in=[StaffTask.Status.COMPLETED, StaffTask.Status.CANCELLED]).count(),
+        "open_tasks": visible_tasks.exclude(status__in=[StaffTask.Status.COMPLETED, StaffTask.Status.CANCELLED]).count(),
         "present_today": present_today,
         "attendance_rate": round((present_today / active_staff) * 100) if active_staff else 0,
         "customers": Customer.objects.filter(status=Customer.Status.ACTIVE).count(),
