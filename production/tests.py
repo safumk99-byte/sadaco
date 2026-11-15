@@ -89,6 +89,40 @@ class ProductionDepartmentAccessTests(TestCase):
         self.assertEqual(self.creative_job.status, ProductionJob.Status.COMPLETED)
         self.assertEqual(self.creative_job.progress_percent, 100)
 
+    def test_staff_cannot_mark_completed_stage_at_99_percent(self):
+        self.client.force_login(self.creative_staff.user)
+        response = self.client.post(
+            f"/api/production/jobs/{self.creative_job.pk}/progress/",
+            data='{"stage":"completed","progress_percent":99,"note":"Attempted completion"}',
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 403)
+        self.creative_job.refresh_from_db()
+        self.assertNotEqual(self.creative_job.stage, ProductionJob.Stage.COMPLETED)
+
+    def test_manager_completed_stage_requires_100_percent(self):
+        self.client.force_login(self.creative_manager)
+        response = self.client.post(
+            f"/api/production/jobs/{self.creative_job.pk}/progress/",
+            data='{"stage":"completed","progress_percent":99,"note":"Incomplete"}',
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_progress_does_not_reopen_delivered_sales_order(self):
+        from sales.models import SalesOrder
+        self.creative_job.order.status = SalesOrder.Status.DELIVERED
+        self.creative_job.order.save(update_fields=["status", "updated_at"])
+        self.client.force_login(self.creative_manager)
+        response = self.client.post(
+            f"/api/production/jobs/{self.creative_job.pk}/progress/",
+            data='{"stage":"production","progress_percent":50,"note":"Progress"}',
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.creative_job.order.refresh_from_db()
+        self.assertEqual(self.creative_job.order.status, SalesOrder.Status.DELIVERED)
+
     def test_progress_update_rejects_values_above_100(self):
         self.client.force_login(self.creative_staff.user)
         response = self.client.post(
