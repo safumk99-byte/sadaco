@@ -70,7 +70,7 @@ def update(request, pk):
         data = json.loads(request.body or '{}')
     except (TypeError, ValueError):
         return JsonResponse({'detail': 'Invalid JSON.'}, status=400)
-    order = get_object_or_404(_visible_orders(request.user).select_for_update(), pk=pk)
+    order = get_object_or_404(_visible_orders(request.user).select_for_update(of=("self",)), pk=pk)
     d = DeliveryRecord.objects.select_for_update().filter(order=order).first()
     current_status = d.status if d else DeliveryRecord.Status.PENDING
     if d is None:
