@@ -14,6 +14,7 @@ from products.models import MaterialVariant
 from staff.models import StaffProfile
 from production.models import ProductionJob
 from .models import MaterialStockBalance, MaterialStockMovement, MaterialStockCount, ReusableOffcut
+from purchase.models import MaterialStockLot
 from .services import record_material_movement
 
 
@@ -59,6 +60,27 @@ def material_stock_api(request):
     } for x in qs]
     totals = qs.aggregate(total=Sum("quantity"))
     return JsonResponse({"items": rows, "total_quantity": str(totals["total"] or Decimal("0")), "can_manage": _manager_department(request.user) is None})
+
+
+@require_GET
+@login_required
+def material_stock_lots_api(request):
+    qs = MaterialStockLot.objects.select_related("balance", "receipt_line__receipt", "receipt_line__purchase_item__purchase_order")
+    scope = _manager_department(request.user)
+    if scope is not None:
+        qs = qs.filter(balance__department_id=scope) if scope else qs.none()
+    balance_id = request.GET.get("balance", "").strip()
+    if balance_id:
+        qs = qs.filter(balance_id=balance_id)
+    return JsonResponse({"items": [{
+        "id": lot.pk, "balance_id": lot.balance_id,
+        "receipt_no": lot.receipt_line.receipt.receipt_no,
+        "received_date": lot.receipt_line.receipt.received_date.isoformat(),
+        "purchase_order": lot.receipt_line.receipt.purchase_order.po_no,
+        "original_quantity": str(lot.original_quantity),
+        "remaining_quantity": str(lot.remaining_quantity),
+        "unit_cost": str(lot.unit_cost),
+    } for lot in qs.filter(remaining_quantity__gt=0)[:500]]})
 
 
 @require_GET
@@ -192,6 +214,7 @@ def production_material_issue_api(request):
             material_id=line.pk,
             quantity=data.get("quantity"),
             balance_id=data.get("balance"),
+            lot_id=data.get("lot"),
             user=request.user,
             employee=employee,
             reference=str(data.get("reference", "")),
