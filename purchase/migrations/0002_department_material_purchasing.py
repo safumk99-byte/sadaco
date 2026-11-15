@@ -4,7 +4,7 @@ import django.db.models.deletion
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("core", "0001_initial"),
+        ("core", "0002_department"),
         ("inventory", "0002_material_stock_ledger"),
         ("products", "0013_configurable_labour_hours"),
         ("purchase", "0001_initial"),
