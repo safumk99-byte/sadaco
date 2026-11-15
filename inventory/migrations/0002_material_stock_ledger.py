@@ -9,7 +9,7 @@ import django.utils.timezone
 class Migration(migrations.Migration):
     dependencies = [
         ("core", "0001_initial"),
-        ("products", "0009_staffcompensation"),
+        ("products", "0013_configurable_labour_hours"),
         ("production", "0001_initial"),
         ("sales", "0006_orderrequest"),
         ("staff", "0001_initial"),
