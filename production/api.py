@@ -49,10 +49,7 @@ def _job_visible(user, job):
         return True
     if getattr(getattr(user, "profile", None), "role", None) == UserProfile.Role.MANAGER:
         department_id = _manager_department_id(user)
-        return bool(department_id and (
-            job.assigned_staff_id and job.assigned_staff.department_id == department_id
-            or job.order.responsible_staff_id and job.order.responsible_staff.department_id == department_id
-        ))
+        return bool(department_id and job.order.customer.department_id == department_id)
     return job.assigned_staff_id == getattr(getattr(user, 'staff_profile', None), 'id', None)
 
 
@@ -134,7 +131,7 @@ def options(request):
     if not _global_admin(request.user):
         department_id = _manager_department_id(request.user)
         staff = staff.filter(department_id=department_id) if department_id else staff.none()
-        orders = orders.filter(responsible_staff__department_id=department_id) if department_id else orders.none()
+        orders = orders.filter(customer__department_id=department_id) if department_id else orders.none()
     orders = orders[:200]
     products = Product.objects.filter(status=Product.Status.ACTIVE).order_by('name')[:300]
     return JsonResponse({'staff': [{'id': s.id, 'name': str(s)} for s in staff],
@@ -161,7 +158,7 @@ def create(request):
     order_qs = SalesOrder.objects.select_related('quotation', 'responsible_staff')
     if not _global_admin(request.user):
         department_id = _manager_department_id(request.user)
-        order_qs = order_qs.filter(responsible_staff__department_id=department_id) if department_id else order_qs.none()
+        order_qs = order_qs.filter(customer__department_id=department_id) if department_id else order_qs.none()
     order = get_object_or_404(order_qs, pk=order_id)
     if order.status not in (SalesOrder.Status.PRODUCTION_PENDING, SalesOrder.Status.CONFIRMED):
         return JsonResponse({'detail': 'This order is not ready for production planning.'}, status=400)
