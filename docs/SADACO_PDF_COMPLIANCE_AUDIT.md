@@ -7,10 +7,12 @@
 ## Acceptance rules
 
 - The PDF is the business specification; existing code and demo data do not override it.
-- Preserve genuine users, staff, departments and verified operational records.
-- Remove/replace only confirmed demo products, prices and orders. Protect referenced records.
+- The final PDF is the sole source of truth. Legacy ERP operational/catalogue data is not authoritative and may be cleared and rebuilt to match the PDF.
+- Preserve all existing authentication/account records (Django Users, UserProfiles, role/group and permission assignments) and all Staff master profiles. Do not delete, recreate, rename or reset their login credentials.
+- Legacy Products, prices, orders, stock balances/transactions, customers, quotations, production, purchasing, finance, attendance/task/performance history, notifications and other non-account/non-staff operational data may be cleared where they are outside the final PDF baseline. Rebuild required master/configuration data from the PDF.
+- Preserve only staff-linked master data needed to keep the retained Staff profiles valid (for example, referenced designations/work areas); replace or normalize other configuration to the PDF.
 - Never invent unspecified prices, tax rates, approval limits, reorder levels, wastage percentages or overhead percentages.
-- Financial, stock, rate, discount, approval and workflow changes must be auditable. Key stock/finance entries require correction/reversal, not silent deletion.
+- Perform destructive cleanup only on the isolated staging/test database after a before/after row-count and foreign-key impact report; never run it on production during implementation.
 - Each implementation phase must be testable and reviewable before moving on.
 
 ## Current-state gap assessment
@@ -120,3 +122,15 @@ The same clone confirms 25 product rows total, 2 with positive stock, 0 referenc
 - The staging-derived clone has no `products_materialvariant` table because `products.0010_material_master_and_costing_rates` has not been applied there. The material master and PDF-approved rate seed are present in feature-branch source only, not yet in staging schema.
 - The 5 existing staff profiles are Abdul Bsaith (Manager), Muhammed Rabeeh (Sales Executive), Muhammed Shibili, Sakkeer T, and Abdul Muhaimin. The PDF salary seed can safely match the Manager and Muhaimin by existing account, and Shibili/Sakkeer as work-based; no Junaid or Ashiq staff profiles exist and no profiles should be fabricated.
 - The old product catalogue contains legacy rates that differ from the final PDF. Use the separate `MaterialVariant` master from migration 0010 as the authoritative rate source after safe migration reconciliation; do not silently copy legacy Product.cost_price values into it.
+
+
+## 2026-11-15 final legacy-data decision
+
+The user has explicitly superseded the earlier conservative operational-data preservation rule:
+
+- The final requirements PDF is the sole source of truth.
+- Legacy operational/catalogue data may be fully removed and rebuilt; do not preserve old demo products, old rates, orders, stock, customer records or old workflow history merely because they exist.
+- **Mandatory preservation boundary:** retain every existing Django User/account, UserProfile, authentication credential, role/group/permission assignment, and every existing StaffProfile. Never delete or recreate these identities.
+- Retain only staff-linked designation/work-area master rows required by retained staff foreign keys; all other legacy business data/configuration is eligible for cleanup and PDF-based reseeding.
+- Before any cleanup, generate a table-by-table deletion plan and verify that cascades cannot delete Users, UserProfiles or StaffProfiles. Apply and test only on the isolated disposable/staging clone first. Do not touch production Neon or the main branch.
+- This decision supersedes the earlier notes about preserving customers, order requests, nonzero stock, and referenced operational records. Those records are no longer preservation requirements.
