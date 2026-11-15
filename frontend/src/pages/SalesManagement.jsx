@@ -16,6 +16,7 @@ export default function SalesManagement() {
   const [summary, setSummary] = useState(null);
   const [data, setData] = useState({
     customers: [],
+    departments: [],
     enquiries: [],
     quotations: [],
     orders: [],
@@ -41,6 +42,7 @@ export default function SalesManagement() {
       ]);
       setData({
         customers: c.data.customers,
+        departments: c.data.departments || [],
         enquiries: e.data.enquiries,
         quotations: qu.data.quotations,
         orders: o.data.orders,
@@ -217,6 +219,7 @@ export default function SalesManagement() {
           type={form.type}
           initial={form.initial}
           customers={data.customers}
+          departments={data.departments}
           onClose={() => setForm(null)}
           onSaved={() => {
             setForm(null);
@@ -420,10 +423,11 @@ function Badge({ value }) {
   );
 }
 
-function SalesForm({ type, initial = {}, customers, onClose, onSaved }) {
+function SalesForm({ type, initial = {}, customers, departments = [], onClose, onSaved }) {
   const defaults = {
     customer: {
       name: "",
+      department: "",
       phone: "",
       alternate_phone: "",
       email: "",
@@ -480,7 +484,7 @@ function SalesForm({ type, initial = {}, customers, onClose, onSaved }) {
   };
   const [f, setF] = useState({
     ...defaults[type],
-    ...(initial && type === "customer" ? initial : {}),
+    ...(initial && type === "customer" ? { ...initial, department: initial.department?.id || "" } : {}),
   });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -514,6 +518,14 @@ function SalesForm({ type, initial = {}, customers, onClose, onSaved }) {
       <form onSubmit={submit} className="grid gap-4 md:grid-cols-2">
         {type === "customer" ? (
           <>
+            {departments.length > 1 && (
+              <Select
+                label="Business Division"
+                value={f.department}
+                set={(v) => set("department", v)}
+                options={departments.map((x) => [x.id, x.name])}
+              />
+            )}
             <Field
               label="Name"
               value={f.name}
