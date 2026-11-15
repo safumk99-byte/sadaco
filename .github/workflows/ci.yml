@@ -61,6 +61,7 @@ jobs:
         run: >-
           python manage.py test --verbosity 2
           core.tests.SystemFoundationTests
+          core.test_pdf_baseline_cleanup.PdfBaselineCleanupCommandTests
           core.tests.DepartmentManagementTests
           core.tests.CustomerRequestDepartmentAccessTests
           core.tests.ApprovalDepartmentAccessTests
