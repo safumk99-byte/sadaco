@@ -148,3 +148,23 @@ Added `core/management/commands/reset_to_pdf_baseline.py` on the feature branch.
 - Old Products/prices/orders/stock/purchasing/finance/production/sales/QC/delivery/marketing/attendance/task/notification and other eligible legacy business rows are included in the cleanup scope.
 - This command has **not** been run against Neon, staging or production. No database rows were deleted. It still requires execution and verification on the isolated disposable clone, plus tests and a review of the printed dry-run report.
 - The old notes above about preserving customers, order requests and nonzero legacy stock are superseded by the user's final decision. Only the explicit protected models above remain preservation requirements.
+
+
+## 2026-11-15 disposable clone cleanup and PDF baseline seed — executed
+
+Target: Neon branch `sadaco-schema-reconciliation-test` (`br-round-scene-az7j6wqc`) only. This is a disposable child branch; the production/default branch and the separate staging branch were not targeted.
+
+- CI run #106 for commit `5021b07e87991e0cf81d324da62bf35378a5195e` completed successfully: Django tests and frontend build both passed.
+- Executed the legacy-data cleanup in one database transaction. The protected-record snapshot check initially detected a false mismatch due to a verification-query construction issue; the transaction rolled back. The corrected bidirectional snapshot comparison then passed and committed the cleanup.
+- Verified post-cleanup: Products 0, Product Categories 0, Customers 0, Order Requests 0; all inspected operational tables are empty.
+- Verified preserved identity: 9 auth users, 9 UserProfiles, 5 StaffProfiles, 5 Designations, 5 WorkAreas. User/group/permission membership and content-type snapshots matched before/after cleanup.
+- Created and seeded 3 Departments; added nullable department foreign keys to UserProfile, StaffProfile and Customer.
+- Created MaterialVariant, MaterialRateHistory, MachineRate and StaffCompensation tables; added FinanceTransaction.supplier_payment_id.
+- Seeded 51 material variants and 51 initial rate-history rows from the approved PDF, 5 machine rates, and 4 compensation records for existing staff only.
+- Compensation records: Manager ₹25,000/month; Abdul Muhaimin ₹15,000/month; Shibili and Sakkeer work-based with no invented rates. The currently seedable monthly salary total is ₹40,000 because Junaid and Ashiq do not have StaffProfile records; no synthetic staff identities were created. The PDF's ₹61,000 full salary plan remains documented for when those staff profiles are legitimately added.
+- Verified feature migration names are present in `django_migrations` for the schema changes represented in this reconciliation: core 0002, accounts 0005, staff 0002, sales 0007, products 0010–0013, and finance 0003.
+- Neon schema diff against the clone's parent confirms the expected department/material/compensation/supplier-payment tables and columns were added. The clone still carries older staging-only finance migration records and an extra legacy PaymentMethod table; these are not silently removed.
+
+**Important implementation note:** because the clone's recorded migration history diverged from the feature branch (including staging-only finance 0003–0005 names), the schema reconciliation was applied as an explicit transactional DDL/data operation on this disposable clone, and the corresponding feature migration records were added after the schema/data operations. This was not a normal Django `migrate` invocation. Do not repeat this procedure on staging or production. Before any production release, reconcile the historical finance migration graph cleanly in source control and test a fresh clone from the intended deployment baseline.
+
+Production Neon and `main` remain untouched.
