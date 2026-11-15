@@ -29,6 +29,11 @@ def _department_id(user):
     return profile.department_id if profile and profile.role == UserProfile.Role.MANAGER else None
 
 
+def _require_department(user):
+    if not _global_admin(user) and not _department_id(user):
+        raise PermissionDenied("Assign your manager account to a department first.")
+
+
 def _department_expenses(user):
     qs = Expense.objects.all()
     if _global_admin(user): return qs
@@ -126,7 +131,7 @@ def supplier_payments(request):
 @login_required
 @transaction.atomic
 def supplier_payment_create(request):
-    _deny(request.user); form=SupplierPaymentForm(_data(request)); form.fields["purchase_order"].queryset = _department_purchase_orders(request.user).exclude(status=PurchaseOrder.Status.CANCELLED).select_related("supplier").order_by("-order_date")
+    _deny(request.user); _require_department(request.user); form=SupplierPaymentForm(_data(request)); form.fields["purchase_order"].queryset = _department_purchase_orders(request.user).exclude(status=PurchaseOrder.Status.CANCELLED).select_related("supplier").order_by("-order_date")
     if not form.is_valid(): return JsonResponse({'detail':'Validation failed.','errors':form.errors.get_json_data()},status=400)
     p=form.save(commit=False); po=p.purchase_order; paid=po.supplier_payments.filter(status=SupplierPayment.Status.PAID).aggregate(total=Sum('amount'))['total'] or 0; balance=po.total-paid
     if p.status==SupplierPayment.Status.PAID and p.amount>balance: return JsonResponse({'detail':f'Payment cannot exceed current supplier balance of ₹ {balance:,.2f}.'},status=400)
