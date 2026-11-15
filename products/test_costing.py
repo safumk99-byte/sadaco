@@ -15,6 +15,26 @@ class MaterialCostingModelTests(TestCase):
         self.assertEqual(material.sheet_area_sqft, Decimal("32"))
         self.assertEqual(material.purchase_rate_sqft, Decimal("119.125"))
 
+    def test_material_rate_changes_are_recorded_once_with_actor(self):
+        from django.contrib.auth import get_user_model
+
+        user = get_user_model().objects.create_user(username="rate-editor")
+        material = MaterialVariant.objects.create(
+            material_name="History Test Sheet", purchase_rate=Decimal("100.00")
+        )
+        self.assertEqual(material.rate_history.count(), 1)
+        material.purchase_rate = Decimal("125.00")
+        material._rate_changed_by = user
+        material.save()
+        self.assertEqual(material.rate_history.count(), 2)
+        latest = material.rate_history.order_by("-created_at").first()
+        self.assertEqual(latest.purchase_rate, Decimal("125.00"))
+        self.assertEqual(latest.changed_by, user)
+
+    def test_new_unpriced_material_does_not_create_empty_rate_history(self):
+        material = MaterialVariant.objects.create(material_name="Unpriced Test Sheet")
+        self.assertEqual(material.rate_history.count(), 0)
+
     def test_missing_purchase_rate_keeps_sqft_rate_blank(self):
         material = MaterialVariant.objects.create(
             material_name="Test Indian Sheet", thickness_mm=Decimal("2"),
