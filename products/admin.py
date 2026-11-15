@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Product, ProductCategory, StockTransaction
+from .models import Product, ProductCategory, StockTransaction, MaterialVariant, MaterialRateHistory, MachineRate, StaffCompensation
 
 
 @admin.register(ProductCategory)
@@ -24,3 +24,28 @@ class StockTransactionAdmin(admin.ModelAdmin):
     list_filter = ("transaction_type", "created_at")
     search_fields = ("product__name", "product__sku", "reference")
     readonly_fields = ("created_at", "balance_after")
+
+
+@admin.register(MaterialVariant)
+class MaterialVariantAdmin(admin.ModelAdmin):
+    list_display = ("material_name", "brand", "thickness_mm", "variant", "colour", "purchase_rate", "retail_rate", "is_active")
+    list_filter = ("material_name", "brand", "colour", "is_active")
+    search_fields = ("material_name", "brand", "variant", "supplier_name")
+
+
+@admin.register(MaterialRateHistory)
+class MaterialRateHistoryAdmin(admin.ModelAdmin):
+    list_display = ("material", "purchase_rate", "retail_rate", "effective_from", "changed_by")
+    readonly_fields = ("created_at",)
+
+
+@admin.register(MachineRate)
+class MachineRateAdmin(admin.ModelAdmin):
+    list_display = ("operation", "material_name", "thickness_mm", "rate", "unit", "is_active")
+    list_filter = ("operation", "is_active")
+
+
+@admin.register(StaffCompensation)
+class StaffCompensationAdmin(admin.ModelAdmin):
+    list_display = ("staff", "payment_type", "monthly_salary", "is_active")
+    list_filter = ("payment_type", "is_active")
