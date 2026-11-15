@@ -2,7 +2,7 @@
 
 **Authority:** `SADACO_ERP_Final_Requirements_v2.pdf` (11 pages; final source of truth)  
 **Working branch:** `feature/phase-2-department-access`  
-**Production policy:** Do not modify `main` or the production Neon branch during implementation.
+**Release policy:** Production database baseline reset was explicitly authorized and executed on 2026-11-15; do not make further production writes or deploy/merge to `main` without separate approval.
 
 ## Acceptance rules
 
@@ -12,7 +12,7 @@
 - Legacy Products, prices, orders, stock balances/transactions, customers, quotations, production, purchasing, finance, attendance/task/performance history, notifications and other non-account/non-staff operational data may be cleared where they are outside the final PDF baseline. Rebuild required master/configuration data from the PDF.
 - Preserve only staff-linked master data needed to keep the retained Staff profiles valid (for example, referenced designations/work areas); replace or normalize other configuration to the PDF.
 - Never invent unspecified prices, tax rates, approval limits, reorder levels, wastage percentages or overhead percentages.
-- Perform destructive cleanup only on the isolated staging/test database after a before/after row-count and foreign-key impact report; never run it on production during implementation.
+- Destructive cleanup requires explicit user authorization, a before/after identity snapshot and transactional verification. The authorized production baseline reset is documented below; no further production cleanup is authorized by this note.
 - Each implementation phase must be testable and reviewable before moving on.
 
 ## Current-state gap assessment
@@ -70,8 +70,7 @@ Status labels: **Partial** = a basic model/page exists but does not satisfy the 
 
 - Costing, production, sales, quality, purchasing, finance, reports and delivery privileged-data helpers now require an active UserProfile (superusers remain supported). A costing regression test covers inactive managers.
 - Demo catalogue cleanup migration was narrowed and further guarded against customer-request, purchase, production, stock-count, reorder and stock-ledger references.
-- CI status is not yet available for the latest commits; no test pass is claimed.
-- Neon staging migration has not been run. Production database and `main` remain untouched.
+- Latest CI status is recorded in the dated execution notes below. Neon staging migration has not been run. `main` and Render deployment remain untouched.
 
 
 ## 2026-11-15 staging migration reconciliation finding
@@ -146,7 +145,7 @@ Added `core/management/commands/reset_to_pdf_baseline.py` on the feature branch.
 - The command uses Django's deletion collector to calculate cascades before deleting. If the collector reaches a protected model, it stops.
 - Cleanup runs in a database transaction and checks that User, UserProfile and StaffProfile row counts are unchanged; a mismatch raises and rolls back.
 - Old Products/prices/orders/stock/purchasing/finance/production/sales/QC/delivery/marketing/attendance/task/notification and other eligible legacy business rows are included in the cleanup scope.
-- This command has **not** been run against Neon, staging or production. No database rows were deleted. It still requires execution and verification on the isolated disposable clone, plus tests and a review of the printed dry-run report.
+- This command was not used for the actual Neon cleanup; the authorized production and disposable-clone resets were performed through explicit SQL transactions with independent protected-identity verification. Keep the command dry-run by default; do not assume its execution reproduces the complete SQL reset.
 - The old notes above about preserving customers, order requests and nonzero legacy stock are superseded by the user's final decision. Only the explicit protected models above remain preservation requirements.
 
 
@@ -167,4 +166,44 @@ Target: Neon branch `sadaco-schema-reconciliation-test` (`br-round-scene-az7j6wq
 
 **Important implementation note:** because the clone's recorded migration history diverged from the feature branch (including staging-only finance 0003–0005 names), the schema reconciliation was applied as an explicit transactional DDL/data operation on this disposable clone, and the corresponding feature migration records were added after the schema/data operations. This was not a normal Django `migrate` invocation. Do not repeat this procedure on staging or production. Before any production release, reconcile the historical finance migration graph cleanly in source control and test a fresh clone from the intended deployment baseline.
 
-Production Neon and `main` remain untouched.
+At the time of this disposable-clone entry, production Neon and `main` remained untouched. A later, separately authorized production baseline reset is documented below.
+
+
+## 2026-11-15 production PDF-baseline reset — executed with user authorization
+
+**Target:** Neon production/default branch `br-twilight-wave-az5nupxb`, database `neondb`. This operation was explicitly authorized by the user. It was executed in a single SQL transaction; it was not run through Django's `migrate` command.
+
+- A pre-reset Neon branch snapshot was created: `sadaco-production-pre-reset-backup-2026-11-15` (`br-weathered-star-azd003a6`). The backup branch was created with compute disabled; a SQL restore/query test against that branch has not been completed.
+- Cleared legacy/demo operational data and catalogue/workflow rows covered by the approved reset. Post-reset verification across 43 operational tables returned zero rows in every checked table.
+- Preserved account and staff identities: 9 Django Users, 9 UserProfiles, 5 StaffProfiles, 5 Designations and 5 WorkAreas. Existing credentials, role/group/permission assignments and staff identities were outside the cleanup target.
+- Created 3 departments (SADACO Creatives, SADACO CNC, SADACO Decor Co.) and nullable department references on UserProfile, StaffProfile and Customer.
+- Created material/costing tables and seeded 51 MaterialVariants, 51 initial MaterialRateHistory rows, 5 MachineRates and 4 StaffCompensation rows.
+- Existing staff compensation: Manager ₹25,000/month; Abdul Muhaimin ₹15,000/month; Shibili and Sakkeer work-based with no invented rates. Seedable monthly salary total is ₹40,000. Junaid ₹11,000 and Ashiq ₹10,000 remain unassigned because no matching StaffProfile records exist; no synthetic staff identities were created.
+- Added `FinanceTransaction.supplier_payment_id`; recorded the feature migration names in `django_migrations` for the manually reconciled schema changes.
+- A post-reset read-only verification on production reconfirmed all nine expected migration records, the department foreign-key columns, the material/rate/machine/compensation counts, and the preserved identity counts.
+
+**Critical migration caveat:** this production schema/data reconciliation was applied with explicit transactional SQL and migration records were then inserted. It was **not** a normal Django `migrate` execution. The branch migration graph has a known historical divergence from Neon staging, particularly in the finance app. Do not blindly run `migrate`, `--fake`, or the feature migration chain against staging or production. Before deployment, reconcile the complete migration graph and test it against a fresh disposable clone.
+
+## Latest source/CI verification — 2026-11-15
+
+- Feature branch latest commit at review time: `ada2efc9d804985fa6505229d0c22f70c925bc22`.
+- GitHub Actions run #107 (ID `43719936992`) for that exact commit completed successfully. Run URL: https://github.com/safumk99-byte/sadaco/actions/runs/43719936992
+- This supersedes the earlier run #106 reference for the current feature-branch tip. CI success does not establish production deployment or end-to-end acceptance against the reset database.
+- Read-only production inspection confirms:
+  - `core_department`: 3 rows
+  - `products_materialvariant`: 51 rows
+  - `products_materialratehistory`: 51 rows
+  - `products_machinerate`: 5 rows
+  - `products_staffcompensation`: 4 rows
+  - `auth_user` / `accounts_userprofile`: 9 / 9 rows
+  - `staff_staffprofile`: 5 rows
+  - expected department/supplier-payment/working-hours columns are present
+- `main`, Render deployment and staging branch remain untouched.
+
+## Immediate engineering findings / release blockers
+
+1. **Migration history reconciliation remains a release blocker.** Production schema was reconciled manually and migration records were inserted; this does not prove that a clean deployment from the feature branch can reproduce the same schema.
+2. **Cleanup behavior differs between paths.** The SQL reset cleared the broader operational baseline. The checked-in `products.0012_remove_demo_operational_data` migration only removes eligible Product/ProductCategory catalogue rows; it does not reproduce the full operational-table reset. Keep this distinction explicit and do not infer that applying 0012 performs the production reset.
+3. **UI readiness is not established.** The database has the PDF master data, but the currently deployed application has not been promoted/tested against this schema. Do not represent the live UI as fully updated.
+4. **Do not fabricate missing staff identities or rates.** Junaid/Ashiq salary entries require legitimate StaffProfile records; work-based compensation rates and unspecified cost inputs remain blank until supplied.
+5. **Next release-safe sequence:** finish migration-graph reconciliation in source control; create a fresh disposable branch from the intended deployment baseline; run normal `python manage.py migrate`; verify model/schema parity and seed idempotence; run backend/frontend/Playwright and role-isolation tests; test backup restoration; then request explicit user approval before merge/deploy.
