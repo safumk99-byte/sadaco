@@ -365,7 +365,14 @@ def update_rework(request, pk):
     if not form.is_valid():
         return JsonResponse({"detail": "Validation failed.", "errors": form.errors.get_json_data()}, status=400)
     rework = form.save()
-    if rework.status == ReworkRecord.Status.COMPLETED:
+    open_rework_exists = rework.job.rework_records.exclude(
+        status__in=[ReworkRecord.Status.COMPLETED, ReworkRecord.Status.CANCELLED]
+    ).exists()
+    if open_rework_exists:
+        rework.job.status = ProductionJob.Status.ON_HOLD
+        rework.job.stage = ProductionJob.Stage.QC_PENDING
+        rework.job.save(update_fields=["status", "stage", "updated_at"])
+    elif rework.status == ReworkRecord.Status.COMPLETED:
         rework.job.status = ProductionJob.Status.IN_PROGRESS
         rework.job.stage = ProductionJob.Stage.PRODUCTION
         rework.job.save(update_fields=["status", "stage", "updated_at"])
