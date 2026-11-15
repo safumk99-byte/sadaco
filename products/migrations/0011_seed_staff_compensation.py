@@ -7,7 +7,7 @@ def seed_staff_compensation(apps, schema_editor):
     Compensation = apps.get_model("products", "StaffCompensation")
 
     monthly = {
-        "manager": Decimal("25000"),
+        "abdulbasith": Decimal("25000"),
         "muhaimin": Decimal("15000"),
         "junaid": Decimal("11000"),
         "ashiq": Decimal("10000"),
