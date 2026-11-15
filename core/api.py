@@ -912,7 +912,14 @@ def customer_request_update_api(request, pk):
     item.status = status
     item.manager_notes = str(data.get("manager_notes", item.manager_notes)).strip()
     if data.get("assigned_to") and role != UserProfile.Role.STAFF:
-        item.assigned_to_id = data.get("assigned_to")
+        if role == UserProfile.Role.MANAGER and not request.user.is_superuser:
+            department_id = getattr(request.user.profile, "department_id", None)
+            if not department_id:
+                return JsonResponse({"detail": "Your account is not assigned to a department."}, status=400)
+            assigned_user = get_object_or_404(User.objects.filter(profile__department_id=department_id), pk=data.get("assigned_to"))
+            item.assigned_to = assigned_user
+        else:
+            item.assigned_to_id = data.get("assigned_to")
     item.save(update_fields=["status", "manager_notes", "assigned_to", "updated_at"])
     return JsonResponse({"ok": True})
 
