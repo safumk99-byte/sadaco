@@ -21,6 +21,12 @@ def _department_id(user):
     return profile.department_id if profile and profile.role == "manager" else None
 
 
+def _require_department(user):
+    if not _global_admin(user) and not _department_id(user):
+        from django.core.exceptions import PermissionDenied
+        raise PermissionDenied("Assign your manager account to a department first.")
+
+
 def _campaigns(user):
     qs = Campaign.objects.all()
     if _global_admin(user): return qs
@@ -93,10 +99,12 @@ def dashboard(request):
 @manager_required
 @require_POST
 def campaign_create(request):
+    _require_department(request.user)
     d=json.loads(request.body or '{}'); x=Campaign.objects.create(created_by=request.user,**{k:d.get(k) for k in ['name','channel','target_segment','start_date','end_date','budget','status','notes'] if k in d}); return JsonResponse(campaign(x))
 @manager_required
 @require_POST
 def content_create(request):
+    _require_department(request.user)
     d=json.loads(request.body or '{}'); campaign_obj=None
     if d.get('campaign_id'):
         campaign_obj=get_object_or_404(_campaigns(request.user),pk=d['campaign_id'])
@@ -104,6 +112,7 @@ def content_create(request):
 @manager_required
 @require_POST
 def lead_create(request):
+    _require_department(request.user)
     d=json.loads(request.body or '{}')
     customer=get_object_or_404(_customers(request.user),pk=d['customer_id']) if d.get('customer_id') else None
     enquiry=get_object_or_404(_enquiries(request.user),pk=d['enquiry_id']) if d.get('enquiry_id') else None
