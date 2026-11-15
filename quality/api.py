@@ -316,6 +316,9 @@ def create_rework(request, check_id):
     if not _visible_job(request.user, check.job):
         raise PermissionDenied
     form = ReworkRecordForm(_data(request))
+    form.fields["assigned_staff"].queryset = StaffProfile.objects.filter(
+        department_id=check.job.order.customer.department_id
+    ) if check.job.order.customer.department_id else StaffProfile.objects.none()
     if not form.is_valid():
         return JsonResponse({"detail": "Validation failed.", "errors": form.errors.get_json_data()}, status=400)
     rework = form.save(commit=False)
@@ -341,6 +344,9 @@ def update_rework(request, pk):
     if not _visible_job(request.user, rework.job):
         raise PermissionDenied
     form = ReworkRecordForm(_data(request), instance=rework)
+    form.fields["assigned_staff"].queryset = StaffProfile.objects.filter(
+        department_id=rework.job.order.customer.department_id
+    ) if rework.job.order.customer.department_id else StaffProfile.objects.none()
     if not form.is_valid():
         return JsonResponse({"detail": "Validation failed.", "errors": form.errors.get_json_data()}, status=400)
     rework = form.save()
