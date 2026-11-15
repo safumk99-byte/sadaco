@@ -16,6 +16,7 @@ import StaffManagement from './pages/StaffManagement'
 import StaffDetail from './pages/StaffDetail'
 import StaffTasks from './pages/StaffTasks'
 import ProductManagement from './pages/ProductManagement'
+import MaterialCosting from './pages/MaterialCosting'
 import ProductDetail from './pages/ProductDetail'
 import StockManagement from './pages/StockManagement'
 import SalesManagement from './pages/SalesManagement'
@@ -54,6 +55,7 @@ export default function App() {
               <Route path="staff/tasks" element={<StaffTasks />} />
               <Route path="staff/:id" element={<StaffDetail />} />
               <Route path="products" element={<ProductManagement />} />
+              <Route path="costing" element={<MaterialCosting />} />
               <Route path="products/stock" element={<StockManagement />} />
               <Route path="inventory" element={<StockManagement />} />
               <Route path="products/:id" element={<ProductDetail />} />
