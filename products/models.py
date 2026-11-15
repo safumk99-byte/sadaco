@@ -244,4 +244,4 @@ class StaffCompensation(models.Model):
     def hourly_cost(self):
         if self.payment_type != self.PaymentType.MONTHLY or self.monthly_salary is None:
             return None
-        return self.monthly_salary / 214.5
+        return self.monthly_salary / Decimal("214.5")
