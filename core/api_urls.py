@@ -1,4 +1,5 @@
 from django.urls import path
+from products.costing_api import material_master_api, material_master_save_api, machine_rates_api, machine_rate_save_api, staff_compensation_api, staff_compensation_save_api
 from .api import (
     csrf, me, api_login, api_logout, dashboard_api,
     notifications_api, notification_read_api, notifications_read_all_api,
@@ -32,4 +33,7 @@ urlpatterns = [
     path("products/", products_api), path("products/categories/", product_categories_api), path("products/categories/create/", product_category_create_api),
     path("products/<int:pk>/", product_detail_api), path("products/create/", product_create_api), path("products/<int:pk>/update/", product_update_api),
     path("products/stock/", stock_transactions_api), path("products/stock/transaction/", stock_transaction_api),
+    path("costing/materials/", material_master_api), path("costing/materials/create/", material_master_save_api), path("costing/materials/<int:pk>/update/", material_master_save_api),
+    path("costing/machine-rates/", machine_rates_api), path("costing/machine-rates/create/", machine_rate_save_api), path("costing/machine-rates/<int:pk>/update/", machine_rate_save_api),
+    path("costing/staff/", staff_compensation_api), path("costing/staff/<int:staff_id>/compensation/", staff_compensation_save_api),
 ]
