@@ -149,6 +149,8 @@ def customer_create(request):
                 return JsonResponse({'detail': 'Assign your manager account to a department first.'}, status=400)
         elif data.get("department"):
             c.department = get_object_or_404(Department, pk=data.get("department"), is_active=True)
+        else:
+            return JsonResponse({'detail': 'Select a business division for this customer.'}, status=400)
         c.save(); return JsonResponse({'customer': _customer(c)}, status=201)
     return JsonResponse({'detail':'Validation failed.','errors':form.errors.get_json_data()},status=400)
 
