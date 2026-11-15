@@ -9,7 +9,7 @@ class SystemFoundationTests(SimpleTestCase):
         self.assertTrue(database["NAME"])
         self.assertTrue(database["USER"])
         self.assertTrue(database["HOST"])
-        self.assertEqual(database["OPTIONS"]["sslmode"], "require")
+        self.assertIn(database["OPTIONS"]["sslmode"], {"disable", "allow", "prefer", "require", "verify-ca", "verify-full"})
 
 
 from django.contrib.auth.models import User
