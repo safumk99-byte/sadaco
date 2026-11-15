@@ -24,8 +24,11 @@ def _guard(user, manager=False):
     return None
 
 def _global_admin(user):
-    return user.is_superuser or getattr(getattr(user, "profile", None), "role", None) in (
-        UserProfile.Role.SUPER_ADMIN, UserProfile.Role.INSTITUTION_ADMIN
+    profile = getattr(user, "profile", None)
+    return user.is_superuser or bool(
+        profile and profile.is_active and profile.role in (
+            UserProfile.Role.SUPER_ADMIN, UserProfile.Role.INSTITUTION_ADMIN
+        )
     )
 
 
