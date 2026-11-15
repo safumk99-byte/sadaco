@@ -4,6 +4,7 @@ from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 from django.middleware.csrf import get_token
 from django.utils import timezone
+from django.utils.text import slugify
 from django.views.decorators.http import require_GET, require_POST
 from django.db.models import F, Avg, Q
 from django.core.cache import cache
@@ -905,7 +906,7 @@ def department_create_api(request):
     if not _can_manage_departments(request.user):
         return JsonResponse({"detail": "You do not have permission to manage departments."}, status=403)
     data = _request_data(request)
-    code = str(data.get("code", "")).strip().lower()
+    code = slugify(str(data.get("code", "")).strip())
     name = str(data.get("name", "")).strip()
     if not code or not name:
         return JsonResponse({"detail": "Department code and name are required."}, status=400)
@@ -930,7 +931,7 @@ def department_update_api(request, pk):
     department = get_object_or_404(Department, pk=pk)
     data = _request_data(request)
     name = str(data.get("name", department.name)).strip()
-    code = str(data.get("code", department.code)).strip().lower()
+    code = slugify(str(data.get("code", department.code)).strip())
     if not name or not code:
         return JsonResponse({"detail": "Department code and name are required."}, status=400)
     if Department.objects.filter(name__iexact=name).exclude(pk=pk).exists():
@@ -945,6 +946,8 @@ def department_update_api(request, pk):
         manager_profile = getattr(manager, "profile", None)
         if not manager_profile or manager_profile.role != UserProfile.Role.MANAGER:
             return JsonResponse({"detail": "Only an active Manager account can lead a department."}, status=400)
+        if manager_profile.department_id and manager_profile.department_id != department.id:
+            return JsonResponse({"detail": "This manager is already assigned to another department."}, status=400)
         if Department.objects.filter(manager=manager).exclude(pk=pk).exists():
             return JsonResponse({"detail": "This manager already leads another department."}, status=400)
 
@@ -961,9 +964,15 @@ def department_update_api(request, pk):
         if old_profile and old_profile.department_id == department.id:
             old_profile.department = None
             old_profile.save(update_fields=["department", "updated_at"])
+        if hasattr(old_manager, "staff_profile") and old_manager.staff_profile.department_id == department.id:
+            old_manager.staff_profile.department = None
+            old_manager.staff_profile.save(update_fields=["department", "updated_at"])
     if manager:
         manager_profile.department = department
         manager_profile.save(update_fields=["department", "updated_at"])
+        if hasattr(manager, "staff_profile"):
+            manager.staff_profile.department = department
+            manager.staff_profile.save(update_fields=["department", "updated_at"])
 
     AuditLog.objects.create(
         user=request.user, module="departments", action=AuditLog.Action.UPDATE,
