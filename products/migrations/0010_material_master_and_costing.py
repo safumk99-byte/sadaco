@@ -118,6 +118,31 @@ def seed_materials_and_machine_rates(apps, schema_editor):
         }
         MachineRate.objects.get_or_create(**lookup, defaults={"rate": Decimal(rate), "is_active": True})
 
+    # Seed compensation only for existing, unambiguously matched staff accounts.
+    # Staff absent from the current roster are intentionally not fabricated.
+    StaffProfile = apps.get_model("staff", "StaffProfile")
+    StaffCompensation = apps.get_model("products", "StaffCompensation")
+    compensation = {
+        "abdulbasith": ("monthly", "25000.00"),
+        "abdulmuhaimin": ("monthly", "15000.00"),
+        "shibili": ("per_work", None),
+        "sakkeer": ("per_work", None),
+    }
+    for username, (payment_type, salary) in compensation.items():
+        staff = StaffProfile.objects.filter(user__username__iexact=username).first()
+        if staff:
+            StaffCompensation.objects.get_or_create(
+                staff_id=staff.pk,
+                defaults={
+                    "payment_type": payment_type,
+                    "monthly_salary": Decimal(salary) if salary is not None else None,
+                    "working_days_per_month": 26,
+                    "productive_hours_per_day": Decimal("8.25"),
+                    "is_active": True,
+                    "notes": "Seeded from approved SADACO requirements; editable by authorized users.",
+                },
+            )
+
 
 class Migration(migrations.Migration):
     dependencies = [
