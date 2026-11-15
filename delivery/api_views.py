@@ -19,7 +19,7 @@ def _visible_orders(user):
         return qs
     profile = getattr(user, "profile", None)
     department_id = profile.department_id if profile and profile.role == "manager" else None
-    return qs.filter(responsible_staff__department_id=department_id) if department_id else qs.none()
+    return qs.filter(customer__department_id=department_id) if department_id else qs.none()
 
 
 def _visible_deliveries(user):
