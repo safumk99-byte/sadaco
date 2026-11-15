@@ -2,6 +2,33 @@ from django.conf import settings
 from django.db import models
 
 
+class Department(models.Model):
+    """A business division within SADACO."""
+
+    code = models.SlugField(max_length=40, unique=True)
+    name = models.CharField(max_length=120, unique=True)
+    description = models.TextField(blank=True)
+    manager = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="managed_department",
+    )
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["name"]
+        permissions = [
+            ("manage_departments", "Can manage SADACO departments"),
+        ]
+
+    def __str__(self):
+        return self.name
+
+
 class ApprovalRequest(models.Model):
     class Status(models.TextChoices):
         PENDING = "pending", "Pending"
