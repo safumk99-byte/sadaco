@@ -100,7 +100,7 @@ def expenses(request):
 @login_required
 @transaction.atomic
 def expense_create(request):
-    _deny(request.user); form=ExpenseForm(_data(request))
+    _deny(request.user); _require_department(request.user); form=ExpenseForm(_data(request))
     if not form.is_valid(): return JsonResponse({'detail':'Validation failed.','errors':form.errors.get_json_data()},status=400)
     e=form.save(commit=False); e.created_by=request.user; e.save()
     if e.status==Expense.Status.PAID: FinanceTransaction.objects.create(transaction_type='expense',amount=e.amount,transaction_date=e.expense_date,payment_method=e.payment_method,reference=e.expense_no,description=e.description or e.category.name,expense=e,created_by=request.user)
