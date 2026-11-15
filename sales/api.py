@@ -246,7 +246,13 @@ def order_create(request):
 @login_required
 def order_update(request,pk):
     if _guard(request.user, True): return _guard(request.user, True)
-    import json; o=get_object_or_404(_order_qs(request.user),pk=pk); form=_restrict_form(SalesOrderForm(json.loads(request.body or '{}'),instance=o), request.user, "order")
+    import json; o=get_object_or_404(_order_qs(request.user),pk=pk); data=json.loads(request.body or '{}')
+    requested_status = data.get("status")
+    if requested_status is not None:
+        status_error = _order_status_error(o.status, requested_status)
+        if status_error:
+            return JsonResponse({"detail": status_error}, status=400)
+    form=_restrict_form(SalesOrderForm(data,instance=o), request.user, "order")
     if form.is_valid():
         status_error = _order_status_error(o.status, form.cleaned_data["status"])
         if status_error:
