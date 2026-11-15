@@ -138,7 +138,14 @@ def supplier_payments(request):
 def supplier_payment_create(request):
     _deny(request.user); _require_department(request.user); form=SupplierPaymentForm(_data(request)); form.fields["purchase_order"].queryset = _department_purchase_orders(request.user).exclude(status=PurchaseOrder.Status.CANCELLED).select_related("supplier").order_by("-order_date")
     if not form.is_valid(): return JsonResponse({'detail':'Validation failed.','errors':form.errors.get_json_data()},status=400)
-    p=form.save(commit=False); po=p.purchase_order; paid=po.supplier_payments.filter(status=SupplierPayment.Status.PAID).aggregate(total=Sum('amount'))['total'] or 0; balance=po.total-paid
+    p=form.save(commit=False)
+    po=get_object_or_404(
+        _department_purchase_orders(request.user).select_for_update().exclude(status=PurchaseOrder.Status.CANCELLED),
+        pk=p.purchase_order_id,
+    )
+    p.purchase_order=po
+    paid=po.supplier_payments.filter(status=SupplierPayment.Status.PAID).aggregate(total=Sum('amount'))['total'] or 0
+    balance=po.total-paid
     if p.status==SupplierPayment.Status.PAID and p.amount>balance: return JsonResponse({'detail':f'Payment cannot exceed current supplier balance of ₹ {balance:,.2f}.'},status=400)
     p.created_by=request.user; p.save()
     if p.status==SupplierPayment.Status.PAID: FinanceTransaction.objects.create(transaction_type='expense',amount=p.amount,transaction_date=p.payment_date,payment_method=p.payment_method,reference=p.payment_no,description=f'Supplier payment · {po.po_no} · {po.supplier.name}',created_by=request.user)
