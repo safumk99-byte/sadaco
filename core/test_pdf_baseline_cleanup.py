@@ -166,3 +166,18 @@ class PdfBaselineCleanupCommandTests(TestCase):
         self.assertLess(positions[OrderRequest], positions[Customer])
         self.assertLess(positions[OrderRequest], positions[Product])
         self.assertLess(positions[Product], positions[ProductCategory])
+
+    def test_self_referential_protected_category_tree_is_deleted_leaf_first(self):
+        from products.models import ProductCategory
+
+        parent = ProductCategory.objects.create(name="Legacy Parent Category")
+        child = ProductCategory.objects.create(
+            name="Legacy Child Category", parent=parent
+        )
+        output = StringIO()
+        with patch.object(
+            reset_to_pdf_baseline.apps, "get_models", return_value=[ProductCategory]
+        ):
+            call_command("reset_to_pdf_baseline", apply=True, stdout=output)
+
+        self.assertFalse(ProductCategory.objects.filter(pk__in=[parent.pk, child.pk]).exists())
