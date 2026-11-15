@@ -81,6 +81,62 @@ def _dependency_order(models):
     return ordered
 
 
+def _delete_model_rows(model, using, counts):
+    """Delete one model, handling self-referential PROTECT trees leaf-first."""
+    self_protect_fields = [
+        field for field in model._meta.fields
+        if isinstance(field, (ForeignKey, OneToOneField))
+        and field.remote_field.model is model
+        and field.remote_field.on_delete in (PROTECT, RESTRICT)
+    ]
+
+    def collect_delete(queryset):
+        collector = Collector(using=using)
+        collector.collect(queryset)
+        reached = set(collector.data)
+        reached.update(queryset.model for queryset in collector.fast_deletes)
+        blocked = reached.intersection(PRESERVED_MODELS)
+        if blocked:
+            labels = ", ".join(sorted(item._meta.label for item in blocked))
+            raise CommandError(
+                f"Safety stop while processing {model._meta.label}: "
+                f"deletion graph reaches protected models: {labels}"
+            )
+        for collected_model, objects in collector.data.items():
+            counts[collected_model._meta.label] += len(objects)
+        for fast_queryset in collector.fast_deletes:
+            counts[fast_queryset.model._meta.label] += fast_queryset.count()
+        collector.delete()
+
+    if not self_protect_fields:
+        collect_delete(model._base_manager.using(using).all())
+        return
+
+    while True:
+        rows = list(model._base_manager.using(using).only(model._meta.pk.attname))
+        if not rows:
+            return
+        leaf = None
+        for row in rows:
+            has_children = False
+            for field in self_protect_fields:
+                children = model._base_manager.using(using).filter(
+                    **{field.attname: row.pk}
+                ).exclude(pk=row.pk)
+                if children.exists():
+                    has_children = True
+                    break
+            if not has_children:
+                leaf = row
+                break
+        if leaf is None:
+            raise CommandError(
+                f"Cannot safely delete self-referencing PROTECT rows in "
+                f"{model._meta.label}: a cycle or self-reference remains."
+            )
+        collect_delete(model._base_manager.using(using).filter(pk=leaf.pk))
+
+
 class Command(BaseCommand):
     help = "Dry-run or apply the SADACO PDF baseline cleanup."
 
@@ -129,23 +185,7 @@ class Command(BaseCommand):
 
         def simulate_or_apply():
             for model in ordered:
-                collector = Collector(using=using)
-                collector.collect(model._base_manager.using(using).all())
-                reached = set(collector.data)
-                reached.update(queryset.model for queryset in collector.fast_deletes)
-                blocked = reached.intersection(PRESERVED_MODELS)
-                if blocked:
-                    labels = ", ".join(sorted(item._meta.label for item in blocked))
-                    raise CommandError(
-                        f"Safety stop while processing {model._meta.label}: "
-                        f"deletion graph reaches protected models: {labels}"
-                    )
-
-                for collected_model, objects in collector.data.items():
-                    counts[collected_model._meta.label] += len(objects)
-                for queryset in collector.fast_deletes:
-                    counts[queryset.model._meta.label] += queryset.count()
-                collector.delete()
+                _delete_model_rows(model, using, counts)
 
             after = protected_snapshot()
             if before != after:
