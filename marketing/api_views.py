@@ -131,6 +131,8 @@ def content_create(request):
         data=json.loads(request.body or '{}')
     except (TypeError, ValueError):
         return JsonResponse({'detail':'Invalid JSON.'},status=400)
+    if 'campaign' not in data and data.get('campaign_id'):
+        data['campaign'] = data['campaign_id']
     form=ContentForm(data)
     form.fields['campaign'].queryset=_campaigns(request.user)
     if not form.is_valid():
@@ -145,6 +147,10 @@ def lead_create(request):
         data=json.loads(request.body or '{}')
     except (TypeError, ValueError):
         return JsonResponse({'detail':'Invalid JSON.'},status=400)
+    for field in ('customer', 'enquiry', 'campaign'):
+        legacy_key = f'{field}_id'
+        if field not in data and data.get(legacy_key):
+            data[field] = data[legacy_key]
     form=LeadForm(data)
     form.fields['customer'].queryset=_customers(request.user)
     form.fields['enquiry'].queryset=_enquiries(request.user)
