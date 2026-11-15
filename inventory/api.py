@@ -19,10 +19,10 @@ from .services import record_material_movement
 
 def _manager_department(user):
     profile = getattr(user, "profile", None)
-    if user.is_superuser or (profile and profile.role in (UserProfile.Role.SUPER_ADMIN, UserProfile.Role.INSTITUTION_ADMIN)):
+    if user.is_superuser or (profile and profile.is_active and profile.role in (UserProfile.Role.SUPER_ADMIN, UserProfile.Role.INSTITUTION_ADMIN)):
         return None
-    if profile and profile.role == UserProfile.Role.MANAGER:
-        return profile.department_id
+    if profile and profile.is_active and profile.role == UserProfile.Role.MANAGER:
+        return profile.department_id or False
     return False
 
 
@@ -92,8 +92,11 @@ def material_movement_create_api(request):
         scope = _manager_department(request.user)
         if scope is False:
             return JsonResponse({"detail": "You do not have permission to manage material stock."}, status=403)
-        if data.get("type") == MaterialStockMovement.Type.JOB_ISSUE:
-            return JsonResponse({"detail": "Use the production material issue workflow so the job requirement and stock ledger stay synchronized."}, status=400)
+        movement_type = data.get("type")
+        if movement_type != MaterialStockMovement.Type.OPENING:
+            return JsonResponse({"detail": "Use the dedicated purchase receipt, job issue, return, wastage, or offcut workflow. Direct movement entry is disabled for this movement type."}, status=400)
+        if scope is not None:
+            return JsonResponse({"detail": "Only Founder/Admin can record opening stock."}, status=403)
         job = ProductionJob.objects.filter(pk=data.get("job")).select_related("order__customer").first() if data.get("job") else None
         if data.get("job") and not job:
             return JsonResponse({"detail": "Production job not found."}, status=404)
@@ -128,11 +131,13 @@ def material_options_api(request):
 @require_POST
 @login_required
 def material_balance_create_api(request):
-    if _manager_department(request.user) is not None:
-        return JsonResponse({"detail": "Only Founder/Admin can create stock balances and assign departments."}, status=403)
+    scope = _manager_department(request.user)
+    if scope is False:
+        return JsonResponse({"detail": "You do not have permission to create stock balances."}, status=403)
     try:
         data = json.loads(request.body or "{}")
-        department = Department.objects.get(pk=data.get("department"), is_active=True)
+        department_id = scope if scope is not None else data.get("department")
+        department = Department.objects.get(pk=department_id, is_active=True)
         material = MaterialVariant.objects.get(pk=data.get("material"), is_active=True)
         location = str(data.get("location", "")).strip()
         if not location:
