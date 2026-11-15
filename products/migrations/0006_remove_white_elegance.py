@@ -11,13 +11,15 @@ def remove_white_elegance(apps, schema_editor):
     # If the section is unused, remove its unused child categories and the section.
     children = ProductCategory.objects.filter(parent=section)
     for child in children:
-        if child.products.exists():
+        has_subcategories = ProductCategory.objects.filter(parent=child).exists()
+        if child.products.exists() or has_subcategories:
             child.is_active = False
             child.save(update_fields=["is_active"])
         else:
             child.delete()
 
-    if section.products.exists():
+    has_child_categories = ProductCategory.objects.filter(parent=section).exists()
+    if section.products.exists() or has_child_categories:
         section.is_active = False
         section.save(update_fields=["is_active"])
     else:
