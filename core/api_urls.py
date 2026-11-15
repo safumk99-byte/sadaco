@@ -16,7 +16,7 @@ from .api import (
 
 urlpatterns = [
     path("auth/csrf/", csrf), path("auth/me/", me), path("auth/login/", api_login), path("auth/logout/", api_logout),
-    path("dashboard/", dashboard_api), path("notifications/", notifications_api),
+    path("dashboard/", dashboard_api),\n    path("departments/", departments_api), path("departments/create/", department_create_api), path("departments/<int:pk>/update/", department_update_api), path("notifications/", notifications_api),
     path("notifications/<int:notification_id>/read/", notification_read_api), path("notifications/read-all/", notifications_read_all_api),
     path("push/config/", push_config_api), path("push/subscribe/", push_subscribe_api), path("push/unsubscribe/", push_unsubscribe_api),
     path("users/", users_api), path("users/create/", user_create_api), path("users/<int:pk>/update/", user_update_api), path("profile/", profile_update_api),
