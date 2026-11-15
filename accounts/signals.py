@@ -1,6 +1,5 @@
 from django.db.models.signals import post_save
 from django.dispatch import receiver
-from django.urls import reverse
 
 from .notification_service import notify_roles
 
@@ -14,7 +13,7 @@ def order_request_notification(sender, instance, created, **kwargs):
         f"{instance.request_no} from {instance.customer.name}.",
         notification_type="order",
         priority="high",
-        url=reverse("sales:manager_requests"),
+        url="/sales/customer-requests",
     )
 
 
@@ -27,7 +26,7 @@ def enquiry_notification(sender, instance, created, **kwargs):
         f"{instance.enquiry_no} from {instance.customer.name}.",
         notification_type="enquiry",
         priority="normal",
-        url=reverse("sales:enquiries"),
+        url="/sales/enquiries",
     )
 
 
@@ -40,7 +39,7 @@ def payment_notification(sender, instance, created, **kwargs):
         f"{instance.order.order_no}: payment of Rs. {instance.amount}.",
         notification_type="payment",
         priority="normal",
-        url=reverse("sales:orders"),
+        url="/sales",
     )
 
 
@@ -55,5 +54,5 @@ def stock_notification(sender, instance, created, **kwargs):
             f"{product.name} has {product.stock_quantity} {product.unit} remaining.",
             notification_type="stock",
             priority="high",
-            url=reverse("products:stock"),
+            url="/products/stock",
         )
