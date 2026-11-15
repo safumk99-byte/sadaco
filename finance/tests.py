@@ -5,7 +5,7 @@ from accounts.models import UserProfile
 from core.models import Department
 from purchase.models import PurchaseOrder, Supplier
 from sales.models import Customer, SalesOrder, PaymentRecord
-from .models import FinanceTransaction
+from .models import FinanceTransaction, SupplierPayment
 from .models import Expense, ExpenseCategory
 from .api import _department_expenses, _department_orders, _department_purchase_orders, _department_transactions
 
@@ -39,6 +39,28 @@ class FinanceDepartmentAccessTests(TestCase):
         self.assertEqual(_department_expenses(admin).count(), 2)
         self.assertEqual(_department_orders(admin).count(), 2)
         self.assertEqual(_department_purchase_orders(admin).count(), 2)
+
+
+    def test_supplier_payment_transaction_uses_purchase_order_department(self):
+        admin = User.objects.create_superuser(username="finance_payment_admin", password="StrongPass123!")
+        payment = SupplierPayment.objects.create(
+            purchase_order=self.own_po, amount=25, status=SupplierPayment.Status.PAID,
+            created_by=admin,
+        )
+        transaction = FinanceTransaction.objects.create(
+            transaction_type=FinanceTransaction.Type.EXPENSE, amount=25,
+            supplier_payment=payment, created_by=admin,
+        )
+        ids = set(_department_transactions(self.manager).values_list("id", flat=True))
+        self.assertIn(transaction.id, ids)
+        self.assertNotIn(transaction.id, set(_department_transactions(self.other).values_list("id", flat=True)))
+
+    def test_unlinked_transactions_remain_creator_scoped(self):
+        admin = User.objects.create_superuser(username="finance_unlinked_admin", password="StrongPass123!")
+        tx = FinanceTransaction.objects.create(
+            transaction_type=FinanceTransaction.Type.EXPENSE, amount=10, created_by=admin,
+        )
+        self.assertNotIn(tx.id, set(_department_transactions(self.manager).values_list("id", flat=True)))
 
     def test_transactions_follow_linked_order_department_not_creator(self):
         foreign_order = SalesOrder.objects.get(customer__department=self.b)
