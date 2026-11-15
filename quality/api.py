@@ -364,7 +364,10 @@ def update_rework(request, pk):
     ) if rework.job.order.customer.department_id else StaffProfile.objects.none()
     if not form.is_valid():
         return JsonResponse({"detail": "Validation failed.", "errors": form.errors.get_json_data()}, status=400)
-    rework = form.save()
+    rework = form.save(commit=False)
+    if rework.status != ReworkRecord.Status.COMPLETED:
+        rework.completed_at = None
+    rework.save()
     open_rework_exists = rework.job.rework_records.exclude(
         status__in=[ReworkRecord.Status.COMPLETED, ReworkRecord.Status.CANCELLED]
     ).exists()
@@ -372,11 +375,12 @@ def update_rework(request, pk):
         rework.job.status = ProductionJob.Status.ON_HOLD
         rework.job.stage = ProductionJob.Stage.QC_PENDING
         rework.job.save(update_fields=["status", "stage", "updated_at"])
-    elif rework.status == ReworkRecord.Status.COMPLETED:
+    elif rework.status in (ReworkRecord.Status.COMPLETED, ReworkRecord.Status.CANCELLED):
         rework.job.status = ProductionJob.Status.IN_PROGRESS
         rework.job.stage = ProductionJob.Stage.PRODUCTION
         rework.job.save(update_fields=["status", "stage", "updated_at"])
-        _notify(rework.job, "Rework completed", f"{rework.job.job_no} rework was completed.")
+        if rework.status == ReworkRecord.Status.COMPLETED:
+            _notify(rework.job, "Rework completed", f"{rework.job.job_no} rework was completed.")
     return JsonResponse({"rework": _rework(rework)})
 
 
