@@ -27,10 +27,11 @@ def _supplier(s):
             'status': s.status, 'status_label': s.get_status_display()}
 def _item(i):
     return {'id': i.id, 'product': {'id': i.product_id, 'name': i.product.name, 'sku': i.product.sku} if i.product else None,
+            'material_variant': {'id': i.material_variant_id, 'name': i.material_variant.material_name, 'brand': i.material_variant.brand} if i.material_variant else None,
             'quantity': str(i.quantity), 'received_quantity': str(i.received_quantity), 'pending_quantity': str(i.pending_quantity),
             'unit_cost': str(i.unit_cost), 'line_total': str(i.line_total), 'notes': i.notes}
 def _po(po):
-    return {'id': po.id, 'po_no': po.po_no, 'supplier': _supplier(po.supplier), 'order_date': po.order_date.isoformat(),
+    return {'id': po.id, 'po_no': po.po_no, 'department_id': po.department_id, 'department': po.department.name if po.department_id else None, 'supplier': _supplier(po.supplier), 'order_date': po.order_date.isoformat(),
             'expected_date': po.expected_date.isoformat() if po.expected_date else None, 'status': po.status,
             'status_label': po.get_status_display(), 'notes': po.notes, 'subtotal': str(po.subtotal), 'discount': str(po.discount),
             'tax': str(po.tax), 'total': str(po.total), 'created_by': po.created_by.get_full_name() if po.created_by else None,
@@ -117,7 +118,8 @@ def orders(request):
     if status: qs=qs.filter(status=status)
     return JsonResponse({'orders': [_po(x) for x in qs[:250]], 'statuses': _choices(PurchaseOrder.Status.choices),
                          'suppliers': [_supplier(s) for s in Supplier.objects.filter(status=Supplier.Status.ACTIVE)],
-                         'products': [{'id':p.id,'name':p.name,'sku':p.sku} for p in Product.objects.filter(status=Product.Status.ACTIVE)[:300]]})
+                         'products': [{'id':p.id,'name':p.name,'sku':p.sku} for p in Product.objects.filter(status=Product.Status.ACTIVE)[:300]],
+                         'materials': [{'id':m.id,'name':m.material_name,'brand':m.brand,'unit':m.unit} for m in __import__('products.models', fromlist=['MaterialVariant']).MaterialVariant.objects.filter(is_active=True)[:500]]})
 
 @require_GET
 @login_required
@@ -134,6 +136,13 @@ def create(request):
         if po_form.cleaned_data["status"] not in (PurchaseOrder.Status.DRAFT, PurchaseOrder.Status.SENT):
             return JsonResponse({"detail": "A new purchase order must be Draft or Sent. Use Goods Receipt to record received stock."}, status=400)
         po=po_form.save(commit=False); po.created_by=request.user
+        department_id = _department_id(request.user)
+        if _global_admin(request.user):
+            department_id = data.get("department")
+        if not department_id:
+            return JsonResponse({"detail": "Select a department for this purchase order."}, status=400)
+        from core.models import Department
+        po.department = get_object_or_404(Department, pk=department_id, is_active=True)
         po.subtotal=item_form.cleaned_data['quantity'] * item_form.cleaned_data['unit_cost']; po.save()
         item=item_form.save(commit=False); item.purchase_order=po; item.save()
         return JsonResponse({'order':_po(po)},status=201)
@@ -150,12 +159,37 @@ def receive(request, pk):
         return JsonResponse({"detail": "Only Sent or Partially Received purchase orders can receive goods."}, status=400)
     form=GoodsReceiptForm(_data(request))
     if not form.is_valid(): return JsonResponse({'detail':'Validation failed.','errors':form.errors.get_json_data()},status=400)
+    data = _data(request)
+    location = str(data.get("location", "")).strip()
+    if any(item.material_variant_id for item in po.items.all()) and not location:
+        return JsonResponse({"detail": "A stock location is required to receive material master items."}, status=400)
     receipt=form.save(commit=False); receipt.purchase_order=po; receipt.received_by=request.user; receipt.save()
-    for item in po.items.all():
+    from inventory.models import MaterialStockBalance, MaterialStockMovement
+    from inventory.services import record_material_movement
+    from products.models import MaterialVariant
+    for item in po.items.select_related("material_variant", "product").all():
         qty=item.pending_quantity
         if qty <= 0: continue
-        record_stock_transaction(product_id=item.product_id, transaction_type='in', quantity=qty, user=request.user,
-                                  reference=receipt.receipt_no, remarks=f'Goods received for {po.po_no}.')
+        if item.material_variant_id:
+            balance, _ = MaterialStockBalance.objects.get_or_create(
+                material_id=item.material_variant_id, department_id=po.department_id, location=location,
+            )
+            record_material_movement(
+                balance_id=balance.pk, movement_type=MaterialStockMovement.Type.PURCHASE_RECEIPT,
+                quantity=qty, user=request.user, reference=receipt.receipt_no,
+                remarks=f"Goods received for {po.po_no}.",
+            )
+            MaterialVariant.objects.filter(pk=item.material_variant_id).update(
+                purchase_rate=item.unit_cost, updated_at=timezone.now()
+            )
+        elif item.product_id:
+            record_stock_transaction(product_id=item.product_id, transaction_type='in', quantity=qty, user=request.user,
+                                      reference=receipt.receipt_no, remarks=f'Goods received for {po.po_no}.')
+        else:
+            return JsonResponse({"detail": f"Purchase item {item.pk} has no stock item linked."}, status=400)
         item.received_quantity += qty; item.save(update_fields=['received_quantity'])
-    po.status=PurchaseOrder.Status.RECEIVED; po.save(update_fields=['status','updated_at'])
+    from django.db.models import F
+    remaining = po.items.filter(received_quantity__lt=F('quantity')).exists()
+    po.status = PurchaseOrder.Status.PARTIAL if remaining else PurchaseOrder.Status.RECEIVED
+    po.save(update_fields=['status','updated_at'])
     return JsonResponse({'order':_po(po), 'receipt':{'receipt_no':receipt.receipt_no}})
