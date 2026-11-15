@@ -66,7 +66,8 @@ def _department_transactions(user):
     return qs.filter(
         Q(sales_payment__order__customer__department_id=department_id)
         | Q(expense__created_by__profile__department_id=department_id)
-        | Q(sales_payment__isnull=True, expense__isnull=True,
+        | Q(supplier_payment__purchase_order__created_by__profile__department_id=department_id)
+        | Q(sales_payment__isnull=True, expense__isnull=True, supplier_payment__isnull=True,
             created_by__profile__department_id=department_id)
     ).distinct()
 def _choices(c): return [{'value':v,'label':l} for v,l in c]
@@ -89,7 +90,11 @@ def dashboard(request):
     else:
         payments = PaymentRecord.objects.filter(order__in=orders, status__in=[PaymentRecord.Status.RECEIVED, PaymentRecord.Status.VERIFIED])
     income = payments.aggregate(total=Sum('amount'))['total'] or 0
-    expenses = expenses_qs.filter(status=Expense.Status.PAID).aggregate(total=Sum('amount'))['total'] or 0
+    expense_total = expenses_qs.filter(status=Expense.Status.PAID).aggregate(total=Sum('amount'))['total'] or 0
+    supplier_paid = SupplierPayment.objects.filter(
+        purchase_order__in=purchase_orders, status=SupplierPayment.Status.PAID
+    ).aggregate(total=Sum('amount'))['total'] or 0
+    expenses = expense_total + supplier_paid
     receivable = sum((o.confirmed_price-_received(o) for o in orders), 0)
     supplier_due = sum((po.total-(po.supplier_payments.filter(status=SupplierPayment.Status.PAID).aggregate(total=Sum('amount'))['total'] or 0) for po in purchase_orders), 0)
     tx = _department_transactions(request.user).order_by('-transaction_date','-created_at')[:40]
@@ -148,7 +153,7 @@ def supplier_payment_create(request):
     balance=po.total-paid
     if p.status==SupplierPayment.Status.PAID and p.amount>balance: return JsonResponse({'detail':f'Payment cannot exceed current supplier balance of ₹ {balance:,.2f}.'},status=400)
     p.created_by=request.user; p.save()
-    if p.status==SupplierPayment.Status.PAID: FinanceTransaction.objects.create(transaction_type='expense',amount=p.amount,transaction_date=p.payment_date,payment_method=p.payment_method,reference=p.payment_no,description=f'Supplier payment · {po.po_no} · {po.supplier.name}',created_by=request.user)
+    if p.status==SupplierPayment.Status.PAID: FinanceTransaction.objects.create(transaction_type='expense',amount=p.amount,transaction_date=p.payment_date,payment_method=p.payment_method,reference=p.payment_no,description=f'Supplier payment · {po.po_no} · {po.supplier.name}',supplier_payment=p,created_by=request.user)
     return JsonResponse({'payment':_sp(p)},status=201)
 @require_GET
 @login_required
