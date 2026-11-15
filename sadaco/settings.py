@@ -134,8 +134,8 @@ MEDIA_ROOT = BASE_DIR / "media"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-LOGIN_URL = "accounts:login"
-LOGIN_REDIRECT_URL = "core:dashboard"
+LOGIN_URL = "/login"
+LOGIN_REDIRECT_URL = "/"
 
 # Web Push / Android browser notifications. Keep the private key in the deployment environment.
 WEB_PUSH_PUBLIC_KEY = (os.getenv("WEB_PUSH_VAPID_PUBLIC_KEY", "") or os.getenv("VAPID_PUBLIC_KEY", "")).strip()
