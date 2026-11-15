@@ -64,6 +64,30 @@ class ProductionDepartmentAccessTests(TestCase):
         visible_ids = set(_visible_jobs(admin).values_list("id", flat=True))
         self.assertEqual(visible_ids, {self.creative_job.id, self.cnc_job.id})
 
+
+    def test_assigned_staff_cannot_finalize_job_through_progress_update(self):
+        self.client.force_login(self.creative_staff.user)
+        response = self.client.post(
+            f"/api/production/jobs/{self.creative_job.pk}/progress/",
+            data='{"stage":"completed","progress_percent":100,"note":"Finished"}',
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 403)
+        self.creative_job.refresh_from_db()
+        self.assertNotEqual(self.creative_job.status, ProductionJob.Status.COMPLETED)
+        self.assertEqual(self.creative_job.progress_percent, 0)
+
+    def test_progress_update_rejects_values_above_100(self):
+        self.client.force_login(self.creative_staff.user)
+        response = self.client.post(
+            f"/api/production/jobs/{self.creative_job.pk}/progress/",
+            data='{"stage":"production","progress_percent":150,"note":"Invalid"}',
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.creative_job.refresh_from_db()
+        self.assertEqual(self.creative_job.progress_percent, 0)
+
     def test_assigned_staff_cannot_edit_production_job_configuration(self):
         self.client.force_login(self.creative_staff.user)
         response = self.client.post(
