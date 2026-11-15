@@ -179,6 +179,8 @@ def create(request):
 @require_POST
 @login_required
 def update(request, pk):
+    if not _manager(request.user):
+        raise PermissionDenied
     job = get_object_or_404(_visible_jobs(request.user), pk=pk)
     if not _job_visible(request.user, job): raise PermissionDenied
     form = ProductionJobForm(_data(request), instance=job)
