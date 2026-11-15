@@ -915,7 +915,7 @@ def customer_requests_api(request):
         qs = qs.filter(assigned_to=request.user)
     elif role == UserProfile.Role.MANAGER:
         department_id = getattr(request.user.profile, "department_id", None)
-        qs = qs.filter(Q(customer__department_id=department_id) | Q(assigned_to__profile__department_id=department_id)).distinct() if department_id else qs.none()
+        qs = qs.filter(customer__department_id=department_id) if department_id else qs.none()
     else:
         qs = qs.none()
     q = request.GET.get("q", "").strip(); status = request.GET.get("status", "").strip()
@@ -938,7 +938,7 @@ def customer_request_update_api(request, pk):
         pass
     elif role == UserProfile.Role.MANAGER:
         department_id = getattr(request.user.profile, "department_id", None)
-        request_qs = request_qs.filter(Q(customer__department_id=department_id) | Q(assigned_to__profile__department_id=department_id)).distinct() if department_id else request_qs.none()
+        request_qs = request_qs.filter(customer__department_id=department_id) if department_id else request_qs.none()
     elif role == UserProfile.Role.STAFF:
         request_qs = request_qs.filter(assigned_to=request.user)
     else:
