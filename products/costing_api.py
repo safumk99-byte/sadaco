@@ -24,6 +24,25 @@ def _can_manage_costing(user):
         UserProfile.Role.MANAGER,
     )
 
+def _staff_compensation_queryset(user):
+    """
+    Global administrators can review all staff compensation.
+    Department managers are restricted to active staff in their own division.
+    """
+    qs = StaffProfile.objects.select_related("user", "compensation").filter(
+        status=StaffProfile.Status.ACTIVE
+    )
+    if user.is_superuser:
+        return qs
+    profile = getattr(user, "profile", None)
+    if not profile or not profile.is_active:
+        return qs.none()
+    if profile.role in (UserProfile.Role.SUPER_ADMIN, UserProfile.Role.INSTITUTION_ADMIN):
+        return qs
+    if profile.role == UserProfile.Role.MANAGER and profile.department_id:
+        return qs.filter(department_id=profile.department_id)
+    return qs.none()
+
 
 def _data(request):
     try:
@@ -172,7 +191,7 @@ def machine_rate_save_api(request, pk=None):
 def staff_compensation_api(request):
     if not _can_manage_costing(request.user):
         return JsonResponse({"detail": "You do not have permission to view staff compensation."}, status=403)
-    qs = StaffProfile.objects.select_related("user", "compensation").filter(status=StaffProfile.Status.ACTIVE)
+    qs = _staff_compensation_queryset(request.user)
     rows = []
     for staff in qs:
         comp = getattr(staff, "compensation", None)
@@ -194,7 +213,7 @@ def staff_compensation_api(request):
 def staff_compensation_save_api(request, staff_id):
     if not _can_manage_costing(request.user):
         return JsonResponse({"detail": "You do not have permission to edit staff compensation."}, status=403)
-    staff = get_object_or_404(StaffProfile, pk=staff_id)
+    staff = get_object_or_404(_staff_compensation_queryset(request.user), pk=staff_id)
     data = _data(request)
     payment_type = str(data.get("payment_type", "")).strip()
     if payment_type not in dict(StaffCompensation.PaymentType.choices):
