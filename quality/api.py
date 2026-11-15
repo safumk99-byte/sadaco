@@ -36,10 +36,7 @@ def _visible_jobs(user):
         department_id = _manager_department_id(user)
         if not department_id:
             return qs.none()
-        return qs.filter(
-            Q(assigned_staff__department_id=department_id)
-            | Q(order__responsible_staff__department_id=department_id)
-        ).distinct()
+        return qs.filter(order__customer__department_id=department_id)
     return qs.filter(assigned_staff__user=user)
 
 
