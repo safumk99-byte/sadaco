@@ -4,7 +4,7 @@ from django.core.exceptions import PermissionDenied
 
 from accounts.models import UserProfile
 from core.models import Department
-from .models import PurchaseOrder, Supplier
+from .models import PurchaseOrder, Supplier, PurchaseItem, GoodsReceiptLine
 from .api import _purchase_orders, summary
 
 
@@ -40,6 +40,51 @@ class PurchaseDepartmentAccessTests(TestCase):
         with self.assertRaises(PermissionDenied):
             summary(request)
 
+    def test_material_goods_receipt_creates_auditable_stock_line_once(self):
+        import json
+        from decimal import Decimal
+        from django.test import RequestFactory
+        from products.models import MaterialVariant
+        from inventory.models import MaterialStockBalance
+        from .api import receive
+
+        self.own.department = self.a
+        self.own.status = PurchaseOrder.Status.SENT
+        self.own.save(update_fields=["department", "status", "updated_at"])
+        material = MaterialVariant.objects.create(
+            material_name="Receipt Acrylic", brand="Test", thickness_mm=Decimal("3"),
+            purchase_rate=Decimal("80"), unit="Sheet",
+        )
+        item = PurchaseItem.objects.create(
+            purchase_order=self.own, material_variant=material,
+            quantity=Decimal("4"), unit_cost=Decimal("125"),
+        )
+        request = RequestFactory().post(
+            f"/api/purchase/orders/{self.own.pk}/receive/",
+            data=json.dumps({"location": "Main Store", "supplier_reference": "INV-001"}),
+            content_type="application/json",
+        )
+        request.user = self.manager
+        response = receive(request, self.own.pk)
+        self.assertEqual(response.status_code, 200)
+        line = GoodsReceiptLine.objects.get(receipt__purchase_order=self.own, purchase_item=item)
+        self.assertEqual(line.received_quantity, Decimal("4"))
+        self.assertEqual(line.unit_cost, Decimal("125"))
+        self.assertIsNotNone(line.material_stock_movement_id)
+        balance = MaterialStockBalance.objects.get(material=material, department=self.a, location="Main Store")
+        self.assertEqual(balance.quantity, Decimal("4"))
+
+        second = RequestFactory().post(
+            f"/api/purchase/orders/{self.own.pk}/receive/",
+            data=json.dumps({"location": "Main Store"}),
+            content_type="application/json",
+        )
+        second.user = self.manager
+        repeated = receive(second, self.own.pk)
+        self.assertEqual(repeated.status_code, 400)
+        self.assertEqual(GoodsReceiptLine.objects.filter(purchase_item=item).count(), 1)
+        balance.refresh_from_db()
+        self.assertEqual(balance.quantity, Decimal("4"))
 
     def test_cancelled_purchase_order_cannot_receive_goods(self):
         from django.test import RequestFactory
