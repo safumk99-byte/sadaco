@@ -1,3 +1,4 @@
+from datetime import date
 from io import StringIO
 from unittest.mock import patch
 
@@ -51,10 +52,21 @@ class PdfBaselineCleanupCommandTests(TestCase):
             purchase_rate=None,
             retail_rate=None,
         )
+        self.rate_history = MaterialRateHistory.objects.create(
+            material=self.material,
+            purchase_rate="100.00",
+            effective_from=date(2026, 11, 15),
+            note="Authoritative baseline test record",
+        )
         self.machine_rate = MachineRate.objects.create(
             operation=MachineRate.Operation.LASER_CUTTING,
             rate="20.00",
             unit="minute",
+        )
+        self.staff_compensation = StaffCompensation.objects.create(
+            staff=self.staff_profile,
+            payment_type=StaffCompensation.PaymentType.MONTHLY,
+            monthly_salary="25000.00",
         )
 
     def run_command(self, apply=False):
@@ -85,7 +97,11 @@ class PdfBaselineCleanupCommandTests(TestCase):
                 ).get()
             ),
             "group": Group.objects.filter(pk=self.group.pk).exists(),
-            "permission": (
+            "permission_exists": (
+                Permission.objects.filter(pk=self.permission.pk).exists()
+                if self.permission else None
+            ),
+            "group_permission_link": (
                 self.group.permissions.filter(pk=self.permission.pk).exists()
                 if self.permission else None
             ),
@@ -93,7 +109,11 @@ class PdfBaselineCleanupCommandTests(TestCase):
             "designation": Designation.objects.filter(pk=self.designation.pk).exists(),
             "work_area": WorkArea.objects.filter(pk=self.work_area.pk).exists(),
             "material": MaterialVariant.objects.filter(pk=self.material.pk).exists(),
+            "rate_history": MaterialRateHistory.objects.filter(pk=self.rate_history.pk).exists(),
             "machine_rate": MachineRate.objects.filter(pk=self.machine_rate.pk).exists(),
+            "staff_compensation": StaffCompensation.objects.filter(
+                pk=self.staff_compensation.pk
+            ).exists(),
         }
 
     def test_default_run_is_dry_run(self):
