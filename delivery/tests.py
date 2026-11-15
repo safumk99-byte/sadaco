@@ -86,3 +86,14 @@ class DeliveryLifecycleTests(TestCase):
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 400)
+
+
+    def test_feedback_cannot_be_recorded_before_delivery(self):
+        response = self.client.post(
+            f"/api/delivery/orders/{self.order.pk}/feedback/",
+            data=json.dumps({"rating": 5, "comment": "Premature feedback"}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+        from sales.models import CustomerFeedback
+        self.assertFalse(CustomerFeedback.objects.filter(order=self.order).exists())
