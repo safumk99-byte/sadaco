@@ -11,16 +11,14 @@ def remove_demo_catalog_data(apps, schema_editor):
 
     # Existing order requests are retained. Keep any product that is referenced
     # by a request rather than breaking that request's product relation.
-    # A product can be absent from the sales-request relation and still be
-    # referenced by purchasing, production, stock counts or reorder workflows.
-    # Preserve every such row; this migration must never orphan operational data.
+    # Preserve purchasing and production-linked rows. Inventory relations are
+    # introduced after this migration in the dependency graph; their PROTECT
+    # foreign keys still prevent deletion if a physical count references a row.
     demo_products = (
         Product.objects
         .exclude(customer_order_requests__isnull=False)
         .exclude(purchase_items__isnull=False)
         .exclude(production_materials__isnull=False)
-        .exclude(stock_counts__isnull=False)
-        .exclude(inventory_reorder_alert__isnull=False)
         # A non-zero balance is operational stock even when the legacy ledger
         # has no transaction rows. Never discard it as catalogue demo data.
         .exclude(stock_quantity__gt=0)
