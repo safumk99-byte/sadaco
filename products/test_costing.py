@@ -96,3 +96,16 @@ class CostingPermissionTests(TestCase):
         ):
             with self.subTest(endpoint=endpoint):
                 self.assertEqual(self.client.get(endpoint).status_code, 200)
+
+    def test_inactive_manager_profile_cannot_read_costing_or_salary_rates(self):
+        user = self._user_with_role("inactive-costing-manager", UserProfile.Role.MANAGER)
+        user.profile.is_active = False
+        user.profile.save(update_fields=["is_active"])
+        self.client.force_login(user)
+        for endpoint in (
+            "/api/costing/materials/",
+            "/api/costing/machine-rates/",
+            "/api/costing/staff/",
+        ):
+            with self.subTest(endpoint=endpoint):
+                self.assertEqual(self.client.get(endpoint).status_code, 403)
