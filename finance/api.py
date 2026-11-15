@@ -15,7 +15,9 @@ from purchase.models import PurchaseOrder
 from .forms import ExpenseForm, ExpenseCategoryForm, CustomerPaymentForm, SupplierPaymentForm
 from .models import Expense, ExpenseCategory, FinanceTransaction, SupplierPayment
 MANAGER_ROLES={UserProfile.Role.SUPER_ADMIN,UserProfile.Role.INSTITUTION_ADMIN,UserProfile.Role.MANAGER}
-def _manager(user): return user.is_superuser or getattr(getattr(user,'profile',None),'role',None) in MANAGER_ROLES
+def _manager(user):
+    profile = getattr(user, "profile", None)
+    return user.is_superuser or bool(profile and profile.is_active and profile.role in MANAGER_ROLES)
 def _deny(user):
     if not _manager(user): raise PermissionDenied
 
