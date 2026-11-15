@@ -26,6 +26,6 @@ class Migration(migrations.Migration):
         ),
         migrations.AddIndex(
             model_name="materialstocklot",
-            index=models.Index(fields=["balance", "remaining_quantity"], name="purchase_ms_balance_5e1a1a_idx"),
+            index=models.Index(fields=["balance", "remaining_quantity"], name="purch_lot_bal_rem_idx"),
         ),
     ]
