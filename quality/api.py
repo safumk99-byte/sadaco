@@ -272,6 +272,9 @@ def create_check(request):
     if not _visible_job(request.user, job):
         raise PermissionDenied
     form = QualityCheckForm(data)
+    form.fields["inspector"].queryset = StaffProfile.objects.filter(
+        department_id=job.order.customer.department_id
+    ) if job.order.customer.department_id else StaffProfile.objects.none()
     if not form.is_valid():
         return JsonResponse({"detail": "Validation failed.", "errors": form.errors.get_json_data()}, status=400)
     check = form.save(commit=False)
@@ -302,6 +305,9 @@ def update_check(request, pk):
     if not _visible_job(request.user, check.job):
         raise PermissionDenied
     form = QualityCheckForm(_data(request), instance=check)
+    form.fields["inspector"].queryset = StaffProfile.objects.filter(
+        department_id=check.job.order.customer.department_id
+    ) if check.job.order.customer.department_id else StaffProfile.objects.none()
     if not form.is_valid():
         return JsonResponse({"detail": "Validation failed.", "errors": form.errors.get_json_data()}, status=400)
     check = form.save()
@@ -368,6 +374,9 @@ def update_packing(request, pk):
         return JsonResponse({"detail": "Packing is available only after final QC passes."}, status=400)
     packing, _ = PackingRecord.objects.get_or_create(job=job)
     form = PackingRecordForm(_data(request), instance=packing)
+    form.fields["packed_by"].queryset = StaffProfile.objects.filter(
+        department_id=job.order.customer.department_id
+    ) if job.order.customer.department_id else StaffProfile.objects.none()
     if not form.is_valid():
         return JsonResponse({"detail": "Validation failed.", "errors": form.errors.get_json_data()}, status=400)
     packing = form.save()
