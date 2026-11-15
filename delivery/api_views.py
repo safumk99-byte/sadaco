@@ -80,7 +80,10 @@ def update(request, pk):
     for field in date_fields:
         if field in data:
             raw = data[field]
-            parsed = parse_date(raw) if raw else None
+            try:
+                parsed = parse_date(raw) if raw else None
+            except (TypeError, ValueError):
+                parsed = None
             if raw and parsed is None:
                 return JsonResponse({'detail': f'Invalid {field.replace("_", " ")}.'}, status=400)
             setattr(d, field, parsed)
@@ -98,7 +101,7 @@ def update(request, pk):
     if 'status' in data:
         requested = data['status']
         valid_statuses = {value for value, _ in DeliveryRecord.Status.choices}
-        if requested not in valid_statuses:
+        if not isinstance(requested, str) or requested not in valid_statuses:
             return JsonResponse({'detail': 'Invalid delivery status.'}, status=400)
         transitions = {
             DeliveryRecord.Status.PENDING: {DeliveryRecord.Status.PENDING, DeliveryRecord.Status.SCHEDULED, DeliveryRecord.Status.CANCELLED},
