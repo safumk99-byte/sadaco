@@ -150,3 +150,19 @@ class PdfBaselineCleanupCommandTests(TestCase):
         self.assertTrue(
             StaffCompensation.objects.filter(pk=self.staff_compensation.pk).exists()
         )
+
+    def test_dependency_order_places_protect_children_before_parents(self):
+        from products.models import Product, ProductCategory
+        from sales.models import Enquiry, OrderRequest, Quotation, SalesOrder
+
+        ordered = reset_to_pdf_baseline._dependency_order([
+            Customer, Enquiry, Quotation, SalesOrder, OrderRequest,
+            Product, ProductCategory,
+        ])
+        positions = {model: index for index, model in enumerate(ordered)}
+        self.assertLess(positions[Enquiry], positions[Customer])
+        self.assertLess(positions[Quotation], positions[Customer])
+        self.assertLess(positions[SalesOrder], positions[Customer])
+        self.assertLess(positions[OrderRequest], positions[Customer])
+        self.assertLess(positions[OrderRequest], positions[Product])
+        self.assertLess(positions[Product], positions[ProductCategory])
