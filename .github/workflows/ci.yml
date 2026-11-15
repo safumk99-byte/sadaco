@@ -79,6 +79,7 @@ jobs:
           reports.tests.ReportsDepartmentAccessTests
           staff.tests.DepartmentAccessScopeTests
           products.test_costing.MaterialCostingModelTests
+          products.test_costing.CostingPermissionTests
 
   frontend-build:
     runs-on: ubuntu-latest
