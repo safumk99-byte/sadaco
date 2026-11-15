@@ -6,6 +6,7 @@ from django.db.models import Q, Sum
 from django.views.decorators.http import require_http_methods
 
 from accounts.models import UserProfile
+from core.models import Department
 from staff.models import StaffProfile
 from .forms import CustomerForm, EnquiryForm, QuotationForm, SalesOrderForm
 from .models import Customer, Enquiry, Quotation, SalesOrder, OrderRequest
@@ -131,13 +132,15 @@ def customers(request):
 @login_required
 def customer_create(request):
     if _guard(request.user, True): return _guard(request.user, True)
-    import json; form = CustomerForm(json.loads(request.body or '{}'))
+    import json; data=json.loads(request.body or '{}'); form = CustomerForm(data)
     if form.is_valid():
         c=form.save(commit=False)
         if not _global_admin(request.user):
             c.department_id = _department_id(request.user)
             if not c.department_id:
                 return JsonResponse({'detail': 'Assign your manager account to a department first.'}, status=400)
+        elif data.get("department"):
+            c.department = get_object_or_404(Department, pk=data.get("department"), is_active=True)
         c.save(); return JsonResponse({'customer': _customer(c)}, status=201)
     return JsonResponse({'detail':'Validation failed.','errors':form.errors.get_json_data()},status=400)
 
