@@ -3,6 +3,7 @@ from decimal import Decimal, InvalidOperation
 
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
+from django.db import transaction
 from django.db.models import Q, Sum
 from django.http import JsonResponse
 from django.views.decorators.http import require_GET, require_POST
@@ -285,6 +286,7 @@ def offcut_create_api(request):
 
 @require_POST
 @login_required
+@transaction.atomic
 def offcut_action_api(request, pk):
     try:
         data = json.loads(request.body or "{}")
