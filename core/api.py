@@ -732,9 +732,6 @@ def users_api(request):
     })
 
 
-@require_POST
-@login_required
-
 def _set_user_department(user, department_id):
     profile = get_or_create_profile(user)
     if department_id in (None, "", "null"):
@@ -756,6 +753,8 @@ def _set_user_department(user, department_id):
     return profile
 
 
+@require_POST
+@login_required
 def user_create_api(request):
     if not _can_manage_users(request.user):
         return JsonResponse({"detail": "You do not have permission to manage users."}, status=403)
