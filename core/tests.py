@@ -117,6 +117,28 @@ class CustomerRequestDepartmentAccessTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual([x["id"] for x in response.json()["items"]], [self.request_a.id])
 
+    def test_manager_cannot_access_foreign_customer_request_assigned_to_own_staff(self):
+        import json
+        foreign_assigned_to_own_staff = OrderRequest.objects.create(
+            customer=self.customer_b,
+            quantity=1,
+            requirement="Foreign customer request",
+            assigned_to=self.manager,
+        )
+        self.client.force_login(self.manager)
+        response = self.client.get("/api/customer-requests/")
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn(
+            foreign_assigned_to_own_staff.id,
+            [item["id"] for item in response.json()["items"]],
+        )
+        response = self.client.post(
+            f"/api/customer-requests/{foreign_assigned_to_own_staff.pk}/update/",
+            data=json.dumps({"status": "contacted"}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 404)
+
     def test_regular_customer_cannot_read_internal_request_queue(self):
         customer_user = User.objects.create_user(username="portal_customer", password="StrongPass123!")
         Customer.objects.create(user=customer_user, name="Portal Customer", phone="9000000103")
