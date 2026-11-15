@@ -13,6 +13,7 @@ from products.models import Product
 from staff.models import StaffAttendance, StaffProfile, StaffTask, Designation, WorkArea, PerformanceRecord
 from sales.models import Customer, Enquiry, SalesOrder, OrderRequest
 from accounts.models import Notification, UserProfile, PushSubscription
+from core.models import Department
 
 
 def _user_payload(user):
@@ -32,6 +33,7 @@ def _user_payload(user):
         "role": role,
         "role_label": role_label,
         "is_superuser": user.is_superuser,
+        "department": ({"id": profile.department_id, "name": profile.department.name, "code": profile.department.code} if profile and profile.department_id else None),
     }
 
 
@@ -216,6 +218,7 @@ def _staff_payload(profile):
         "work_area": {"id": profile.work_area_id, "name": profile.work_area.name} if profile.work_area else None,
         "photo": profile.photo.url if profile.photo else None,
         "notes": profile.notes,
+        "department": ({"id": profile.department_id, "name": profile.department.name, "code": profile.department.code} if profile.department_id else None),
     }
 
 
@@ -248,6 +251,7 @@ def staff_api(request):
     return JsonResponse({"staff": [_staff_payload(x) for x in qs], "stats": stats,
                          "designations": _choice_payload(Designation.objects.filter(is_active=True)),
                          "work_areas": _choice_payload(WorkArea.objects.filter(is_active=True)),
+                         "departments": [{"id": d.id, "name": d.name, "code": d.code} for d in Department.objects.filter(is_active=True)],
                          "can_manage": can_manage_staff(request.user)})
 
 
@@ -277,7 +281,8 @@ def staff_detail_api(request, pk):
 def staff_options_api(request):
     return JsonResponse({"staff": [{"id":s.id,"name":str(s)} for s in staff_for_user(request.user).filter(status=StaffProfile.Status.ACTIVE)],
                          "designations": _choice_payload(Designation.objects.filter(is_active=True)),
-                         "work_areas": _choice_payload(WorkArea.objects.filter(is_active=True))})
+                         "work_areas": _choice_payload(WorkArea.objects.filter(is_active=True)),
+                         "departments": [{"id": d.id, "name": d.name, "code": d.code} for d in Department.objects.filter(is_active=True)]})
 
 
 @require_POST
@@ -293,8 +298,8 @@ def staff_create_api(request):
         with transaction.atomic():
             user=User.objects.create_user(username=data["username"],password=data["password"],first_name=data.get("first_name", ""),last_name=data.get("last_name", ""),email=data.get("email", ""))
             from accounts.models import UserProfile
-            UserProfile.objects.create(user=user, role=UserProfile.Role.STAFF)
-            profile=StaffProfile.objects.create(user=user,staff_id=data["staff_id"],designation_id=data.get("designation") or None,work_area_id=data.get("work_area") or None,phone=data.get("phone",""),joining_date=parse_date(data.get("joining_date")) if data.get("joining_date") else None,address=data.get("address",""),status=data.get("status") or StaffProfile.Status.ACTIVE,notes=data.get("notes",""),photo=request.FILES.get("photo"))
+            UserProfile.objects.create(user=user, role=UserProfile.Role.STAFF, department_id=data.get("department") or None)
+            profile=StaffProfile.objects.create(user=user,staff_id=data["staff_id"],department_id=data.get("department") or None,designation_id=data.get("designation") or None,work_area_id=data.get("work_area") or None,phone=data.get("phone",""),joining_date=parse_date(data.get("joining_date")) if data.get("joining_date") else None,address=data.get("address",""),status=data.get("status") or StaffProfile.Status.ACTIVE,notes=data.get("notes",""),photo=request.FILES.get("photo"))
     except Exception as exc:
         return JsonResponse({"detail": str(exc)}, status=400)
     return JsonResponse({"staff": _staff_payload(profile)}, status=201)
@@ -306,7 +311,7 @@ def staff_update_api(request, pk):
     profile=get_object_or_404(staff_for_user(request.user), pk=pk)
     data=request.POST
     if data.get("staff_id") and StaffProfile.objects.filter(staff_id=data["staff_id"]).exclude(pk=pk).exists(): return JsonResponse({"detail":"Staff ID already exists."},status=400)
-    profile.staff_id=data.get("staff_id",profile.staff_id); profile.designation_id=data.get("designation") or None; profile.work_area_id=data.get("work_area") or None; profile.phone=data.get("phone",profile.phone); profile.address=data.get("address",profile.address); profile.status=data.get("status",profile.status); profile.notes=data.get("notes",profile.notes)
+    profile.staff_id=data.get("staff_id",profile.staff_id); profile.department_id=data.get("department") or None; profile.designation_id=data.get("designation") or None; profile.work_area_id=data.get("work_area") or None; profile.phone=data.get("phone",profile.phone); profile.address=data.get("address",profile.address); profile.status=data.get("status",profile.status); profile.notes=data.get("notes",profile.notes)
     if data.get("joining_date"): profile.joining_date=parse_date(data["joining_date"])
     if "photo" in request.FILES: profile.photo=request.FILES["photo"]
     profile.save()
@@ -614,6 +619,7 @@ def _user_admin_payload(user):
         "first_name": user.first_name, "last_name": user.last_name,
         "email": user.email, "phone": profile.phone,
         "role": profile.role, "role_label": profile.get_role_display(),
+        "department": ({"id": profile.department_id, "name": profile.department.name, "code": profile.department.code} if profile.department_id else None),
         "is_active": bool(user.is_active and profile.is_active),
         "created_at": user.date_joined.isoformat() if user.date_joined else None,
     }
@@ -648,6 +654,7 @@ def users_api(request):
         "users": [_user_admin_payload(u) for u in qs],
         "active_count": all_users.filter(is_active=True, profile__is_active=True).count(),
         "roles": [{"value": v, "label": l} for v, l in UserProfile.Role.choices],
+        "departments": [{"id": d.id, "name": d.name, "code": d.code} for d in Department.objects.filter(is_active=True)],
         "can_manage": True,
     })
 
@@ -813,3 +820,125 @@ def customer_request_update_api(request, pk):
         item.assigned_to_id = data.get("assigned_to")
     item.save(update_fields=["status", "manager_notes", "assigned_to", "updated_at"])
     return JsonResponse({"ok": True})
+
+
+# ---------------------------------------------------------------------------
+# Department / Division Management
+# ---------------------------------------------------------------------------
+def _can_manage_departments(user):
+    return user.is_superuser or getattr(getattr(user, "profile", None), "role", None) in (
+        UserProfile.Role.SUPER_ADMIN, UserProfile.Role.INSTITUTION_ADMIN
+    )
+
+
+def _department_payload(department):
+    manager = department.manager
+    return {
+        "id": department.id,
+        "code": department.code,
+        "name": department.name,
+        "description": department.description,
+        "is_active": department.is_active,
+        "manager": ({
+            "id": manager.id,
+            "name": manager.get_full_name() or manager.username,
+            "username": manager.username,
+        } if manager else None),
+        "staff_count": department.staff_members.count(),
+        "user_count": department.user_profiles.count(),
+        "created_at": department.created_at.isoformat(),
+        "updated_at": department.updated_at.isoformat(),
+    }
+
+
+@require_GET
+@login_required
+def departments_api(request):
+    qs = Department.objects.select_related("manager").prefetch_related("staff_members", "user_profiles")
+    if not _can_manage_departments(request.user):
+        profile = getattr(request.user, "profile", None)
+        if not profile or not profile.department_id:
+            return JsonResponse({"departments": []})
+        qs = qs.filter(pk=profile.department_id)
+    return JsonResponse({
+        "departments": [_department_payload(item) for item in qs],
+        "can_manage": _can_manage_departments(request.user),
+        "manager_options": [
+            {"id": u.id, "name": u.get_full_name() or u.username, "username": u.username}
+            for u in User.objects.filter(is_active=True, profile__role=UserProfile.Role.MANAGER).order_by("first_name", "username")
+        ] if _can_manage_departments(request.user) else [],
+    })
+
+
+@require_POST
+@login_required
+def department_create_api(request):
+    if not _can_manage_departments(request.user):
+        return JsonResponse({"detail": "You do not have permission to manage departments."}, status=403)
+    data = _request_data(request)
+    code = str(data.get("code", "")).strip().lower()
+    name = str(data.get("name", "")).strip()
+    if not code or not name:
+        return JsonResponse({"detail": "Department code and name are required."}, status=400)
+    if Department.objects.filter(code=code).exists() or Department.objects.filter(name__iexact=name).exists():
+        return JsonResponse({"detail": "A department with this code or name already exists."}, status=400)
+    department = Department.objects.create(
+        code=code, name=name, description=str(data.get("description", "")).strip()
+    )
+    AuditLog.objects.create(
+        user=request.user, module="departments", action=AuditLog.Action.CREATE,
+        reference=department.code, description=f"Created department {department.name}",
+        ip_address=request.META.get("REMOTE_ADDR"),
+    )
+    return JsonResponse({"department": _department_payload(department)}, status=201)
+
+
+@require_POST
+@login_required
+def department_update_api(request, pk):
+    if not _can_manage_departments(request.user):
+        return JsonResponse({"detail": "You do not have permission to manage departments."}, status=403)
+    department = get_object_or_404(Department, pk=pk)
+    data = _request_data(request)
+    name = str(data.get("name", department.name)).strip()
+    code = str(data.get("code", department.code)).strip().lower()
+    if not name or not code:
+        return JsonResponse({"detail": "Department code and name are required."}, status=400)
+    if Department.objects.filter(name__iexact=name).exclude(pk=pk).exists():
+        return JsonResponse({"detail": "Department name already exists."}, status=400)
+    if Department.objects.filter(code=code).exclude(pk=pk).exists():
+        return JsonResponse({"detail": "Department code already exists."}, status=400)
+
+    manager_id = data.get("manager")
+    manager = None
+    if manager_id not in (None, "", "null"):
+        manager = get_object_or_404(User, pk=manager_id, is_active=True)
+        manager_profile = getattr(manager, "profile", None)
+        if not manager_profile or manager_profile.role != UserProfile.Role.MANAGER:
+            return JsonResponse({"detail": "Only an active Manager account can lead a department."}, status=400)
+        if Department.objects.filter(manager=manager).exclude(pk=pk).exists():
+            return JsonResponse({"detail": "This manager already leads another department."}, status=400)
+
+    old_manager = department.manager
+    department.name = name
+    department.code = code
+    department.description = str(data.get("description", department.description)).strip()
+    department.is_active = str(data.get("is_active", department.is_active)).lower() not in ("false", "0", "no")
+    department.manager = manager
+    department.save()
+
+    if old_manager and old_manager != manager:
+        old_profile = getattr(old_manager, "profile", None)
+        if old_profile and old_profile.department_id == department.id:
+            old_profile.department = None
+            old_profile.save(update_fields=["department", "updated_at"])
+    if manager:
+        manager_profile.department = department
+        manager_profile.save(update_fields=["department", "updated_at"])
+
+    AuditLog.objects.create(
+        user=request.user, module="departments", action=AuditLog.Action.UPDATE,
+        reference=department.code, description=f"Updated department {department.name}",
+        ip_address=request.META.get("REMOTE_ADDR"),
+    )
+    return JsonResponse({"department": _department_payload(department)})
