@@ -78,7 +78,7 @@ class MaterialLedgerWorkflowTests(TestCase):
             issue_material(material_id=self.line.pk, quantity="1", lot_id=self.lot.pk, user=self.manager)
 
     def test_return_restores_stock_and_updates_returned_quantity(self):
-        issue_material(material_id=self.line.pk, quantity="3", user=self.manager)
+        issue_material(material_id=self.line.pk, quantity="3", lot_id=self.lot.pk, user=self.manager)
         movement = return_issued_material(material_id=self.line.pk, quantity="1", balance_id=self.balance.pk, user=self.manager)
         self.balance.refresh_from_db()
         self.line.refresh_from_db()
@@ -87,7 +87,7 @@ class MaterialLedgerWorkflowTests(TestCase):
         self.assertEqual(movement.movement_type, MaterialStockMovement.Type.RETURN)
 
     def test_wastage_does_not_deduct_issued_stock_twice(self):
-        issue_material(material_id=self.line.pk, quantity="3", user=self.manager)
+        issue_material(material_id=self.line.pk, quantity="3", lot_id=self.lot.pk, user=self.manager)
         movement = record_issued_wastage(material_id=self.line.pk, quantity="1", balance_id=self.balance.pk, user=self.manager)
         self.balance.refresh_from_db()
         self.line.refresh_from_db()
@@ -102,7 +102,7 @@ class MaterialLedgerWorkflowTests(TestCase):
             return_issued_material(material_id=self.line.pk, quantity="3", balance_id=self.balance.pk, user=self.manager)
 
     def test_foreign_department_balance_cannot_receive_return(self):
-        issue_material(material_id=self.line.pk, quantity="2", user=self.manager)
+        issue_material(material_id=self.line.pk, quantity="2", lot_id=self.lot.pk, user=self.manager)
         foreign = MaterialStockBalance.objects.create(
             material=self.material, department=self.other_department, location="Other Store", quantity=0
         )
