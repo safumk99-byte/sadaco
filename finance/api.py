@@ -140,7 +140,7 @@ def supplier_payment_create(request):
     if not form.is_valid(): return JsonResponse({'detail':'Validation failed.','errors':form.errors.get_json_data()},status=400)
     p=form.save(commit=False)
     po=get_object_or_404(
-        _department_purchase_orders(request.user).select_for_update().exclude(status=PurchaseOrder.Status.CANCELLED),
+        _department_purchase_orders(request.user).select_for_update(of=("self",)).exclude(status=PurchaseOrder.Status.CANCELLED),
         pk=p.purchase_order_id,
     )
     p.purchase_order=po
