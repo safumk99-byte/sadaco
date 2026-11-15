@@ -18,6 +18,47 @@ MANAGER_ROLES={UserProfile.Role.SUPER_ADMIN,UserProfile.Role.INSTITUTION_ADMIN,U
 def _manager(user): return user.is_superuser or getattr(getattr(user,'profile',None),'role',None) in MANAGER_ROLES
 def _deny(user):
     if not _manager(user): raise PermissionDenied
+
+def _global_admin(user):
+    role = getattr(getattr(user, "profile", None), "role", None)
+    return user.is_superuser or role in (UserProfile.Role.SUPER_ADMIN, UserProfile.Role.INSTITUTION_ADMIN)
+
+
+def _department_id(user):
+    profile = getattr(user, "profile", None)
+    return profile.department_id if profile and profile.role == UserProfile.Role.MANAGER else None
+
+
+def _department_expenses(user):
+    qs = Expense.objects.all()
+    if _global_admin(user): return qs
+    department_id = _department_id(user)
+    return qs.filter(created_by__profile__department_id=department_id) if department_id else qs.none()
+
+
+def _department_orders(user):
+    qs = SalesOrder.objects.all()
+    if _global_admin(user): return qs
+    department_id = _department_id(user)
+    return qs.filter(customer__department_id=department_id) if department_id else qs.none()
+
+
+def _department_purchase_orders(user):
+    qs = PurchaseOrder.objects.all()
+    if _global_admin(user): return qs
+    department_id = _department_id(user)
+    return qs.filter(created_by__profile__department_id=department_id) if department_id else qs.none()
+
+
+def _department_transactions(user):
+    qs = FinanceTransaction.objects.all()
+    if _global_admin(user): return qs
+    department_id = _department_id(user)
+    return qs.filter(
+        Q(created_by__profile__department_id=department_id)
+        | Q(sales_payment__order__customer__department_id=department_id)
+        | Q(expense__created_by__profile__department_id=department_id)
+    ).distinct() if department_id else qs.none()
 def _choices(c): return [{'value':v,'label':l} for v,l in c]
 def _data(r):
     try:return json.loads(r.body or '{}')
@@ -29,16 +70,24 @@ def _received(order): return order.payments.filter(status__in=[PaymentRecord.Sta
 @require_GET
 @login_required
 def dashboard(request):
-    _deny(request.user); income=PaymentRecord.objects.filter(status__in=[PaymentRecord.Status.RECEIVED,PaymentRecord.Status.VERIFIED]).aggregate(total=Sum('amount'))['total'] or 0
-    expenses=Expense.objects.filter(status=Expense.Status.PAID).aggregate(total=Sum('amount'))['total'] or 0
-    receivable=sum((o.confirmed_price-_received(o) for o in SalesOrder.objects.exclude(status=SalesOrder.Status.CANCELLED)),0)
-    supplier_due=sum((po.total-(po.supplier_payments.filter(status=SupplierPayment.Status.PAID).aggregate(total=Sum('amount'))['total'] or 0) for po in PurchaseOrder.objects.exclude(status=PurchaseOrder.Status.CANCELLED)),0)
-    tx=FinanceTransaction.objects.order_by('-transaction_date','-created_at')[:40]
-    return JsonResponse({'stats':{'income':str(income),'expenses':str(expenses),'receivable':str(receivable),'supplier_due':str(supplier_due),'balance':str(income-expenses),'expense_count':Expense.objects.filter(status=Expense.Status.PAID).count()},'transactions':[_tx(x) for x in tx]})
+    _deny(request.user)
+    orders = _department_orders(request.user).exclude(status=SalesOrder.Status.CANCELLED)
+    purchase_orders = _department_purchase_orders(request.user).exclude(status=PurchaseOrder.Status.CANCELLED)
+    expenses_qs = _department_expenses(request.user)
+    if _global_admin(request.user):
+        payments = PaymentRecord.objects.filter(status__in=[PaymentRecord.Status.RECEIVED, PaymentRecord.Status.VERIFIED])
+    else:
+        payments = PaymentRecord.objects.filter(order__in=orders, status__in=[PaymentRecord.Status.RECEIVED, PaymentRecord.Status.VERIFIED])
+    income = payments.aggregate(total=Sum('amount'))['total'] or 0
+    expenses = expenses_qs.filter(status=Expense.Status.PAID).aggregate(total=Sum('amount'))['total'] or 0
+    receivable = sum((o.confirmed_price-_received(o) for o in orders), 0)
+    supplier_due = sum((po.total-(po.supplier_payments.filter(status=SupplierPayment.Status.PAID).aggregate(total=Sum('amount'))['total'] or 0) for po in purchase_orders), 0)
+    tx = _department_transactions(request.user).order_by('-transaction_date','-created_at')[:40]
+    return JsonResponse({'stats':{'income':str(income),'expenses':str(expenses),'receivable':str(receivable),'supplier_due':str(supplier_due),'balance':str(income-expenses),'expense_count':expenses_qs.filter(status=Expense.Status.PAID).count()},'transactions':[_tx(x) for x in tx]})
 @require_GET
 @login_required
 def expenses(request):
-    _deny(request.user); q=request.GET.get('q','').strip(); status=request.GET.get('status',''); qs=Expense.objects.select_related('category')
+    _deny(request.user); q=request.GET.get('q','').strip(); status=request.GET.get('status',''); qs=_department_expenses(request.user).select_related('category')
     if q: qs=qs.filter(Q(expense_no__icontains=q)|Q(category__name__icontains=q)|Q(description__icontains=q)|Q(reference__icontains=q))
     if status: qs=qs.filter(status=status)
     return JsonResponse({'expenses':[_expense(x) for x in qs[:250]],'categories':[{'id':c.id,'name':c.name} for c in ExpenseCategory.objects.filter(is_active=True)],'statuses':_choices(Expense.Status.choices),'payment_methods':_choices([('cash','Cash'),('upi','UPI'),('bank','Bank Transfer'),('card','Card'),('other','Other')])})
@@ -61,15 +110,15 @@ def category_create(request):
 @login_required
 def receivables(request):
     _deny(request.user); rows=[]
-    for o in SalesOrder.objects.select_related('customer').exclude(status=SalesOrder.Status.CANCELLED).prefetch_related('payments'):
+    for o in _department_orders(request.user).select_related('customer').exclude(status=SalesOrder.Status.CANCELLED).prefetch_related('payments'):
         received=_received(o); balance=o.confirmed_price-received
         if balance>0: rows.append({'order':{'id':o.id,'order_no':o.order_no,'customer':o.customer.name,'total':str(o.confirmed_price)},'received':str(received),'balance':str(balance)})
     return JsonResponse({'rows':rows,'total':str(sum((Decimal(x['balance']) for x in rows), Decimal('0')))})
 @require_GET
 @login_required
 def supplier_payments(request):
-    _deny(request.user); payments=SupplierPayment.objects.select_related('purchase_order__supplier').order_by('-payment_date')[:150]; due=[]
-    for po in PurchaseOrder.objects.select_related('supplier').exclude(status=PurchaseOrder.Status.CANCELLED):
+    _deny(request.user); payments=SupplierPayment.objects.filter(purchase_order__in=_department_purchase_orders(request.user)).select_related('purchase_order__supplier').order_by('-payment_date')[:150]; due=[]
+    for po in _department_purchase_orders(request.user).select_related('supplier').exclude(status=PurchaseOrder.Status.CANCELLED):
         paid=po.supplier_payments.filter(status=SupplierPayment.Status.PAID).aggregate(total=Sum('amount'))['total'] or 0; balance=po.total-paid
         if balance>0: due.append({'order':{'id':po.id,'po_no':po.po_no,'supplier':po.supplier.name,'total':str(po.total)},'paid':str(paid),'balance':str(balance)})
     return JsonResponse({'payments':[_sp(x) for x in payments],'due':due,'total_due':str(sum((Decimal(x['balance']) for x in due), Decimal('0')))})
@@ -77,7 +126,7 @@ def supplier_payments(request):
 @login_required
 @transaction.atomic
 def supplier_payment_create(request):
-    _deny(request.user); form=SupplierPaymentForm(_data(request))
+    _deny(request.user); form=SupplierPaymentForm(_data(request)); form.fields["purchase_order"].queryset = _department_purchase_orders(request.user).exclude(status=PurchaseOrder.Status.CANCELLED).select_related("supplier").order_by("-order_date")
     if not form.is_valid(): return JsonResponse({'detail':'Validation failed.','errors':form.errors.get_json_data()},status=400)
     p=form.save(commit=False); po=p.purchase_order; paid=po.supplier_payments.filter(status=SupplierPayment.Status.PAID).aggregate(total=Sum('amount'))['total'] or 0; balance=po.total-paid
     if p.status==SupplierPayment.Status.PAID and p.amount>balance: return JsonResponse({'detail':f'Payment cannot exceed current supplier balance of ₹ {balance:,.2f}.'},status=400)
@@ -92,6 +141,6 @@ def reconciliation(request):
         if request.GET.get('start'): start=date.fromisoformat(request.GET['start'])
         if request.GET.get('end'): end=date.fromisoformat(request.GET['end'])
     except ValueError: pass
-    tx=FinanceTransaction.objects.filter(status='posted',transaction_date__range=(start,end)); raw=tx.values('payment_method').annotate(income=Sum('amount',filter=Q(transaction_type='income')),expense=Sum('amount',filter=Q(transaction_type='expense')))
+    tx=_department_transactions(request.user).filter(status='posted',transaction_date__range=(start,end)); raw=tx.values('payment_method').annotate(income=Sum('amount',filter=Q(transaction_type='income')),expense=Sum('amount',filter=Q(transaction_type='expense')))
     by=[{'payment_method':r['payment_method'],'income':str(r['income'] or 0),'expense':str(r['expense'] or 0),'net':str((r['income'] or 0)-(r['expense'] or 0))} for r in raw]
     return JsonResponse({'start':start.isoformat(),'end':end.isoformat(),'by_method':by,'transactions':[_tx(x) for x in tx[:200]]})
