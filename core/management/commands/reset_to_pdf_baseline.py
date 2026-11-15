@@ -1,8 +1,8 @@
 """Safely clear legacy business records while preserving identity and PDF masters.
 
-This command is intentionally dry-run by default. Use --apply only against an
-isolated disposable/staging database after reviewing the printed deletion plan.
-It never deletes auth users, groups, permissions, user profiles or staff profiles.
+Dry-run is the default. The command simulates the complete dependency-ordered
+cleanup inside a transaction and rolls it back. --apply is intended only for
+an isolated disposable/staging database after reviewing that dry-run plan.
 """
 from collections import Counter
 
@@ -12,7 +12,8 @@ from django.contrib.auth.models import Group, Permission
 from django.contrib.contenttypes.models import ContentType
 from django.core.management.base import BaseCommand, CommandError
 from django.db import DEFAULT_DB_ALIAS, transaction
-from django.db.models.deletion import Collector
+from django.db.models import ForeignKey, OneToOneField
+from django.db.models.deletion import Collector, PROTECT, RESTRICT
 
 from accounts.models import UserProfile
 from core.models import Department
@@ -20,40 +21,73 @@ from products.models import MachineRate, MaterialRateHistory, MaterialVariant, S
 from staff.models import Designation, StaffProfile, WorkArea
 
 
-# Business apps whose legacy operational records are eligible for replacement.
 BUSINESS_APP_LABELS = {
     "accounts", "core", "delivery", "finance", "inventory", "marketing",
     "products", "production", "purchase", "quality", "reports", "sales", "staff",
 }
 
-# These are identity, staff-master, or PDF-authoritative configuration records.
 PRESERVED_MODELS = {
-    get_user_model(),
-    Group,
-    Permission,
-    ContentType,
-    UserProfile,
-    StaffProfile,
-    Department,
-    Designation,
-    WorkArea,
-    MaterialVariant,
-    MaterialRateHistory,
-    MachineRate,
-    StaffCompensation,
+    get_user_model(), Group, Permission, ContentType, UserProfile, StaffProfile,
+    Department, Designation, WorkArea, MaterialVariant, MaterialRateHistory,
+    MachineRate, StaffCompensation,
 }
 
 
-class Command(BaseCommand):
-    help = (
-        "Dry-run or apply the SADACO PDF baseline cleanup. "
-        "All existing user accounts and staff profiles are preserved."
+class _DryRunRollback(Exception):
+    """Internal sentinel used to roll back a full dry-run simulation."""
+
+
+def _dependency_order(models):
+    """Return child-before-parent order for PROTECT/RESTRICT foreign keys."""
+    model_set = set(models)
+    outgoing = {model: set() for model in model_set}
+    indegree = {model: 0 for model in model_set}
+
+    for child in model_set:
+        for field in child._meta.get_fields():
+            if not isinstance(field, (ForeignKey, OneToOneField)):
+                continue
+            if field.remote_field.on_delete not in (PROTECT, RESTRICT):
+                continue
+            parent = field.remote_field.model
+            if parent not in model_set or parent is child:
+                continue
+            if parent not in outgoing[child]:
+                outgoing[child].add(parent)
+                indegree[parent] += 1
+
+    ready = sorted(
+        (model for model, degree in indegree.items() if degree == 0),
+        key=lambda model: model._meta.label_lower,
     )
+    ordered = []
+    while ready:
+        model = ready.pop(0)
+        ordered.append(model)
+        for parent in sorted(outgoing[model], key=lambda item: item._meta.label_lower):
+            indegree[parent] -= 1
+            if indegree[parent] == 0:
+                ready.append(parent)
+                ready.sort(key=lambda item: item._meta.label_lower)
+
+    if len(ordered) != len(model_set):
+        cyclic = sorted(
+            model._meta.label for model, degree in indegree.items() if degree
+        )
+        raise CommandError(
+            "Cleanup cannot safely order a PROTECT/RESTRICT dependency cycle: "
+            + ", ".join(cyclic)
+        )
+    return ordered
+
+
+class Command(BaseCommand):
+    help = "Dry-run or apply the SADACO PDF baseline cleanup."
 
     def add_arguments(self, parser):
         parser.add_argument(
             "--apply", action="store_true",
-            help="Actually delete eligible legacy business records (default is dry-run).",
+            help="Apply the reviewed cleanup plan (default is a rolled-back dry run).",
         )
         parser.add_argument(
             "--database", default=DEFAULT_DB_ALIAS,
@@ -62,111 +96,108 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         using = options["database"]
-        alias = using
         User = get_user_model()
 
-        identity_models = (User, Group, Permission, UserProfile, StaffProfile)
+        eligible = [
+            model for model in apps.get_models()
+            if model._meta.app_label in BUSINESS_APP_LABELS
+            and model not in PRESERVED_MODELS
+            and not model._meta.proxy
+            and not model._meta.auto_created
+            and model._meta.managed
+        ]
+        ordered = _dependency_order(eligible)
 
-        def identity_snapshot():
-            snapshot = {}
-            for model in identity_models:
-                field_names = [field.attname for field in model._meta.concrete_fields]
-                rows = model._base_manager.using(alias).order_by(
+        protected_models = tuple(sorted(PRESERVED_MODELS, key=lambda m: m._meta.label))
+        def protected_snapshot():
+            result = {}
+            for model in protected_models:
+                fields = [field.attname for field in model._meta.concrete_fields]
+                rows = model._base_manager.using(using).order_by(
                     model._meta.pk.attname
-                ).values_list(*field_names)
-                snapshot[model._meta.label] = tuple(tuple(row) for row in rows)
-            return snapshot
+                ).values_list(*fields)
+                result[model._meta.label] = tuple(tuple(row) for row in rows)
+            return result
 
-        before = identity_snapshot()
+        before = protected_snapshot()
         before_counts = {
             User._meta.label: len(before[User._meta.label]),
             UserProfile._meta.label: len(before[UserProfile._meta.label]),
             StaffProfile._meta.label: len(before[StaffProfile._meta.label]),
         }
-
-        eligible = []
-        for model in apps.get_models():
-            if model._meta.app_label not in BUSINESS_APP_LABELS:
-                continue
-            if model in PRESERVED_MODELS or model._meta.proxy or model._meta.auto_created:
-                continue
-            if model._meta.managed:
-                eligible.append(model)
-
-        collector = Collector(using=using)
-        try:
-            for model in eligible:
-                collector.collect(model._base_manager.using(using).all())
-        except Exception as exc:
-            raise CommandError(
-                f"Cleanup plan could not be collected safely; no data was deleted: {exc}"
-            ) from exc
-
-        collected_models = set(collector.data)
-        for queryset in collector.fast_deletes:
-            collected_models.add(queryset.model)
-
-        protected = collected_models.intersection(PRESERVED_MODELS)
-        if protected:
-            names = ", ".join(sorted(m._meta.label for m in protected))
-            raise CommandError(
-                "Safety stop: the deletion graph reaches protected identity/staff/PDF "
-                f"master models: {names}. No data was deleted."
-            )
-
         counts = Counter()
-        for model, objects in collector.data.items():
-            counts[model._meta.label] += len(objects)
-        for queryset in collector.fast_deletes:
-            counts[queryset.model._meta.label] += queryset.count()
+
+        def simulate_or_apply():
+            for model in ordered:
+                collector = Collector(using=using)
+                collector.collect(model._base_manager.using(using).all())
+                reached = set(collector.data)
+                reached.update(queryset.model for queryset in collector.fast_deletes)
+                blocked = reached.intersection(PRESERVED_MODELS)
+                if blocked:
+                    labels = ", ".join(sorted(item._meta.label for item in blocked))
+                    raise CommandError(
+                        f"Safety stop while processing {model._meta.label}: "
+                        f"deletion graph reaches protected models: {labels}"
+                    )
+
+                for collected_model, objects in collector.data.items():
+                    counts[collected_model._meta.label] += len(objects)
+                for queryset in collector.fast_deletes:
+                    counts[queryset.model._meta.label] += queryset.count()
+                collector.delete()
+
+            after = protected_snapshot()
+            if before != after:
+                raise CommandError(
+                    "Protected identity/staff/PDF master records changed; "
+                    "transaction rolled back."
+                )
 
         self.stdout.write(self.style.MIGRATE_HEADING("SADACO PDF baseline cleanup plan"))
         self.stdout.write(f"Database alias: {using}")
         self.stdout.write(
-            "Protected before cleanup — "
+            "Protected records before cleanup — "
             f"Users: {before_counts[User._meta.label]}, "
             f"UserProfiles: {before_counts[UserProfile._meta.label]}, "
             f"StaffProfiles: {before_counts[StaffProfile._meta.label]}"
         )
-        if counts:
-            for label, count in sorted(counts.items()):
-                self.stdout.write(f"  {label}: {count} rows")
+
+        if options["apply"]:
+            try:
+                with transaction.atomic(using=using):
+                    simulate_or_apply()
+            except CommandError:
+                raise
+            except Exception as exc:
+                raise CommandError(
+                    f"Cleanup failed safely and the transaction was rolled back: {exc}"
+                ) from exc
         else:
-            self.stdout.write("  No eligible legacy business rows found.")
+            try:
+                with transaction.atomic(using=using):
+                    simulate_or_apply()
+                    raise _DryRunRollback()
+            except _DryRunRollback:
+                pass
+            except CommandError:
+                raise
+            except Exception as exc:
+                raise CommandError(
+                    f"Dry-run simulation failed; no changes were committed: {exc}"
+                ) from exc
 
+        for label, count in sorted(counts.items()):
+            self.stdout.write(f"  {label}: {count} rows")
         total = sum(counts.values())
-        self.stdout.write(f"Total rows in deletion graph: {total}")
+        self.stdout.write(f"Total rows in deletion plan: {total}")
 
-        if not options["apply"]:
-            self.stdout.write(self.style.WARNING(
-                "DRY RUN ONLY — nothing was deleted. Re-run with --apply only on "
-                "the reviewed isolated staging/disposable database."
+        if options["apply"]:
+            self.stdout.write(self.style.SUCCESS(
+                "Cleanup completed. Exact records in all protected models are unchanged."
             ))
-            return
-
-        with transaction.atomic(using=using):
-            # Re-collect inside the transaction to avoid applying a stale plan.
-            fresh = Collector(using=using)
-            for model in eligible:
-                fresh.collect(model._base_manager.using(using).all())
-            fresh_models = set(fresh.data)
-            for queryset in fresh.fast_deletes:
-                fresh_models.add(queryset.model)
-            newly_protected = fresh_models.intersection(PRESERVED_MODELS)
-            if newly_protected:
-                raise CommandError(
-                    "Safety stop: protected models entered the refreshed deletion graph."
-                )
-            fresh.delete()
-
-            after = identity_snapshot()
-            if before != after:
-                raise CommandError(
-                    "Protected account/profile identity data changed during cleanup; "
-                    "transaction rolled back. Exact protected-row snapshots differ."
-                )
-
-        self.stdout.write(self.style.SUCCESS(
-            "Cleanup completed. Exact User, Group, Permission, UserProfile and StaffProfile "
-            "records are unchanged. PDF master data/configuration was excluded from deletion."
-        ))
+        else:
+            self.stdout.write(self.style.WARNING(
+                "DRY RUN ONLY — the full dependency-ordered simulation was rolled back; "
+                "no changes were committed."
+            ))
