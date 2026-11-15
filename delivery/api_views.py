@@ -137,6 +137,8 @@ def feedback(request, pk):
     except (TypeError, ValueError):
         return JsonResponse({'detail': 'Invalid JSON.'}, status=400)
     order=get_object_or_404(_visible_orders(request.user), pk=pk)
+    if order.status != SalesOrder.Status.DELIVERED:
+        return JsonResponse({'detail': 'Customer feedback can be recorded only after the order is delivered.'}, status=400)
     raw_rating=data.get('rating')
     try:
         rating=int(raw_rating) if raw_rating not in (None, '') else None
