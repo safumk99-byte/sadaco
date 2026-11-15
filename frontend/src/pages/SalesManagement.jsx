@@ -521,6 +521,7 @@ function SalesForm({ type, initial = {}, customers, departments = [], onClose, o
             {departments.length > 1 && (
               <Select
                 label="Business Division"
+                required
                 value={f.department}
                 set={(v) => set("department", v)}
                 options={departments.map((x) => [x.id, x.name])}
@@ -825,14 +826,14 @@ function Field({
     </label>
   );
 }
-function Select({ label, value, set, options }) {
+function Select({ label, value, set, options, required }) {
   return (
     <label>
       <span className="mb-1 block text-sm font-medium capitalize text-slate-700">
         {label}
       </span>
       <select
-        required={!value && label === "Customer"}
+        required={required ?? (!value && label === "Customer")}
         value={value || ""}
         onChange={(e) => set(e.target.value)}
         className="w-full rounded-xl border border-slate-300 px-3 py-2.5"
