@@ -46,8 +46,10 @@ def _deny(user):
     if not _manager(user): raise PermissionDenied
 
 def _global_admin(user):
-    role = getattr(getattr(user, "profile", None), "role", None)
-    return user.is_superuser or role in (UserProfile.Role.SUPER_ADMIN, UserProfile.Role.INSTITUTION_ADMIN)
+    profile = getattr(user, "profile", None)
+    return user.is_superuser or bool(
+        profile and profile.is_active and profile.role in (UserProfile.Role.SUPER_ADMIN, UserProfile.Role.INSTITUTION_ADMIN)
+    )
 
 
 def _department_id(user):
