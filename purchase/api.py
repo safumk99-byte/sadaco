@@ -140,7 +140,7 @@ def create(request):
 @login_required
 @transaction.atomic
 def receive(request, pk):
-    _deny(request.user); po=get_object_or_404(_purchase_orders(request.user).select_for_update().prefetch_related('items__product'), pk=pk)
+    _deny(request.user); po=get_object_or_404(_purchase_orders(request.user).select_for_update(of=("self",)).prefetch_related('items__product'), pk=pk)
     if po.status in (PurchaseOrder.Status.CANCELLED, PurchaseOrder.Status.RECEIVED):
         return JsonResponse({"detail": "Cancelled or already received purchase orders cannot receive goods again."}, status=400)
     if po.status not in (PurchaseOrder.Status.SENT, PurchaseOrder.Status.PARTIAL):
