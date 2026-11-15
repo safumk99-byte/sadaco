@@ -384,7 +384,8 @@ def staff_task_status_api(request, pk):
 @require_POST
 @staff_manager_required
 def staff_task_create_api(request):
-    task=StaffTask.objects.create(title=request.POST.get("title",""),description=request.POST.get("description",""),assigned_to_id=request.POST.get("assigned_to"),assigned_by=request.user,due_date=parse_date(request.POST["due_date"]) if request.POST.get("due_date") else None,priority=request.POST.get("priority",StaffTask.Priority.MEDIUM),status=request.POST.get("status",StaffTask.Status.TODO),remarks=request.POST.get("remarks",""))
+    assigned_to = get_object_or_404(staff_for_user(request.user), pk=request.POST.get("assigned_to"))
+    task=StaffTask.objects.create(title=request.POST.get("title",""),description=request.POST.get("description",""),assigned_to=assigned_to,assigned_by=request.user,due_date=parse_date(request.POST["due_date"]) if request.POST.get("due_date") else None,priority=request.POST.get("priority",StaffTask.Priority.MEDIUM),status=request.POST.get("status",StaffTask.Status.TODO),remarks=request.POST.get("remarks",""))
     return JsonResponse({"task":_task_payload(task)},status=201)
 
 
@@ -399,8 +400,9 @@ def staff_attendance_api(request):
 def staff_attendance_create_api(request):
     staff_id=request.POST.get("staff"); day=parse_date(request.POST.get("date",""));
     if not staff_id or not day: return JsonResponse({"detail":"Staff and date are required."},status=400)
-    if StaffAttendance.objects.filter(staff_id=staff_id,date=day).exists(): return JsonResponse({"detail":"Attendance already exists for this date."},status=400)
-    record=StaffAttendance.objects.create(staff_id=staff_id,date=day,status=request.POST.get("status",StaffAttendance.Status.PRESENT),remarks=request.POST.get("remarks",""),marked_by=request.user)
+    staff = get_object_or_404(staff_for_user(request.user), pk=staff_id)
+    if StaffAttendance.objects.filter(staff=staff,date=day).exists(): return JsonResponse({"detail":"Attendance already exists for this date."},status=400)
+    record=StaffAttendance.objects.create(staff=staff,date=day,status=request.POST.get("status",StaffAttendance.Status.PRESENT),remarks=request.POST.get("remarks",""),marked_by=request.user)
     return JsonResponse({"id":record.id},status=201)
 
 
@@ -413,7 +415,8 @@ def staff_performance_api(request):
 @require_POST
 @staff_manager_required
 def staff_performance_create_api(request):
-    record=PerformanceRecord.objects.create(staff_id=request.POST.get("staff"),review_date=parse_date(request.POST.get("review_date","")),score=int(request.POST.get("score",0)),strengths=request.POST.get("strengths",""),improvements=request.POST.get("improvements",""),remarks=request.POST.get("remarks",""),evaluator=request.user)
+    staff = get_object_or_404(staff_for_user(request.user), pk=request.POST.get("staff"))
+    record=PerformanceRecord.objects.create(staff=staff,review_date=parse_date(request.POST.get("review_date","")),score=int(request.POST.get("score",0)),strengths=request.POST.get("strengths",""),improvements=request.POST.get("improvements",""),remarks=request.POST.get("remarks",""),evaluator=request.user)
     return JsonResponse({"id":record.id},status=201)
 
 # ---------------------------------------------------------------------------
