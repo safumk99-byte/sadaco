@@ -36,10 +36,26 @@ class MaterialLedgerWorkflowTests(TestCase):
         self.line = ProductionMaterial.objects.create(
             job=self.job, material_variant=self.material, material_name="Acrylic",
             quantity_required=Decimal("5"), unit="Sheet",
+        )        from purchase.models import Supplier, PurchaseOrder, PurchaseItem, GoodsReceipt, GoodsReceiptLine, MaterialStockLot
+        supplier = Supplier.objects.create(name="Ledger Supplier")
+        po = PurchaseOrder.objects.create(supplier=supplier, department=self.department)
+        item = PurchaseItem.objects.create(
+            purchase_order=po, material_variant=self.material,
+            quantity=Decimal("10"), unit_cost=Decimal("100"),
+        )
+        receipt = GoodsReceipt.objects.create(purchase_order=po)
+        receipt_line = GoodsReceiptLine.objects.create(
+            receipt=receipt, purchase_item=item, received_quantity=Decimal("10"),
+            unit_cost=Decimal("100"), line_total=Decimal("1000"),
+        )
+        self.lot = MaterialStockLot.objects.create(
+            receipt_line=receipt_line, balance=self.balance,
+            original_quantity=Decimal("10"), remaining_quantity=Decimal("10"),
+            unit_cost=Decimal("100"),
         )
 
     def test_issue_updates_department_balance_and_job_line(self):
-        issue, movement = issue_material(material_id=self.line.pk, quantity="3", user=self.manager)
+        issue, movement = issue_material(material_id=self.line.pk, quantity="3", lot_id=self.lot.pk, user=self.manager)
         self.balance.refresh_from_db()
         self.line.refresh_from_db()
         self.assertEqual(self.balance.quantity, Decimal("7"))
@@ -50,7 +66,7 @@ class MaterialLedgerWorkflowTests(TestCase):
 
     def test_issue_rejects_insufficient_stock(self):
         with self.assertRaises(ValidationError):
-            issue_material(material_id=self.line.pk, quantity="11", user=self.manager)
+            issue_material(material_id=self.line.pk, quantity="11", lot_id=self.lot.pk, user=self.manager)
         self.balance.refresh_from_db()
         self.assertEqual(self.balance.quantity, Decimal("10"))
 
@@ -59,7 +75,7 @@ class MaterialLedgerWorkflowTests(TestCase):
             material=self.material, department=self.department, location="Secondary", quantity=Decimal("5")
         )
         with self.assertRaisesMessage(ValidationError, "Select the stock location"):
-            issue_material(material_id=self.line.pk, quantity="1", user=self.manager)
+            issue_material(material_id=self.line.pk, quantity="1", lot_id=self.lot.pk, user=self.manager)
 
     def test_return_restores_stock_and_updates_returned_quantity(self):
         issue_material(material_id=self.line.pk, quantity="3", user=self.manager)
@@ -81,7 +97,7 @@ class MaterialLedgerWorkflowTests(TestCase):
         self.assertEqual(self.line.actual_consumption, Decimal("3"))
 
     def test_return_cannot_exceed_unreturned_issue(self):
-        issue_material(material_id=self.line.pk, quantity="2", user=self.manager)
+        issue_material(material_id=self.line.pk, quantity="2", lot_id=self.lot.pk, user=self.manager)
         with self.assertRaises(ValidationError):
             return_issued_material(material_id=self.line.pk, quantity="3", balance_id=self.balance.pk, user=self.manager)
 
