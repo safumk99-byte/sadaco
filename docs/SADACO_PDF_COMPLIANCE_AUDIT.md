@@ -70,3 +70,17 @@ Status labels: **Partial** = a basic model/page exists but does not satisfy the 
 - Demo catalogue cleanup migration was narrowed and further guarded against customer-request, purchase, production, stock-count, reorder and stock-ledger references.
 - CI status is not yet available for the latest commits; no test pass is claimed.
 - Neon staging migration has not been run. Production database and `main` remain untouched.
+
+
+## 2026-11-15 staging migration reconciliation finding
+
+Read-only inspection of Neon staging branch `sadaco-reconciliation-staging` (`br-shiny-bread-azhv8lcr`) confirms that its migration history is not the history expected by the current feature branch:
+
+- Staging records finance migrations `0001_initial`, `0002_accounts_control_center`, `0003_finance_management`, `0004_repair_finance_options`, and `0005_force_repair_paymentmethod_table`.
+- Feature branch instead contains `finance.0001_initial`, `0002_accounts_control_center`, and `0003_financetransaction_supplier_payment`.
+- Staging has `finance_supplierpayment`, but `finance_financetransaction` has no `supplier_payment_id` column. The feature branch's 0003 migration expects to add that OneToOne field.
+- Staging also lacks the later feature-branch migrations `accounts.0005_userprofile_department`, `core.0002_department`, `staff.0002_staffprofile_department`, and `sales.0007_customer_department`; these are relevant to department scoping.
+- This is a migration-history/schema divergence, not proof that staging data is disposable. No migration, fake migration, schema alteration, or data update was executed.
+
+**Required safe resolution:** compare the complete historical migration files and live table definitions for every affected app; map the deployed staging schema to the current model state; then create an explicit, forward-only reconciliation plan and test it against a fresh disposable clone before applying any staging migration. Do not run `migrate`, `--fake`, or hand-written DDL against staging or production until this plan is reviewed and validated.
+
