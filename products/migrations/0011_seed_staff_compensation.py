@@ -12,7 +12,7 @@ def seed_staff_compensation(apps, schema_editor):
         "junaid": Decimal("11000"),
         "ashiq": Decimal("10000"),
     }
-    per_work = {"shibili", "sakeer"}
+    per_work = {"shibili", "sakeer", "sakkeer"}
 
     for staff in StaffProfile.objects.select_related("user").all():
         user = staff.user
