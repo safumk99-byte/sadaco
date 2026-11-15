@@ -650,8 +650,6 @@ def stock_transaction_api(request):
     return JsonResponse({"ok": True, "transaction": _stock_payload(tx), "product": _product_payload(tx.product)})
 
 
-@require_GET
-@login_required
 def _stock_transactions_for_user(user):
     qs = StockTransaction.objects.select_related("product", "created_by")
     role = getattr(getattr(user, "profile", None), "role", None)
@@ -663,6 +661,8 @@ def _stock_transactions_for_user(user):
     return qs.filter(created_by=user)
 
 
+@require_GET
+@login_required
 def stock_transactions_api(request):
     qs = _stock_transactions_for_user(request.user)
     q = request.GET.get("q", "").strip()
