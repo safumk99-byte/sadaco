@@ -9,11 +9,14 @@ def remove_demo_catalog_data(apps, schema_editor):
     Product = apps.get_model("products", "Product")
     Category = apps.get_model("products", "ProductCategory")
 
-    StockTransaction.objects.all().delete()
-
     # Existing order requests are retained. Keep any product that is referenced
     # by a request rather than breaking that request's product relation.
-    Product.objects.exclude(customer_order_requests__isnull=False).delete()
+    demo_products = Product.objects.exclude(customer_order_requests__isnull=False)
+    if StockTransaction.objects.filter(product__in=demo_products).exists():
+        raise RuntimeError(
+            "Demo catalogue cleanup stopped: product stock transactions exist and require review."
+        )
+    demo_products.delete()
 
     # Remove empty demo categories from leaves upward; preserve any category
     # still used by a retained product.
