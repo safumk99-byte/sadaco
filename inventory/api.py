@@ -13,7 +13,7 @@ from core.models import Department
 from products.models import MaterialVariant
 from staff.models import StaffProfile
 from production.models import ProductionJob
-from .models import MaterialStockBalance, MaterialStockMovement, ReusableOffcut
+from .models import MaterialStockBalance, MaterialStockMovement, MaterialStockCount, ReusableOffcut
 from .services import record_material_movement
 
 
@@ -318,4 +318,68 @@ def offcut_action_api(request, pk):
         offcut.save(update_fields=["status", "used_for_job", "updated_at"])
         return JsonResponse({"ok": True, "id": offcut.pk, "status": offcut.status})
     except (ValueError, TypeError, ReusableOffcut.DoesNotExist, ProductionJob.DoesNotExist) as exc:
+        return JsonResponse({"detail": str(exc)}, status=400)
+
+
+@require_GET
+@login_required
+def material_stock_counts_api(request):
+    scope = _manager_department(request.user)
+    qs = MaterialStockCount.objects.select_related("balance__material", "balance__department", "submitted_by", "reviewed_by")
+    if scope is not None:
+        qs = qs.filter(balance__department_id=scope) if scope else qs.none()
+    return JsonResponse({"items": [{
+        "id": x.pk, "balance_id": x.balance_id, "material": str(x.balance.material),
+        "department": x.balance.department.name, "location": x.balance.location,
+        "system_quantity": str(x.system_quantity), "counted_quantity": str(x.counted_quantity),
+        "variance": str(x.variance), "status": x.status, "reason": x.reason,
+        "submitted_by": x.submitted_by.username if x.submitted_by_id else None,
+        "reviewed_by": x.reviewed_by.username if x.reviewed_by_id else None,
+        "created_at": x.created_at.isoformat(), "reviewed_at": x.reviewed_at.isoformat() if x.reviewed_at else None,
+    } for x in qs[:500]]})
+
+
+@require_POST
+@login_required
+def material_stock_count_submit_api(request):
+    from .services import submit_material_stock_count
+    try:
+        data = json.loads(request.body or "{}")
+        scope = _manager_department(request.user)
+        if scope is False:
+            return JsonResponse({"detail": "You do not have permission to submit stock counts."}, status=403)
+        balance = _visible_balances(request.user).get(pk=data.get("balance"))
+        count = submit_material_stock_count(
+            balance_id=balance.pk, counted_quantity=data.get("counted_quantity"),
+            user=request.user, reason=str(data.get("reason", "")),
+        )
+        return JsonResponse({
+            "ok": True, "id": count.pk, "system_quantity": str(count.system_quantity),
+            "counted_quantity": str(count.counted_quantity), "variance": str(count.variance),
+            "status": count.status,
+        }, status=201)
+    except (ValueError, TypeError, InvalidOperation, MaterialStockBalance.DoesNotExist, ValidationError) as exc:
+        return JsonResponse({"detail": str(exc)}, status=400)
+
+
+@require_POST
+@login_required
+def material_stock_count_review_api(request, pk):
+    from .services import review_material_stock_count
+    scope = _manager_department(request.user)
+    if scope is not None:
+        return JsonResponse({"detail": "Only Founder/Admin can approve or reject stock count variances."}, status=403)
+    try:
+        data = json.loads(request.body or "{}")
+        if not isinstance(data.get("approve"), bool):
+            return JsonResponse({"detail": "approve must be true or false."}, status=400)
+        count = review_material_stock_count(
+            count_id=pk, approve=data["approve"], user=request.user,
+            review_note=str(data.get("review_note", "")),
+        )
+        return JsonResponse({
+            "ok": True, "id": count.pk, "status": count.status,
+            "correction_movement_id": count.correction_movement_id,
+        })
+    except (ValueError, TypeError, MaterialStockCount.DoesNotExist, ValidationError) as exc:
         return JsonResponse({"detail": str(exc)}, status=400)
