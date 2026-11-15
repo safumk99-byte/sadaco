@@ -102,7 +102,7 @@ def _restrict_form(form, user, model):
 
 def _choice(value, label): return {'value': value, 'label': label}
 
-def _customer(c): return {'id': c.id, 'name': c.name, 'phone': c.phone, 'email': c.email, 'status': c.status, 'status_label': c.get_status_display()}
+def _customer(c): return {'id': c.id, 'name': c.name, 'phone': c.phone, 'email': c.email, 'status': c.status, 'status_label': c.get_status_display(), 'department': {'id': c.department_id, 'name': c.department.name} if c.department_id else None}
 def _enquiry(e): return {'id': e.id, 'enquiry_no': e.enquiry_no, 'customer': _customer(e.customer), 'channel': e.channel, 'channel_label': e.get_channel_display(), 'product_type': e.product_type, 'quantity': str(e.quantity), 'status': e.status, 'status_label': e.get_status_display(), 'deadline': e.deadline.isoformat() if e.deadline else None, 'expected_delivery_date': e.expected_delivery_date.isoformat() if e.expected_delivery_date else None, 'assigned_to': e.assigned_to.get_full_name() or e.assigned_to.username if e.assigned_to else None}
 def _quotation(q): return {'id': q.id, 'quotation_no': q.quotation_no, 'customer': _customer(q.customer), 'item_description': q.item_description, 'quantity': str(q.quantity), 'cost_total': str(q.cost_total), 'quoted_price': str(q.quoted_price), 'advance_required': str(q.advance_required), 'valid_until': q.valid_until.isoformat() if q.valid_until else None, 'status': q.status, 'status_label': q.get_status_display()}
 def _order(o): return {'id': o.id, 'order_no': o.order_no, 'customer': _customer(o.customer), 'item_description': o.item_description, 'quantity': str(o.quantity), 'confirmed_price': str(o.confirmed_price), 'delivery_date': o.delivery_date.isoformat() if o.delivery_date else None, 'deadline': o.deadline.isoformat() if o.deadline else None, 'status': o.status, 'status_label': o.get_status_display(), 'responsible_staff': (o.responsible_staff.user.get_full_name() or o.responsible_staff.user.username) if o.responsible_staff else None}
@@ -148,8 +148,13 @@ def customer_create(request):
 @login_required
 def customer_update(request, pk):
     if _guard(request.user, True): return _guard(request.user, True)
-    import json; c=get_object_or_404(_customer_qs(request.user),pk=pk); form=CustomerForm(json.loads(request.body or '{}'),instance=c)
-    if form.is_valid(): return JsonResponse({'customer':_customer(form.save())})
+    import json; data=json.loads(request.body or '{}'); c=get_object_or_404(_customer_qs(request.user),pk=pk); form=CustomerForm(data,instance=c)
+    if form.is_valid():
+        customer=form.save(commit=False)
+        if _global_admin(request.user) and data.get("department"):
+            customer.department=get_object_or_404(Department,pk=data.get("department"),is_active=True)
+        customer.save()
+        return JsonResponse({'customer':_customer(customer)})
     return JsonResponse({'detail':'Validation failed.','errors':form.errors.get_json_data()},status=400)
 
 @login_required
