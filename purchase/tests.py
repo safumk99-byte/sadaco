@@ -1,10 +1,11 @@
 from django.contrib.auth.models import User
-from django.test import TestCase
+from django.test import TestCase, RequestFactory
+from django.core.exceptions import PermissionDenied
 
 from accounts.models import UserProfile
 from core.models import Department
 from .models import PurchaseOrder, Supplier
-from .api import _purchase_orders
+from .api import _purchase_orders, summary
 
 
 class PurchaseDepartmentAccessTests(TestCase):
@@ -30,3 +31,11 @@ class PurchaseDepartmentAccessTests(TestCase):
         user = User.objects.create_user(username="purchase_unassigned", password="StrongPass123!")
         UserProfile.objects.create(user=user, role=UserProfile.Role.MANAGER)
         self.assertFalse(_purchase_orders(user).exists())
+
+    def test_non_manager_cannot_access_purchase_summary(self):
+        staff = User.objects.create_user(username="purchase_staff", password="StrongPass123!")
+        UserProfile.objects.create(user=staff, role=UserProfile.Role.STAFF, department=self.a)
+        request = RequestFactory().get("/api/purchase/summary/")
+        request.user = staff
+        with self.assertRaises(PermissionDenied):
+            summary(request)
