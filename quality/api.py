@@ -18,6 +18,11 @@ def _is_manager(user):
     return user.is_superuser or getattr(getattr(user, "profile", None), "role", None) in ("super_admin", "institution_admin", "manager")
 
 
+def _require_manager(user):
+    if not _is_manager(user):
+        raise PermissionDenied
+
+
 def _global_admin(user):
     role = getattr(getattr(user, "profile", None), "role", None)
     return user.is_superuser or role in ("super_admin", "institution_admin")
@@ -267,6 +272,7 @@ def detail(request, pk):
 @require_POST
 @login_required
 def create_check(request):
+    _require_manager(request.user)
     data = _data(request)
     job = get_object_or_404(_visible_jobs(request.user), pk=data.get("job"))
     if not _visible_job(request.user, job):
@@ -301,6 +307,7 @@ def create_check(request):
 @require_POST
 @login_required
 def update_check(request, pk):
+    _require_manager(request.user)
     check = get_object_or_404(QualityCheck.objects.select_related("job"), pk=pk)
     if not _visible_job(request.user, check.job):
         raise PermissionDenied
@@ -318,6 +325,7 @@ def update_check(request, pk):
 @require_POST
 @login_required
 def create_rework(request, check_id):
+    _require_manager(request.user)
     check = get_object_or_404(QualityCheck.objects.select_related("job"), pk=check_id)
     if not _visible_job(request.user, check.job):
         raise PermissionDenied
@@ -346,6 +354,7 @@ def create_rework(request, check_id):
 @require_POST
 @login_required
 def update_rework(request, pk):
+    _require_manager(request.user)
     rework = get_object_or_404(ReworkRecord.objects.select_related("job"), pk=pk)
     if not _visible_job(request.user, rework.job):
         raise PermissionDenied
@@ -367,6 +376,7 @@ def update_rework(request, pk):
 @require_POST
 @login_required
 def update_packing(request, pk):
+    _require_manager(request.user)
     job = get_object_or_404(_visible_jobs(request.user), pk=pk)
     if not _is_manager(request.user) and not _visible_job(request.user, job):
         raise PermissionDenied
