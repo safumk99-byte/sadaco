@@ -19,12 +19,53 @@ MANAGER_ROLES = {UserProfile.Role.SUPER_ADMIN, UserProfile.Role.INSTITUTION_ADMI
 def _manager(user):
     return user.is_superuser or getattr(getattr(user, 'profile', None), 'role', None) in MANAGER_ROLES
 
+def _global_admin(user):
+    role = getattr(getattr(user, "profile", None), "role", None)
+    return user.is_superuser or role in (UserProfile.Role.SUPER_ADMIN, UserProfile.Role.INSTITUTION_ADMIN)
+
+
+def _manager_department_id(user):
+    profile = getattr(user, "profile", None)
+    return profile.department_id if profile and profile.role == UserProfile.Role.MANAGER else None
+
+
+def _department_jobs(qs, department_id):
+    if not department_id:
+        return qs.none()
+    return qs.filter(
+        Q(assigned_staff__department_id=department_id)
+        | Q(order__responsible_staff__department_id=department_id)
+    ).distinct()
+
+
 def _visible_jobs(user):
     qs = ProductionJob.objects.select_related('order__customer', 'assigned_staff__user', 'created_by')
-    return qs if _manager(user) else qs.filter(assigned_staff__user=user)
+    if _global_admin(user):
+        return qs
+    if getattr(getattr(user, "profile", None), "role", None) == UserProfile.Role.MANAGER:
+        return _department_jobs(qs, _manager_department_id(user))
+    return qs.filter(assigned_staff__user=user)
+
 
 def _job_visible(user, job):
-    return _manager(user) or job.assigned_staff_id == getattr(getattr(user, 'staff_profile', None), 'id', None)
+    if _global_admin(user):
+        return True
+    if getattr(getattr(user, "profile", None), "role", None) == UserProfile.Role.MANAGER:
+        department_id = _manager_department_id(user)
+        return bool(department_id and (
+            job.assigned_staff_id and job.assigned_staff.department_id == department_id
+            or job.order.responsible_staff_id and job.order.responsible_staff.department_id == department_id
+        ))
+    return job.assigned_staff_id == getattr(getattr(user, 'staff_profile', None), 'id', None)
+
+
+def _staff_in_manager_department(user, staff):
+    if _global_admin(user):
+        return True
+    if getattr(getattr(user, "profile", None), "role", None) != UserProfile.Role.MANAGER:
+        return False
+    department_id = _manager_department_id(user)
+    return bool(department_id and staff and staff.department_id == department_id)
 
 def _choices(choices):
     return [{'value': v, 'label': l} for v, l in choices]
@@ -91,8 +132,13 @@ def jobs(request):
 @require_GET
 @login_required
 def options(request):
-    staff = StaffProfile.objects.filter(status=StaffProfile.Status.ACTIVE).select_related('user')
-    orders = SalesOrder.objects.select_related('customer').filter(status__in=[SalesOrder.Status.CONFIRMED, SalesOrder.Status.PRODUCTION_PENDING]).order_by('-created_at')[:200]
+    staff = StaffProfile.objects.filter(status=StaffProfile.Status.ACTIVE).select_related('user', 'department')
+    orders = SalesOrder.objects.select_related('customer', 'responsible_staff').filter(status__in=[SalesOrder.Status.CONFIRMED, SalesOrder.Status.PRODUCTION_PENDING]).order_by('-created_at')
+    if not _global_admin(request.user):
+        department_id = _manager_department_id(request.user)
+        staff = staff.filter(department_id=department_id) if department_id else staff.none()
+        orders = orders.filter(responsible_staff__department_id=department_id) if department_id else orders.none()
+    orders = orders[:200]
     products = Product.objects.filter(status=Product.Status.ACTIVE).order_by('name')[:300]
     return JsonResponse({'staff': [{'id': s.id, 'name': str(s)} for s in staff],
         'orders': [{'id': o.id, 'order_no': o.order_no, 'customer': o.customer.name, 'item_description': o.item_description, 'deadline': o.deadline.isoformat() if o.deadline else None} for o in orders],
@@ -115,7 +161,11 @@ def _data(request):
 def create(request):
     if not _manager(request.user): raise PermissionDenied
     data = _data(request); order_id = data.get('order')
-    order = get_object_or_404(SalesOrder.objects.select_related('quotation'), pk=order_id)
+    order_qs = SalesOrder.objects.select_related('quotation', 'responsible_staff')
+    if not _global_admin(request.user):
+        department_id = _manager_department_id(request.user)
+        order_qs = order_qs.filter(responsible_staff__department_id=department_id) if department_id else order_qs.none()
+    order = get_object_or_404(order_qs, pk=order_id)
     if order.status not in (SalesOrder.Status.PRODUCTION_PENDING, SalesOrder.Status.CONFIRMED):
         return JsonResponse({'detail': 'This order is not ready for production planning.'}, status=400)
     latest_design = order.quotation.designs.filter(status=DesignApproval.Status.APPROVED).first() if order.quotation_id else None
@@ -125,6 +175,9 @@ def create(request):
         return JsonResponse({'detail': 'An active production job already exists for this order.'}, status=400)
     form = ProductionJobForm(data)
     if not form.is_valid(): return JsonResponse({'detail':'Validation failed.','errors':form.errors.get_json_data()}, status=400)
+    assigned_staff = form.cleaned_data.get("assigned_staff")
+    if assigned_staff and not _staff_in_manager_department(request.user, assigned_staff):
+        return JsonResponse({"detail": "You can only assign jobs to staff in your own department."}, status=403)
     job = form.save(commit=False); job.order=order; job.created_by=request.user; job.save()
     order.status = SalesOrder.Status.PRODUCTION_PENDING; order.save(update_fields=['status','updated_at'])
     return JsonResponse({'job': _job(job)}, status=201)
@@ -132,10 +185,13 @@ def create(request):
 @require_POST
 @login_required
 def update(request, pk):
-    job = get_object_or_404(ProductionJob, pk=pk)
+    job = get_object_or_404(_visible_jobs(request.user), pk=pk)
     if not _job_visible(request.user, job): raise PermissionDenied
     form = ProductionJobForm(_data(request), instance=job)
     if not form.is_valid(): return JsonResponse({'detail':'Validation failed.','errors':form.errors.get_json_data()}, status=400)
+    assigned_staff = form.cleaned_data.get("assigned_staff")
+    if assigned_staff and not _staff_in_manager_department(request.user, assigned_staff):
+        return JsonResponse({"detail": "You can only assign jobs to staff in your own department."}, status=403)
     job = form.save()
     return JsonResponse({'job': _job(job)})
 
@@ -159,7 +215,7 @@ def add_progress(request, pk):
 @login_required
 def add_material(request, pk):
     if not _manager(request.user): raise PermissionDenied
-    job=get_object_or_404(ProductionJob,pk=pk); form=ProductionMaterialForm(_data(request))
+    job=get_object_or_404(_visible_jobs(request.user),pk=pk); form=ProductionMaterialForm(_data(request))
     if not form.is_valid(): return JsonResponse({'detail':'Validation failed.','errors':form.errors.get_json_data()},status=400)
     obj=form.save(commit=False); obj.job=job; obj.save(); return JsonResponse({'material':_material(obj)},status=201)
 
