@@ -7,6 +7,7 @@ from django.views.decorators.http import require_GET, require_POST
 from accounts.decorators import api_role_required
 from sales.models import Customer, Enquiry
 from .models import Campaign, MarketingContent, MarketingLead
+from .forms import CampaignForm, ContentForm, LeadForm
 
 manager_required=api_role_required('super_admin','institution_admin','manager')
 
@@ -113,23 +114,42 @@ def dashboard(request):
 @require_POST
 def campaign_create(request):
     _require_department(request.user)
-    d=json.loads(request.body or '{}'); x=Campaign.objects.create(created_by=request.user,**{k:d.get(k) for k in ['name','channel','target_segment','start_date','end_date','budget','status','notes'] if k in d}); return JsonResponse(campaign(x))
+    try:
+        data=json.loads(request.body or '{}')
+    except (TypeError, ValueError):
+        return JsonResponse({'detail':'Invalid JSON.'},status=400)
+    form=CampaignForm(data)
+    if not form.is_valid():
+        return JsonResponse({'detail':'Validation failed.','errors':form.errors.get_json_data()},status=400)
+    x=form.save(commit=False); x.created_by=request.user; x.save()
+    return JsonResponse(campaign(x),status=201)
 @manager_required
 @require_POST
 def content_create(request):
     _require_department(request.user)
-    d=json.loads(request.body or '{}'); campaign_obj=None
-    if d.get('campaign_id'):
-        campaign_obj=get_object_or_404(_campaigns(request.user),pk=d['campaign_id'])
-    x=MarketingContent.objects.create(created_by=request.user, title=d.get('title',''),channel=d.get('channel',''),campaign=campaign_obj,content_date=d.get('content_date') or None,status=d.get('status','idea'),content_url=d.get('content_url',''),notes=d.get('notes','')); return JsonResponse(content(x))
+    try:
+        data=json.loads(request.body or '{}')
+    except (TypeError, ValueError):
+        return JsonResponse({'detail':'Invalid JSON.'},status=400)
+    form=ContentForm(data)
+    form.fields['campaign'].queryset=_campaigns(request.user)
+    if not form.is_valid():
+        return JsonResponse({'detail':'Validation failed.','errors':form.errors.get_json_data()},status=400)
+    x=form.save(commit=False); x.created_by=request.user; x.save()
+    return JsonResponse(content(x),status=201)
 @manager_required
 @require_POST
 def lead_create(request):
     _require_department(request.user)
-    d=json.loads(request.body or '{}')
-    customer=get_object_or_404(_customers(request.user),pk=d['customer_id']) if d.get('customer_id') else None
-    enquiry=get_object_or_404(_enquiries(request.user),pk=d['enquiry_id']) if d.get('enquiry_id') else None
-    campaign_obj=get_object_or_404(_campaigns(request.user),pk=d['campaign_id']) if d.get('campaign_id') else None
-    if customer and enquiry and enquiry.customer_id != customer.pk:
-        return JsonResponse({'detail':'Selected enquiry belongs to a different customer.'},status=400)
-    x=MarketingLead.objects.create(created_by=request.user,source=d.get('source',''),customer=customer,enquiry=enquiry,campaign=campaign_obj,captured_on=d.get('captured_on') or None,status=d.get('status','new'),notes=d.get('notes','')); return JsonResponse(lead(x))
+    try:
+        data=json.loads(request.body or '{}')
+    except (TypeError, ValueError):
+        return JsonResponse({'detail':'Invalid JSON.'},status=400)
+    form=LeadForm(data)
+    form.fields['customer'].queryset=_customers(request.user)
+    form.fields['enquiry'].queryset=_enquiries(request.user)
+    form.fields['campaign'].queryset=_campaigns(request.user)
+    if not form.is_valid():
+        return JsonResponse({'detail':'Validation failed.','errors':form.errors.get_json_data()},status=400)
+    x=form.save(commit=False); x.created_by=request.user; x.save()
+    return JsonResponse(lead(x),status=201)
