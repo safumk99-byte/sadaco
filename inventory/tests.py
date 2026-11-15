@@ -36,7 +36,8 @@ class MaterialLedgerWorkflowTests(TestCase):
         self.line = ProductionMaterial.objects.create(
             job=self.job, material_variant=self.material, material_name="Acrylic",
             quantity_required=Decimal("5"), unit="Sheet",
-        )        from purchase.models import Supplier, PurchaseOrder, PurchaseItem, GoodsReceipt, GoodsReceiptLine, MaterialStockLot
+        )
+        from purchase.models import Supplier, PurchaseOrder, PurchaseItem, GoodsReceipt, GoodsReceiptLine, MaterialStockLot
         supplier = Supplier.objects.create(name="Ledger Supplier")
         po = PurchaseOrder.objects.create(supplier=supplier, department=self.department)
         item = PurchaseItem.objects.create(
