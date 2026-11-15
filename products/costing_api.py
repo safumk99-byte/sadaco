@@ -54,6 +54,8 @@ def _material_payload(item):
 @require_GET
 @login_required
 def material_master_api(request):
+    if not _can_manage_costing(request.user):
+        return JsonResponse({"detail": "You do not have permission to view material rates."}, status=403)
     qs = MaterialVariant.objects.all()
     q = request.GET.get("q", "").strip()
     if q:
@@ -106,6 +108,8 @@ def material_master_save_api(request, pk=None):
 @require_GET
 @login_required
 def machine_rates_api(request):
+    if not _can_manage_costing(request.user):
+        return JsonResponse({"detail": "You do not have permission to view machine rates."}, status=403)
     rates = MachineRate.objects.all()
     return JsonResponse({"rates": [{
         "id": x.id, "operation": x.operation, "operation_label": x.get_operation_display(),
@@ -139,6 +143,8 @@ def machine_rate_save_api(request, pk=None):
 @require_GET
 @login_required
 def staff_compensation_api(request):
+    if not _can_manage_costing(request.user):
+        return JsonResponse({"detail": "You do not have permission to view staff compensation."}, status=403)
     qs = StaffProfile.objects.select_related("user", "compensation").filter(status=StaffProfile.Status.ACTIVE)
     rows = []
     for staff in qs:
