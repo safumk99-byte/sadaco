@@ -38,18 +38,31 @@ def _contents(user):
     qs = MarketingContent.objects.all()
     if _global_admin(user): return qs
     department_id = _department_id(user)
-    return qs.filter(created_by__profile__department_id=department_id) if department_id else qs.none()
+    return (
+        qs.filter(created_by__profile__department_id=department_id)
+        .filter(Q(campaign__isnull=True) | Q(campaign__in=_campaigns(user)))
+        if department_id else qs.none()
+    )
 
 
 def _leads(user):
     qs = MarketingLead.objects.all()
     if _global_admin(user): return qs
     department_id = _department_id(user)
+    if not department_id:
+        return qs.none()
+    # Keep every related record within the manager's department, including legacy rows.
     return qs.filter(
         Q(created_by__profile__department_id=department_id)
         | Q(customer__department_id=department_id)
         | Q(enquiry__customer__department_id=department_id)
-    ).distinct() if department_id else qs.none()
+    ).filter(
+        Q(customer__isnull=True) | Q(customer__department_id=department_id)
+    ).filter(
+        Q(enquiry__isnull=True) | Q(enquiry__customer__department_id=department_id)
+    ).filter(
+        Q(campaign__isnull=True) | Q(campaign__in=_campaigns(user))
+    ).distinct()
 
 
 def _customers(user):
