@@ -72,7 +72,11 @@ class PurchaseDepartmentAccessTests(TestCase):
         self.assertEqual(line.unit_cost, Decimal("125"))
         self.assertIsNotNone(line.material_stock_movement_id)
         balance = MaterialStockBalance.objects.get(material=material, department=self.a, location="Main Store")
-        self.assertEqual(balance.quantity, Decimal("4"))
+        self.assertEqual(balance.quantity, Decimal("4"))        lot = line.stock_lot
+        self.assertEqual(lot.original_quantity, Decimal("4"))
+        self.assertEqual(lot.remaining_quantity, Decimal("4"))
+        self.assertEqual(lot.unit_cost, Decimal("125"))
+        self.assertEqual(lot.balance_id, balance.pk)
 
         second = RequestFactory().post(
             f"/api/purchase/orders/{self.own.pk}/receive/",
