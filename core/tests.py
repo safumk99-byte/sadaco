@@ -123,3 +123,25 @@ class CustomerRequestDepartmentAccessTests(TestCase):
         response = self.client.get("/api/customer-requests/")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["items"], [])
+
+    def test_assigned_staff_cannot_edit_manager_notes(self):
+        staff_user = User.objects.create_user(username="request_a_staff", password="StrongPass123!")
+        UserProfile.objects.create(
+            user=staff_user, role=UserProfile.Role.STAFF, department=self.a
+        )
+        item = OrderRequest.objects.create(
+            customer=self.customer_a,
+            quantity=1,
+            requirement="Staff request",
+            assigned_to=staff_user,
+            manager_notes="Private manager note",
+        )
+        self.client.force_login(staff_user)
+        response = self.client.post(
+            f"/api/customer-requests/{item.pk}/update/",
+            data='{"status":"contacted","manager_notes":"Tampered note"}',
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 403)
+        item.refresh_from_db()
+        self.assertEqual(item.manager_notes, "Private manager note")
