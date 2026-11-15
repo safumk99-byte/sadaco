@@ -216,8 +216,8 @@ class DepartmentAccessScopeTests(TestCase):
         self.performance_queryset_for_user = performance_queryset_for_user
         self.dashboard_stats = dashboard_stats
 
-        self.creatives = Department.objects.create(code="creatives", name="SADACO Creatives")
-        self.cnc = Department.objects.create(code="cnc", name="SADACO CNC")
+        self.creatives = Department.objects.get_or_create(code="creatives", defaults={"name": "SADACO Creatives"})[0]
+        self.cnc = Department.objects.get_or_create(code="cnc", defaults={"name": "SADACO CNC"})[0]
         self.manager_user = User.objects.create_user(username="creative_manager", password="StrongPass123!")
         UserProfile.objects.create(
             user=self.manager_user, role=UserProfile.Role.MANAGER, department=self.creatives
