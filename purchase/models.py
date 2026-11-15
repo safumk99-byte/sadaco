@@ -101,3 +101,26 @@ class GoodsReceipt(models.Model):
 
     def __str__(self):
         return self.receipt_no
+
+
+class GoodsReceiptLine(models.Model):
+    """Immutable snapshot of the quantity and rate accepted on a goods receipt."""
+    receipt = models.ForeignKey(GoodsReceipt, on_delete=models.PROTECT, related_name="lines")
+    purchase_item = models.ForeignKey(PurchaseItem, on_delete=models.PROTECT, related_name="receipt_lines")
+    received_quantity = models.DecimalField(max_digits=12, decimal_places=2, validators=[MinValueValidator(0.01)])
+    unit_cost = models.DecimalField(max_digits=14, decimal_places=2, validators=[MinValueValidator(0)])
+    line_total = models.DecimalField(max_digits=16, decimal_places=2)
+    material_stock_movement = models.OneToOneField(
+        "inventory.MaterialStockMovement", on_delete=models.PROTECT,
+        null=True, blank=True, related_name="purchase_receipt_line",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["id"]
+        constraints = [
+            models.UniqueConstraint(fields=["receipt", "purchase_item"], name="purchase_receipt_item_uniq")
+        ]
+
+    def __str__(self):
+        return f"{self.receipt.receipt_no} · item {self.purchase_item_id} · {self.received_quantity}"
