@@ -179,7 +179,7 @@ class Command(BaseCommand):
         before_counts = {
             User._meta.label: len(before[User._meta.label]),
             UserProfile._meta.label: len(before[UserProfile._meta.label]),
-            StaffProfile._meta.label: len(before[StaffProfile._meta.label]),
+            StaffProfile._meta.label: len(before.get(StaffProfile._meta.label, ())),
         }
         counts = Counter()
 
