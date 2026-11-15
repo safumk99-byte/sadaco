@@ -91,3 +91,12 @@ Additional read-only schema check on the same staging branch:
 - `accounts_userprofile`, `staff_staffprofile`, `sales_customer`, `sales_enquiry`, `sales_quotation`, and `sales_salesorder` currently have no `department_id` column.
 - `core_department` is not present in the inspected schema.
 - This confirms the department migrations recorded as pending on the feature branch have not been applied to staging. Because the staging migration history also differs from the branch history, do not simply apply those pending migrations until the migration graph and table state are reconciled.
+
+
+## Reconciliation decision — do not auto-bridge unknown historical migrations
+
+A full read-only `django_migrations` listing shows the staging branch records only the old migration names for the affected applications (including finance 0003–0005), while those migration source files are absent from both the current feature branch and the current `main` branch. The live schema confirms the old finance shape (`finance_financetransaction.sales_payment_id`, no `supplier_payment_id`) and the absence of department tables/columns.
+
+Consequently, a simple migration rename, dependency edit, or `--fake` operation is not safe: Django's migration graph cannot infer the operations performed by missing historical files. Keep the current feature branch migrations unchanged until a verified schema reconciliation is designed. The next safe engineering step is to produce a disposable staging clone and compare all affected app tables, constraints, indexes, sequences, and row counts against the current model state; only then create a guarded reconciliation migration using explicit schema introspection and a state transition that is tested on the clone. If a disposable clone cannot be provisioned, pause DB migration work rather than guessing.
+
+No SQL writes were run during this investigation. All staging queries were SELECT-only.
