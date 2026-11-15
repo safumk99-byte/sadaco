@@ -179,9 +179,10 @@ def receive(request, pk):
                 quantity=qty, user=request.user, reference=receipt.receipt_no,
                 remarks=f"Goods received for {po.po_no}.",
             )
-            MaterialVariant.objects.filter(pk=item.material_variant_id).update(
-                purchase_rate=item.unit_cost, updated_at=timezone.now()
-            )
+            material_master = MaterialVariant.objects.get(pk=item.material_variant_id)
+            material_master._rate_changed_by = request.user
+            material_master.purchase_rate = item.unit_cost
+            material_master.save(update_fields=["purchase_rate", "updated_at"])
         elif item.product_id:
             record_stock_transaction(product_id=item.product_id, transaction_type='in', quantity=qty, user=request.user,
                                       reference=receipt.receipt_no, remarks=f'Goods received for {po.po_no}.')
