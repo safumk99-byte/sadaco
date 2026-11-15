@@ -139,6 +139,18 @@ class CustomerRequestDepartmentAccessTests(TestCase):
         )
         self.assertEqual(response.status_code, 404)
 
+    def test_dashboard_pending_request_count_excludes_foreign_customer_requests(self):
+        OrderRequest.objects.create(
+            customer=self.customer_b,
+            quantity=1,
+            requirement="Foreign request assigned to local staff",
+            assigned_to=self.manager,
+        )
+        self.client.force_login(self.manager)
+        response = self.client.get("/api/dashboard/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["stats"]["pending_requests"], 1)
+
     def test_regular_customer_cannot_read_internal_request_queue(self):
         customer_user = User.objects.create_user(username="portal_customer", password="StrongPass123!")
         Customer.objects.create(user=customer_user, name="Portal Customer", phone="9000000103")
