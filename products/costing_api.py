@@ -13,8 +13,16 @@ from core.models import AuditLog
 
 
 def _can_manage_costing(user):
-    role = getattr(getattr(user, "profile", None), "role", None)
-    return user.is_superuser or role in (UserProfile.Role.SUPER_ADMIN, UserProfile.Role.INSTITUTION_ADMIN, UserProfile.Role.MANAGER)
+    if user.is_superuser:
+        return True
+    profile = getattr(user, "profile", None)
+    if not profile or not profile.is_active:
+        return False
+    return profile.role in (
+        UserProfile.Role.SUPER_ADMIN,
+        UserProfile.Role.INSTITUTION_ADMIN,
+        UserProfile.Role.MANAGER,
+    )
 
 
 def _data(request):
