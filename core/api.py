@@ -670,7 +670,10 @@ def _set_user_department(user, department_id):
     if department_id in (None, "", "null"):
         profile.department = None
     else:
-        profile.department = get_object_or_404(Department, pk=department_id, is_active=True)
+        department = Department.objects.filter(pk=department_id, is_active=True).first()
+        if not department:
+            raise Department.DoesNotExist
+        profile.department = department
     profile.save(update_fields=["department", "updated_at"])
     if hasattr(user, "staff_profile"):
         user.staff_profile.department = profile.department
