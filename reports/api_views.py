@@ -69,7 +69,18 @@ def dashboard(request):
             purchase_orders=purchase_orders.filter(created_by__profile__department_id=department_id)
             expenses=expenses.filter(created_by__profile__department_id=department_id)
             campaigns=campaigns.filter(created_by__profile__department_id=department_id)
-            leads=leads.filter(Q(created_by__profile__department_id=department_id)|Q(customer__department_id=department_id)|Q(enquiry__customer__department_id=department_id)).distinct()
+            leads=leads.filter(
+                Q(created_by__profile__department_id=department_id)
+                | Q(customer__department_id=department_id)
+                | Q(enquiry__customer__department_id=department_id)
+            ).filter(
+                Q(customer__isnull=True) | Q(customer__department_id=department_id)
+            ).filter(
+                Q(enquiry__isnull=True) | Q(enquiry__customer__department_id=department_id)
+            ).filter(
+                Q(campaign__isnull=True)
+                | Q(campaign__created_by__profile__department_id=department_id)
+            ).distinct()
             stock=stock.filter(created_by__profile__department_id=department_id)
 
     payments=PaymentRecord.objects.filter(created_at__date__range=(start,end),status__in=['received','verified'],order__in=all_orders)
