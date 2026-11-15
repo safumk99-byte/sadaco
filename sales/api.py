@@ -21,6 +21,83 @@ def _guard(user, manager=False):
         raise PermissionDenied
     return None
 
+def _global_admin(user):
+    return user.is_superuser or getattr(getattr(user, "profile", None), "role", None) in (
+        UserProfile.Role.SUPER_ADMIN, UserProfile.Role.INSTITUTION_ADMIN
+    )
+
+
+def _department_id(user):
+    profile = getattr(user, "profile", None)
+    return profile.department_id if profile and profile.role == UserProfile.Role.MANAGER else None
+
+
+def _customer_qs(user):
+    qs = Customer.objects.all()
+    if _global_admin(user):
+        return qs
+    if getattr(getattr(user, "profile", None), "role", None) == UserProfile.Role.MANAGER:
+        department_id = _department_id(user)
+        return qs.filter(department_id=department_id) if department_id else qs.none()
+    return qs.filter(
+        Q(enquiries__assigned_to=user) | Q(enquiries__created_by=user)
+        | Q(quotations__created_by=user) | Q(orders__created_by=user)
+        | Q(orders__responsible_staff__user=user)
+    ).distinct()
+
+
+def _enquiry_qs(user):
+    qs = Enquiry.objects.all()
+    if _global_admin(user):
+        return qs
+    if getattr(getattr(user, "profile", None), "role", None) == UserProfile.Role.MANAGER:
+        department_id = _department_id(user)
+        return qs.filter(customer__department_id=department_id) if department_id else qs.none()
+    return qs.filter(Q(assigned_to=user) | Q(created_by=user))
+
+
+def _quotation_qs(user):
+    qs = Quotation.objects.all()
+    if _global_admin(user):
+        return qs
+    if getattr(getattr(user, "profile", None), "role", None) == UserProfile.Role.MANAGER:
+        department_id = _department_id(user)
+        return qs.filter(customer__department_id=department_id) if department_id else qs.none()
+    return qs.filter(created_by=user)
+
+
+def _order_qs(user):
+    qs = SalesOrder.objects.all()
+    if _global_admin(user):
+        return qs
+    if getattr(getattr(user, "profile", None), "role", None) == UserProfile.Role.MANAGER:
+        department_id = _department_id(user)
+        return qs.filter(customer__department_id=department_id) if department_id else qs.none()
+    return qs.filter(Q(created_by=user) | Q(responsible_staff__user=user))
+
+
+def _restrict_form(form, user, model):
+    if model == "enquiry":
+        form.fields["customer"].queryset = _customer_qs(user).filter(status=Customer.Status.ACTIVE)
+        form.fields["assigned_to"].queryset = form.fields["assigned_to"].queryset.filter(
+            profile__department_id=_department_id(user)
+        ) if not _global_admin(user) and _department_id(user) else (
+            form.fields["assigned_to"].queryset if _global_admin(user) else form.fields["assigned_to"].queryset.none()
+        )
+    elif model == "quotation":
+        form.fields["customer"].queryset = _customer_qs(user).filter(status=Customer.Status.ACTIVE)
+        form.fields["enquiry"].queryset = _enquiry_qs(user)
+        form.fields["order_request"].queryset = OrderRequest.objects.filter(customer__in=_customer_qs(user))
+    elif model == "order":
+        form.fields["customer"].queryset = _customer_qs(user).filter(status=Customer.Status.ACTIVE)
+        form.fields["quotation"].queryset = _quotation_qs(user)
+        staff_qs = StaffProfile.objects.filter(status=StaffProfile.Status.ACTIVE).select_related("user")
+        if not _global_admin(user):
+            department_id = _department_id(user)
+            staff_qs = staff_qs.filter(department_id=department_id) if department_id else staff_qs.none()
+        form.fields["responsible_staff"].queryset = staff_qs
+    return form
+
 def _choice(value, label): return {'value': value, 'label': label}
 
 def _customer(c): return {'id': c.id, 'name': c.name, 'phone': c.phone, 'email': c.email, 'status': c.status, 'status_label': c.get_status_display()}
@@ -30,17 +107,22 @@ def _order(o): return {'id': o.id, 'order_no': o.order_no, 'customer': _customer
 
 @login_required
 def summary(request):
+    customers = _customer_qs(request.user)
+    enquiries = _enquiry_qs(request.user)
+    quotations = _quotation_qs(request.user)
+    orders = _order_qs(request.user)
+    requests = OrderRequest.objects.filter(customer__in=customers)
     return JsonResponse({'stats': {
-        'customers': Customer.objects.filter(status=Customer.Status.ACTIVE).count(),
-        'new_enquiries': Enquiry.objects.filter(status=Enquiry.Status.NEW).count(),
-        'quotations': Quotation.objects.exclude(status=Quotation.Status.CONVERTED).count(),
-        'open_orders': SalesOrder.objects.exclude(status__in=[SalesOrder.Status.DELIVERED, SalesOrder.Status.CANCELLED]).count(),
-        'pending_requests': OrderRequest.objects.filter(status__in=[OrderRequest.Status.NEW, OrderRequest.Status.REVIEWING, OrderRequest.Status.CONTACTED]).count(),
-    }, 'recent_enquiries': [_enquiry(x) for x in Enquiry.objects.select_related('customer','assigned_to')[:6]], 'recent_orders': [_order(x) for x in SalesOrder.objects.select_related('customer','responsible_staff__user')[:6]]})
+        'customers': customers.filter(status=Customer.Status.ACTIVE).count(),
+        'new_enquiries': enquiries.filter(status=Enquiry.Status.NEW).count(),
+        'quotations': quotations.exclude(status=Quotation.Status.CONVERTED).count(),
+        'open_orders': orders.exclude(status__in=[SalesOrder.Status.DELIVERED, SalesOrder.Status.CANCELLED]).count(),
+        'pending_requests': requests.filter(status__in=[OrderRequest.Status.NEW, OrderRequest.Status.REVIEWING, OrderRequest.Status.CONTACTED]).count(),
+    }, 'recent_enquiries': [_enquiry(x) for x in enquiries.select_related('customer','assigned_to')[:6]], 'recent_orders': [_order(x) for x in orders.select_related('customer','responsible_staff__user')[:6]]})
 
 @login_required
 def customers(request):
-    q = request.GET.get('q','').strip(); qs = Customer.objects.all()
+    q = request.GET.get('q','').strip(); qs = _customer_qs(request.user)
     if q: qs = qs.filter(Q(name__icontains=q)|Q(phone__icontains=q)|Q(email__icontains=q))
     return JsonResponse({'customers': [_customer(x) for x in qs[:250]], 'can_manage': _manager(request.user)})
 
@@ -50,20 +132,25 @@ def customer_create(request):
     if _guard(request.user, True): return _guard(request.user, True)
     import json; form = CustomerForm(json.loads(request.body or '{}'))
     if form.is_valid():
-        c=form.save(); return JsonResponse({'customer': _customer(c)}, status=201)
+        c=form.save(commit=False)
+        if not _global_admin(request.user):
+            c.department_id = _department_id(request.user)
+            if not c.department_id:
+                return JsonResponse({'detail': 'Assign your manager account to a department first.'}, status=400)
+        c.save(); return JsonResponse({'customer': _customer(c)}, status=201)
     return JsonResponse({'detail':'Validation failed.','errors':form.errors.get_json_data()},status=400)
 
 @require_http_methods(['POST'])
 @login_required
 def customer_update(request, pk):
     if _guard(request.user, True): return _guard(request.user, True)
-    import json; c=Customer.objects.get(pk=pk); form=CustomerForm(json.loads(request.body or '{}'),instance=c)
+    import json; c=get_object_or_404(_customer_qs(request.user),pk=pk); form=CustomerForm(json.loads(request.body or '{}'),instance=c)
     if form.is_valid(): return JsonResponse({'customer':_customer(form.save())})
     return JsonResponse({'detail':'Validation failed.','errors':form.errors.get_json_data()},status=400)
 
 @login_required
 def enquiries(request):
-    q=request.GET.get('q','').strip(); status=request.GET.get('status',''); qs=Enquiry.objects.select_related('customer','assigned_to')
+    q=request.GET.get('q','').strip(); status=request.GET.get('status',''); qs=_enquiry_qs(request.user).select_related('customer','assigned_to')
     if q: qs=qs.filter(Q(enquiry_no__icontains=q)|Q(customer__name__icontains=q)|Q(product_type__icontains=q))
     if status: qs=qs.filter(status=status)
     return JsonResponse({'enquiries':[_enquiry(x) for x in qs[:250]],'can_manage':_manager(request.user),'statuses':[_choice(v,l) for v,l in Enquiry.Status.choices]})
@@ -72,7 +159,7 @@ def enquiries(request):
 @login_required
 def enquiry_create(request):
     if _guard(request.user, True): return _guard(request.user, True)
-    import json; data=json.loads(request.body or '{}'); form=EnquiryForm(data)
+    import json; data=json.loads(request.body or '{}'); form=_restrict_form(EnquiryForm(data), request.user, "enquiry")
     if form.is_valid():
         e=form.save(commit=False); e.created_by=request.user; e.save(); return JsonResponse({'enquiry':_enquiry(e)},status=201)
     return JsonResponse({'detail':'Validation failed.','errors':form.errors.get_json_data()},status=400)
@@ -81,13 +168,13 @@ def enquiry_create(request):
 @login_required
 def enquiry_update(request,pk):
     if _guard(request.user, True): return _guard(request.user, True)
-    import json; e=Enquiry.objects.get(pk=pk); form=EnquiryForm(json.loads(request.body or '{}'),instance=e)
+    import json; e=get_object_or_404(_enquiry_qs(request.user),pk=pk); form=_restrict_form(EnquiryForm(json.loads(request.body or '{}'),instance=e), request.user, "enquiry")
     if form.is_valid(): return JsonResponse({'enquiry':_enquiry(form.save())})
     return JsonResponse({'detail':'Validation failed.','errors':form.errors.get_json_data()},status=400)
 
 @login_required
 def quotations(request):
-    q=request.GET.get('q','').strip(); status=request.GET.get('status',''); qs=Quotation.objects.select_related('customer')
+    q=request.GET.get('q','').strip(); status=request.GET.get('status',''); qs=_quotation_qs(request.user).select_related('customer')
     if q: qs=qs.filter(Q(quotation_no__icontains=q)|Q(customer__name__icontains=q)|Q(item_description__icontains=q))
     if status: qs=qs.filter(status=status)
     return JsonResponse({'quotations':[_quotation(x) for x in qs[:250]],'can_manage':_manager(request.user),'statuses':[_choice(v,l) for v,l in Quotation.Status.choices]})
@@ -96,7 +183,7 @@ def quotations(request):
 @login_required
 def quotation_create(request):
     if _guard(request.user, True): return _guard(request.user, True)
-    import json; form=QuotationForm(json.loads(request.body or '{}'))
+    import json; form=_restrict_form(QuotationForm(json.loads(request.body or '{}')), request.user, "quotation")
     if form.is_valid():
         q=form.save(commit=False); q.created_by=request.user; q.save(); return JsonResponse({'quotation':_quotation(q)},status=201)
     return JsonResponse({'detail':'Validation failed.','errors':form.errors.get_json_data()},status=400)
@@ -105,13 +192,13 @@ def quotation_create(request):
 @login_required
 def quotation_update(request,pk):
     if _guard(request.user, True): return _guard(request.user, True)
-    import json; q=Quotation.objects.get(pk=pk); form=QuotationForm(json.loads(request.body or '{}'),instance=q)
+    import json; q=get_object_or_404(_quotation_qs(request.user),pk=pk); form=_restrict_form(QuotationForm(json.loads(request.body or '{}'),instance=q), request.user, "quotation")
     if form.is_valid(): return JsonResponse({'quotation':_quotation(form.save())})
     return JsonResponse({'detail':'Validation failed.','errors':form.errors.get_json_data()},status=400)
 
 @login_required
 def orders(request):
-    q=request.GET.get('q','').strip(); status=request.GET.get('status',''); qs=SalesOrder.objects.select_related('customer','responsible_staff__user')
+    q=request.GET.get('q','').strip(); status=request.GET.get('status',''); qs=_order_qs(request.user).select_related('customer','responsible_staff__user')
     if q: qs=qs.filter(Q(order_no__icontains=q)|Q(customer__name__icontains=q)|Q(item_description__icontains=q))
     if status: qs=qs.filter(status=status)
     return JsonResponse({'orders':[_order(x) for x in qs[:250]],'can_manage':_manager(request.user),'statuses':[_choice(v,l) for v,l in SalesOrder.Status.choices]})
@@ -120,7 +207,7 @@ def orders(request):
 @login_required
 def order_create(request):
     if _guard(request.user, True): return _guard(request.user, True)
-    import json; form=SalesOrderForm(json.loads(request.body or '{}'))
+    import json; form=_restrict_form(SalesOrderForm(json.loads(request.body or '{}')), request.user, "order")
     if form.is_valid():
         o=form.save(commit=False); o.created_by=request.user; o.save(); return JsonResponse({'order':_order(o)},status=201)
     return JsonResponse({'detail':'Validation failed.','errors':form.errors.get_json_data()},status=400)
@@ -129,6 +216,6 @@ def order_create(request):
 @login_required
 def order_update(request,pk):
     if _guard(request.user, True): return _guard(request.user, True)
-    import json; o=SalesOrder.objects.get(pk=pk); form=SalesOrderForm(json.loads(request.body or '{}'),instance=o)
+    import json; o=get_object_or_404(_order_qs(request.user),pk=pk); form=_restrict_form(SalesOrderForm(json.loads(request.body or '{}'),instance=o), request.user, "order")
     if form.is_valid(): return JsonResponse({'order':_order(form.save())})
     return JsonResponse({'detail':'Validation failed.','errors':form.errors.get_json_data()},status=400)
