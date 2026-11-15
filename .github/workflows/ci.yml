@@ -73,7 +73,9 @@ jobs:
           quality.tests.QualityMutationPermissionTests
           quality.tests.QualityReworkLifecycleTests
           delivery.tests.DeliveryLifecycleTests
-          purchase.tests.PurchaseDepartmentAccessTests\n          inventory.tests.MaterialLedgerWorkflowTests\n          inventory.tests.MaterialStockCountTests
+          purchase.tests.PurchaseDepartmentAccessTests
+          inventory.tests.MaterialLedgerWorkflowTests
+          inventory.tests.MaterialStockCountTests
           finance.tests.FinanceDepartmentAccessTests
           finance.tests.FinancePositiveAmountValidationTests
           marketing.tests.MarketingDepartmentAccessTests
