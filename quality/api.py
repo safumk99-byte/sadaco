@@ -45,10 +45,7 @@ def _visible_job(user, job):
         return True
     if getattr(getattr(user, "profile", None), "role", None) == "manager":
         department_id = _manager_department_id(user)
-        return bool(department_id and (
-            job.assigned_staff_id and job.assigned_staff.department_id == department_id
-            or job.order.responsible_staff_id and job.order.responsible_staff.department_id == department_id
-        ))
+        return bool(department_id and job.order.customer.department_id == department_id)
     return hasattr(user, "staff_profile") and job.assigned_staff_id == user.staff_profile.id
 
 def _notify(job, title, message, priority="normal"):
