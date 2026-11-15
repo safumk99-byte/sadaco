@@ -18,6 +18,7 @@ from django.urls import reverse
 from accounts.models import UserProfile
 from core.models import Department
 from sales.models import Customer, OrderRequest
+from core.models import ApprovalRequest
 
 
 class DashboardTests(TestCase):
@@ -145,3 +146,38 @@ class CustomerRequestDepartmentAccessTests(TestCase):
         self.assertEqual(response.status_code, 403)
         item.refresh_from_db()
         self.assertEqual(item.manager_notes, "Private manager note")
+
+
+class ApprovalDepartmentAccessTests(TestCase):
+    def setUp(self):
+        self.a = Department.objects.create(code="approval-a", name="Approval A")
+        self.b = Department.objects.create(code="approval-b", name="Approval B")
+        self.manager = User.objects.create_user(username="approval_a_mgr", password="StrongPass123!")
+        UserProfile.objects.create(user=self.manager, role=UserProfile.Role.MANAGER, department=self.a)
+        self.other_manager = User.objects.create_user(username="approval_b_mgr", password="StrongPass123!")
+        UserProfile.objects.create(user=self.other_manager, role=UserProfile.Role.MANAGER, department=self.b)
+        self.own_request = ApprovalRequest.objects.create(
+            module="finance", action="expense", reason="Own division request", requested_by=self.manager
+        )
+        self.foreign_request = ApprovalRequest.objects.create(
+            module="finance", action="expense", reason="Other division request", requested_by=self.other_manager
+        )
+
+    def test_manager_lists_only_own_department_approvals(self):
+        self.client.force_login(self.manager)
+        response = self.client.get("/api/approvals/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([item["id"] for item in response.json()["items"]], [self.own_request.id])
+
+    def test_manager_cannot_review_another_department_approval(self):
+        import json
+        self.client.force_login(self.manager)
+        response = self.client.post(
+            f"/api/approvals/{self.foreign_request.pk}/review/",
+            data=json.dumps({"status": "approved", "reviewer_note": "Not my division"}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 404)
+        self.foreign_request.refresh_from_db()
+        self.assertEqual(self.foreign_request.status, ApprovalRequest.Status.PENDING)
+        self.assertIsNone(self.foreign_request.reviewed_by_id)
