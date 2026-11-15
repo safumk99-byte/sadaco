@@ -2,6 +2,7 @@ from decimal import Decimal
 from django.test import TestCase
 
 from .models import MaterialVariant, MachineRate, StaffCompensation
+from accounts.models import UserProfile
 
 
 class MaterialCostingModelTests(TestCase):
@@ -64,3 +65,34 @@ class MaterialCostingModelTests(TestCase):
         )
         self.assertEqual(laser.rate * 15, Decimal("300"))
         self.assertEqual(cnc.rate * 10, Decimal("600"))
+
+
+
+class CostingPermissionTests(TestCase):
+    def _user_with_role(self, username, role):
+        from django.contrib.auth import get_user_model
+        user = get_user_model().objects.create_user(username=username, password="test-password")
+        UserProfile.objects.create(user=user, role=role)
+        return user
+
+    def test_staff_cannot_read_costing_or_salary_rates(self):
+        user = self._user_with_role("ordinary-staff", UserProfile.Role.STAFF)
+        self.client.force_login(user)
+        for endpoint in (
+            "/api/costing/materials/",
+            "/api/costing/machine-rates/",
+            "/api/costing/staff/",
+        ):
+            with self.subTest(endpoint=endpoint):
+                self.assertEqual(self.client.get(endpoint).status_code, 403)
+
+    def test_manager_can_read_costing_master_data(self):
+        user = self._user_with_role("costing-manager", UserProfile.Role.MANAGER)
+        self.client.force_login(user)
+        for endpoint in (
+            "/api/costing/materials/",
+            "/api/costing/machine-rates/",
+            "/api/costing/staff/",
+        ):
+            with self.subTest(endpoint=endpoint):
+                self.assertEqual(self.client.get(endpoint).status_code, 200)
