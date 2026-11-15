@@ -39,3 +39,38 @@ class PurchaseDepartmentAccessTests(TestCase):
         request.user = staff
         with self.assertRaises(PermissionDenied):
             summary(request)
+
+
+    def test_cancelled_purchase_order_cannot_receive_goods(self):
+        from django.test import RequestFactory
+        from django.core.exceptions import PermissionDenied
+        from .api import receive
+        self.own.status = PurchaseOrder.Status.CANCELLED
+        self.own.save(update_fields=["status", "updated_at"])
+        request = RequestFactory().post(f"/api/purchase/orders/{self.own.pk}/receive/", data="{}", content_type="application/json")
+        request.user = self.manager
+        response = receive(request, self.own.pk)
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(self.own.receipts.exists())
+
+    def test_draft_purchase_order_cannot_receive_goods(self):
+        from django.test import RequestFactory
+        from .api import receive
+        self.own.status = PurchaseOrder.Status.DRAFT
+        self.own.save(update_fields=["status", "updated_at"])
+        request = RequestFactory().post(f"/api/purchase/orders/{self.own.pk}/receive/", data="{}", content_type="application/json")
+        request.user = self.manager
+        response = receive(request, self.own.pk)
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(self.own.receipts.exists())
+
+    def test_already_received_purchase_order_cannot_receive_again(self):
+        from django.test import RequestFactory
+        from .api import receive
+        self.own.status = PurchaseOrder.Status.RECEIVED
+        self.own.save(update_fields=["status", "updated_at"])
+        request = RequestFactory().post(f"/api/purchase/orders/{self.own.pk}/receive/", data="{}", content_type="application/json")
+        request.user = self.manager
+        response = receive(request, self.own.pk)
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(self.own.receipts.exists())
