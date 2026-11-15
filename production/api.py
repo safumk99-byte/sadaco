@@ -16,12 +16,21 @@ from .models import ProductionJob, ProductionProgress, ProductionMaterial, Produ
 
 MANAGER_ROLES = {UserProfile.Role.SUPER_ADMIN, UserProfile.Role.INSTITUTION_ADMIN, UserProfile.Role.MANAGER}
 
+def _active_profile(user):
+    profile = getattr(user, "profile", None)
+    return profile if profile and profile.is_active else None
+
+
 def _manager(user):
-    return user.is_superuser or getattr(getattr(user, 'profile', None), 'role', None) in MANAGER_ROLES
+    profile = _active_profile(user)
+    return user.is_superuser or bool(profile and profile.role in MANAGER_ROLES)
+
 
 def _global_admin(user):
-    role = getattr(getattr(user, "profile", None), "role", None)
-    return user.is_superuser or role in (UserProfile.Role.SUPER_ADMIN, UserProfile.Role.INSTITUTION_ADMIN)
+    profile = _active_profile(user)
+    return user.is_superuser or bool(
+        profile and profile.role in (UserProfile.Role.SUPER_ADMIN, UserProfile.Role.INSTITUTION_ADMIN)
+    )
 
 
 def _manager_department_id(user):
