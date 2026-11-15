@@ -12,7 +12,7 @@ from accounts.models import UserProfile
 from products.models import Product
 from products.inventory import record_stock_transaction
 from .forms import SupplierForm, PurchaseOrderForm, PurchaseItemForm, GoodsReceiptForm
-from .models import Supplier, PurchaseOrder, PurchaseItem, GoodsReceipt
+from .models import Supplier, PurchaseOrder, PurchaseItem, GoodsReceipt, GoodsReceiptLine
 
 MANAGER_ROLES = {UserProfile.Role.SUPER_ADMIN, UserProfile.Role.INSTITUTION_ADMIN, UserProfile.Role.MANAGER}
 
@@ -37,7 +37,7 @@ def _po(po):
             'tax': str(po.tax), 'total': str(po.total), 'created_by': po.created_by.get_full_name() if po.created_by else None,
             'items': [_item(i) for i in po.items.select_related('product').all()],
             'receipts': [{'id': r.id, 'receipt_no': r.receipt_no, 'received_date': r.received_date.isoformat(),
-                          'supplier_reference': r.supplier_reference, 'notes': r.notes} for r in po.receipts.all()]}
+                          'supplier_reference': r.supplier_reference, 'notes': r.notes, 'lines': [{'id': line.id, 'purchase_item_id': line.purchase_item_id, 'received_quantity': str(line.received_quantity), 'unit_cost': str(line.unit_cost), 'line_total': str(line.line_total), 'stock_movement_id': line.material_stock_movement_id} for line in r.lines.all()]} for r in po.receipts.prefetch_related('lines').all()]}
 
 def _data(request):
     try: return json.loads(request.body or '{}')
@@ -179,7 +179,7 @@ def receive(request, pk):
             balance, _ = MaterialStockBalance.objects.get_or_create(
                 material_id=item.material_variant_id, department_id=po.department_id, location=location,
             )
-            record_material_movement(
+            movement = record_material_movement(
                 balance_id=balance.pk, movement_type=MaterialStockMovement.Type.PURCHASE_RECEIPT,
                 quantity=qty, user=request.user, reference=receipt.receipt_no,
                 remarks=f"Goods received for {po.po_no}.",
@@ -189,10 +189,16 @@ def receive(request, pk):
             material_master.purchase_rate = item.unit_cost
             material_master.save(update_fields=["purchase_rate", "updated_at"])
         elif item.product_id:
+            movement = None
             record_stock_transaction(product_id=item.product_id, transaction_type='in', quantity=qty, user=request.user,
                                       reference=receipt.receipt_no, remarks=f'Goods received for {po.po_no}.')
         else:
             return JsonResponse({"detail": f"Purchase item {item.pk} has no stock item linked."}, status=400)
+        GoodsReceiptLine.objects.create(
+            receipt=receipt, purchase_item=item, received_quantity=qty,
+            unit_cost=item.unit_cost, line_total=qty * item.unit_cost,
+            material_stock_movement=movement if item.material_variant_id else None,
+        )
         item.received_quantity += qty; item.save(update_fields=['received_quantity'])
     from django.db.models import F
     remaining = po.items.filter(received_quantity__lt=F('quantity')).exists()
