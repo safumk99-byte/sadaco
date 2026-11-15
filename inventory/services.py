@@ -78,6 +78,8 @@ def issue_material(*, material_id, quantity, user=None, reference="", remarks=""
         balance = matching[0]
         if balance.quantity < quantity:
             raise ValidationError(f"Insufficient stock at {balance.location}. Available: {balance.quantity} {material.unit}.")
+        if employee and employee.department_id != department_id:
+            raise ValidationError("The selected employee does not belong to the job department.")
         unit_rate = material.material_variant.purchase_rate
         if unit_rate is None:
             raise ValidationError("A purchase rate must be recorded before this material can be issued for job costing.")
