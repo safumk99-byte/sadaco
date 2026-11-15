@@ -201,7 +201,7 @@ class MaterialVariant(models.Model):
             (previous_rates["purchase_rate"], previous_rates["retail_rate"])
             if previous_rates else None
         )
-        if old_rates != current_rates:
+        if old_rates != current_rates and (old_rates is not None or any(rate is not None for rate in current_rates)):
             MaterialRateHistory.objects.create(
                 material=self,
                 purchase_rate=self.purchase_rate,
