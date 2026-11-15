@@ -172,7 +172,6 @@ def production_material_issue_api(request):
         scope = _manager_department(request.user)
         if scope is False:
             return JsonResponse({"detail": "You do not have permission to issue material."}, status=403)
-        material_line = ProductionJob.objects.none()
         from production.models import ProductionMaterial
         lines = ProductionMaterial.objects.select_related("job__order__customer")
         if scope is not None:
@@ -199,3 +198,53 @@ def production_material_issue_api(request):
         }, status=201)
     except (ValueError, TypeError, InvalidOperation, ValidationError) as exc:
         return JsonResponse({"detail": str(exc)}, status=400)
+
+
+
+def _material_usage_adjustment(request, action):
+    from production.models import ProductionMaterial
+    from .services import return_issued_material, record_issued_wastage
+    try:
+        data = json.loads(request.body or "{}")
+        scope = _manager_department(request.user)
+        if scope is False:
+            return JsonResponse({"detail": "You do not have permission to adjust material usage."}, status=403)
+        lines = ProductionMaterial.objects.select_related("job__order__customer")
+        if scope is not None:
+            lines = lines.filter(job__order__customer__department_id=scope)
+        line = lines.filter(pk=data.get("material_line")).first()
+        if not line:
+            return JsonResponse({"detail": "Production material line not found in your department."}, status=404)
+        employee = StaffProfile.objects.filter(pk=data.get("employee")).first() if data.get("employee") else None
+        if data.get("employee") and not employee:
+            return JsonResponse({"detail": "Employee not found."}, status=404)
+        operation = return_issued_material if action == "return" else record_issued_wastage
+        movement = operation(
+            material_id=line.pk, quantity=data.get("quantity"), balance_id=data.get("balance"),
+            user=request.user, employee=employee, reference=str(data.get("reference", "")),
+            remarks=str(data.get("remarks", "")),
+        )
+        line.refresh_from_db()
+        return JsonResponse({
+            "ok": True, "movement_id": movement.pk,
+            "issued_quantity": str(line.issued_quantity),
+            "returned_quantity": str(line.returned_quantity),
+            "wastage_quantity": str(line.wastage_quantity),
+            "actual_consumption": str(line.actual_consumption),
+            "balance_after": str(movement.balance_after),
+        }, status=201)
+    except (ValueError, TypeError, InvalidOperation, ValidationError,
+            MaterialStockBalance.DoesNotExist, ProductionMaterial.DoesNotExist) as exc:
+        return JsonResponse({"detail": str(exc)}, status=400)
+
+
+@require_POST
+@login_required
+def production_material_return_api(request):
+    return _material_usage_adjustment(request, "return")
+
+
+@require_POST
+@login_required
+def production_material_wastage_api(request):
+    return _material_usage_adjustment(request, "wastage")
