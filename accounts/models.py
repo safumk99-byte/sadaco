@@ -10,6 +10,10 @@ class UserProfile(models.Model):
 
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="profile")
     role = models.CharField(max_length=40, choices=Role.choices, default=Role.STAFF)
+    department = models.ForeignKey(
+        "core.Department", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="user_profiles",
+    )
     is_active = models.BooleanField(default=True)
     phone = models.CharField(max_length=30, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
