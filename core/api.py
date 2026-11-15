@@ -503,7 +503,7 @@ def products_api(request):
 @login_required
 def product_detail_api(request, pk):
     product = get_object_or_404(product_queryset(), pk=pk)
-    transactions = product.stock_transactions.select_related("created_by").order_by("-created_at")[:20]
+    transactions = _stock_transactions_for_user(request.user).filter(product=product).order_by("-created_at")[:20]
     return JsonResponse({"product": _product_payload(product), "transactions": [_stock_payload(t) for t in transactions], "can_manage": can_manage_products(request.user)})
 
 
@@ -628,8 +628,19 @@ def stock_transaction_api(request):
 
 @require_GET
 @login_required
-def stock_transactions_api(request):
+def _stock_transactions_for_user(user):
     qs = StockTransaction.objects.select_related("product", "created_by")
+    role = getattr(getattr(user, "profile", None), "role", None)
+    if user.is_superuser or role in (UserProfile.Role.SUPER_ADMIN, UserProfile.Role.INSTITUTION_ADMIN):
+        return qs
+    if role == UserProfile.Role.MANAGER:
+        department_id = getattr(user.profile, "department_id", None)
+        return qs.filter(created_by__profile__department_id=department_id) if department_id else qs.none()
+    return qs.filter(created_by=user)
+
+
+def stock_transactions_api(request):
+    qs = _stock_transactions_for_user(request.user)
     q = request.GET.get("q", "").strip()
     if q:
         qs = qs.filter(Q(product__name__icontains=q) | Q(product__sku__icontains=q) | Q(reference__icontains=q))
