@@ -7,7 +7,7 @@ from .models import MaterialVariant, MachineRate, StaffCompensation
 class MaterialCostingModelTests(TestCase):
     def test_sheet_area_rate_is_calculated_from_purchase_rate(self):
         material = MaterialVariant.objects.create(
-            material_name="Acrylic Sheet", brand="Astari",
+            material_name="Test Acrylic Sheet", brand="Test Brand",
             thickness_mm=Decimal("2.50"), colour="clear",
             sheet_width_ft=Decimal("8"), sheet_height_ft=Decimal("4"),
             purchase_rate=Decimal("3812.00"),
@@ -17,7 +17,7 @@ class MaterialCostingModelTests(TestCase):
 
     def test_missing_purchase_rate_keeps_sqft_rate_blank(self):
         material = MaterialVariant.objects.create(
-            material_name="Indian Sheet", thickness_mm=Decimal("2"),
+            material_name="Test Indian Sheet", thickness_mm=Decimal("2"),
             sheet_width_ft=Decimal("4"), sheet_height_ft=Decimal("3"),
             purchase_rate=None,
         )
