@@ -35,6 +35,7 @@ def remove_demo_catalog_data(apps, schema_editor):
 class Migration(migrations.Migration):
     dependencies = [
         ("products", "0011_seed_staff_compensation"),
+        ("sales", "0007_customer_department"),
     ]
 
     operations = [
