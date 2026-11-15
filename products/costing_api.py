@@ -14,7 +14,7 @@ from accounts.models import UserProfile
 
 def _can_manage_costing(user):
     role = getattr(getattr(user, "profile", None), "role", None)
-    return user.is_superuser or role in (UserProfile.Role.SUPER_ADMIN, UserProfile.Role.INSTITUTION_ADMIN, UserProfile.Role.MANAGER)
+    return user.is_superuser or role in (UserProfile.Role.SUPER_ADMIN, UserProfile.Role.INSTITUTION_ADMIN)
 
 
 def _data(request):
