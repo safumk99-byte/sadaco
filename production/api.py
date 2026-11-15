@@ -198,14 +198,21 @@ def add_progress(request, pk):
     if not _job_visible(request.user, job): raise PermissionDenied
     form = ProductionProgressForm(_data(request))
     if not form.is_valid(): return JsonResponse({'detail':'Validation failed.','errors':form.errors.get_json_data()}, status=400)
-    if not _manager(request.user) and form.cleaned_data["progress_percent"] >= 100:
+    if not _manager(request.user) and (
+        form.cleaned_data["progress_percent"] >= 100
+        or form.cleaned_data["stage"] == ProductionJob.Stage.COMPLETED
+    ):
         return JsonResponse({"detail": "Only a manager can finalize a production job. Staff can report progress up to 99%."}, status=403)
+    if form.cleaned_data["stage"] == ProductionJob.Stage.COMPLETED and form.cleaned_data["progress_percent"] != 100:
+        return JsonResponse({"detail": "Completed stage requires 100% progress."}, status=400)
     update_obj = form.save(commit=False); update_obj.job=job; update_obj.updated_by=request.user; update_obj.save()
     job.stage=update_obj.stage; job.progress_percent=update_obj.progress_percent
     if update_obj.progress_percent >= 100: job.status=ProductionJob.Status.COMPLETED
     elif job.status in (ProductionJob.Status.PENDING, ProductionJob.Status.ASSIGNED, ProductionJob.Status.ON_HOLD): job.status=ProductionJob.Status.IN_PROGRESS
     job.save()
-    if update_obj.progress_percent > 0 and job.order.status != SalesOrder.Status.IN_PRODUCTION:
+    if update_obj.progress_percent > 0 and job.order.status in (
+        SalesOrder.Status.CONFIRMED, SalesOrder.Status.PRODUCTION_PENDING
+    ):
         job.order.status=SalesOrder.Status.IN_PRODUCTION; job.order.save(update_fields=['status','updated_at'])
     return JsonResponse({'job': _job(job), 'progress': _progress(update_obj)})
 
