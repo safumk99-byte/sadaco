@@ -2,7 +2,7 @@ from django.db import migrations
 
 
 def remove_demo_catalog_data(apps, schema_editor):
-    # Only the demo product catalogue and its stock ledger are cleared.
+    # Only unreferenced demo catalogue rows are cleared; stock-ledger entries are guarded.
     # Customers, order requests, orders, quotations, finance, staff activity,
     # users, staff profiles and departments are intentionally preserved.
     StockTransaction = apps.get_model("products", "StockTransaction")
