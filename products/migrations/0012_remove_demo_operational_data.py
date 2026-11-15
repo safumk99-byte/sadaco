@@ -49,6 +49,9 @@ class Migration(migrations.Migration):
     dependencies = [
         ("products", "0011_seed_staff_compensation"),
         ("sales", "0007_customer_department"),
+        # The cleanup queries the historical reverse ProductionMaterial relation.
+        # Ensure that relation exists in migration state before running it.
+        ("production", "0001_initial"),
     ]
 
     operations = [
