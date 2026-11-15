@@ -71,7 +71,8 @@ def update(request, pk):
     except (TypeError, ValueError):
         return JsonResponse({'detail': 'Invalid JSON.'}, status=400)
     order = get_object_or_404(_visible_orders(request.user).select_for_update(), pk=pk)
-    d, _ = DeliveryRecord.objects.select_for_update().get_or_create(order=order)
+    d = DeliveryRecord.objects.select_for_update().filter(order=order).first()
+    current_status = d.status if d else DeliveryRecord.Status.PENDING
 
     date_fields = ('delivery_date', 'installation_date')
     for field in date_fields:
@@ -106,7 +107,7 @@ def update(request, pk):
             DeliveryRecord.Status.INSTALLED: {DeliveryRecord.Status.INSTALLED},
             DeliveryRecord.Status.CANCELLED: {DeliveryRecord.Status.CANCELLED},
         }
-        if requested not in transitions[d.status]:
+        if requested not in transitions[current_status]:
             return JsonResponse({'detail': 'This delivery status transition is not allowed.'}, status=400)
         if requested in (DeliveryRecord.Status.READY, DeliveryRecord.Status.OUT, DeliveryRecord.Status.DELIVERED, DeliveryRecord.Status.INSTALLED) and order.status not in (SalesOrder.Status.READY, SalesOrder.Status.DELIVERED):
             return JsonResponse({'detail': 'The Sales Order must pass Final QC and be marked Ready before delivery can proceed.'}, status=400)
@@ -114,6 +115,8 @@ def update(request, pk):
             return JsonResponse({'detail': 'Installation must be marked as required before an order can be marked Installed.'}, status=400)
         d.status = requested
 
+    if d is None:
+        d = DeliveryRecord(order=order)
     d.save()
     if d.status in (DeliveryRecord.Status.DELIVERED, DeliveryRecord.Status.INSTALLED):
         if order.status != SalesOrder.Status.DELIVERED:
