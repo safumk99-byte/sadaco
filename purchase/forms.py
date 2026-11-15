@@ -15,7 +15,15 @@ class PurchaseOrderForm(forms.ModelForm):
 class PurchaseItemForm(forms.ModelForm):
     class Meta:
         model = PurchaseItem
-        fields = ["product","quantity","unit_cost","notes"]
+        fields = ["product","material_variant","quantity","unit_cost","notes"]
+
+    def clean(self):
+        cleaned = super().clean()
+        product = cleaned.get("product")
+        material = cleaned.get("material_variant")
+        if bool(product) == bool(material):
+            raise forms.ValidationError("Select exactly one: Product or Material Master item.")
+        return cleaned
         widgets = {"quantity":forms.NumberInput(attrs={"step":"0.01","min":"0.01"}),"unit_cost":forms.NumberInput(attrs={"step":"0.01","min":"0"})}
 
 class GoodsReceiptForm(forms.ModelForm):
