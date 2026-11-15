@@ -207,3 +207,29 @@ At the time of this disposable-clone entry, production Neon and `main` remained 
 3. **UI readiness is not established.** The database has the PDF master data, but the currently deployed application has not been promoted/tested against this schema. Do not represent the live UI as fully updated.
 4. **Do not fabricate missing staff identities or rates.** Junaid/Ashiq salary entries require legitimate StaffProfile records; work-based compensation rates and unspecified cost inputs remain blank until supplied.
 5. **Next release-safe sequence:** finish migration-graph reconciliation in source control; create a fresh disposable branch from the intended deployment baseline; run normal `python manage.py migrate`; verify model/schema parity and seed idempotence; run backend/frontend/Playwright and role-isolation tests; test backup restoration; then request explicit user approval before merge/deploy.
+
+
+## 2026-11-15 production-backup migration baseline inspection
+
+A new isolated test branch was created from the pre-reset production snapshot, not from staging and not from the live production branch:
+
+- Branch: `sadaco-prod-migration-reconciliation-test-2026-11-15`
+- Neon branch ID: `br-silent-recipe-az41w09q`
+- Parent: pre-reset snapshot `br-weathered-star-azd003a6`
+- The test branch is ready and has its own read-write compute. No SQL writes or Django migrations have been run on it yet.
+
+Read-only inspection confirms the pre-reset production migration history differs from staging in the same important way:
+
+- Accounts has migrations 0001–0004; core has 0001; staff has 0001; sales has 0001–0006; products has 0001–0009.
+- Finance has 0001 and 0002 from the current feature branch **and** legacy applied records named `0003_finance_management`, `0004_repair_finance_options`, and `0005_force_repair_paymentmethod_table`. Those three legacy migration source files are absent from the current feature branch.
+- The legacy finance transaction table has the expected base fields, including `sales_payment_id`, and does not yet have `supplier_payment_id`. The SupplierPayment table already exists and has its purchase-order and payment fields.
+- The clone contains 9 users, 9 UserProfiles, 5 StaffProfiles, 3 customers and 25 legacy Products at the snapshot point. This is the untouched pre-reset dataset; do not confuse it with the live production baseline.
+
+The current feature migration `finance.0003_financetransaction_supplier_payment` depends on the known current `finance.0002_accounts_control_center` and adds the missing nullable OneToOne field. The existence of old, unknown migration records alone does not prove a graph conflict: Django generally evaluates dependencies for migration nodes present in the loaded graph. However, the full legacy finance table/index/constraint state still needs runtime validation against the current migration/model state before this is declared safe.
+
+The current CI run #108 for commit `4a1107ec683035f970835d77fbb7e868c0a7e389` completed successfully:
+- `django-tests`: success
+- `frontend-build`: success
+- CI applies the complete migration chain to a fresh PostgreSQL 16 database and runs the listed regression tests. It does **not** connect to the Neon backup clone, so it is not a substitute for the legacy-baseline migration test.
+
+**Remaining verification:** execute `python manage.py migrate --plan`, `python manage.py migrate --noinput`, and `python manage.py migrate --check` using the exact feature-branch code and the isolated Neon test branch; then compare every affected table, constraint, index, sequence and row count. Do not run this test against production. The migration test has not yet been executed; no success is claimed.
