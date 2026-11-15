@@ -44,14 +44,32 @@ def _data(request):
 def _deny(user):
     if not _manager(user): raise PermissionDenied
 
+def _global_admin(user):
+    role = getattr(getattr(user, "profile", None), "role", None)
+    return user.is_superuser or role in (UserProfile.Role.SUPER_ADMIN, UserProfile.Role.INSTITUTION_ADMIN)
+
+
+def _department_id(user):
+    profile = getattr(user, "profile", None)
+    return profile.department_id if profile and profile.role == UserProfile.Role.MANAGER else None
+
+
+def _purchase_orders(user):
+    qs = PurchaseOrder.objects.all()
+    if _global_admin(user):
+        return qs
+    department_id = _department_id(user)
+    return qs.filter(created_by__profile__department_id=department_id) if department_id else qs.none()
+
 @require_GET
 @login_required
 def summary(request):
-    orders = PurchaseOrder.objects.exclude(status=PurchaseOrder.Status.CANCELLED)
+    visible = _purchase_orders(request.user)
+    orders = visible.exclude(status=PurchaseOrder.Status.CANCELLED)
     return JsonResponse({'stats': {
-        'draft': PurchaseOrder.objects.filter(status=PurchaseOrder.Status.DRAFT).count(),
-        'open_orders': PurchaseOrder.objects.filter(status__in=[PurchaseOrder.Status.SENT, PurchaseOrder.Status.PARTIAL]).count(),
-        'received': PurchaseOrder.objects.filter(status=PurchaseOrder.Status.RECEIVED).count(),
+        'draft': visible.filter(status=PurchaseOrder.Status.DRAFT).count(),
+        'open_orders': visible.filter(status__in=[PurchaseOrder.Status.SENT, PurchaseOrder.Status.PARTIAL]).count(),
+        'received': visible.filter(status=PurchaseOrder.Status.RECEIVED).count(),
         'total_value': str(orders.aggregate(total=Sum('total'))['total'] or 0),
         'suppliers': Supplier.objects.filter(status=Supplier.Status.ACTIVE).count(),
     }})
@@ -85,7 +103,7 @@ def supplier_update(request, pk):
 @login_required
 def orders(request):
     _deny(request.user); q=request.GET.get('q','').strip(); status=request.GET.get('status','')
-    qs=PurchaseOrder.objects.select_related('supplier','created_by').prefetch_related('items__product','receipts')
+    qs=_purchase_orders(request.user).select_related('supplier','created_by').prefetch_related('items__product','receipts')
     if q: qs=qs.filter(Q(po_no__icontains=q)|Q(supplier__name__icontains=q))
     if status: qs=qs.filter(status=status)
     return JsonResponse({'orders': [_po(x) for x in qs[:250]], 'statuses': _choices(PurchaseOrder.Status.choices),
@@ -95,7 +113,7 @@ def orders(request):
 @require_GET
 @login_required
 def detail(request, pk):
-    _deny(request.user); return JsonResponse({'order': _po(get_object_or_404(PurchaseOrder.objects.select_related('supplier','created_by').prefetch_related('items__product','receipts'), pk=pk))})
+    _deny(request.user); return JsonResponse({'order': _po(get_object_or_404(_purchase_orders(request.user).select_related('supplier','created_by').prefetch_related('items__product','receipts'), pk=pk))})
 
 @require_POST
 @login_required
@@ -114,7 +132,7 @@ def create(request):
 @login_required
 @transaction.atomic
 def receive(request, pk):
-    _deny(request.user); po=get_object_or_404(PurchaseOrder.objects.select_for_update().prefetch_related('items__product'), pk=pk)
+    _deny(request.user); po=get_object_or_404(_purchase_orders(request.user).select_for_update().prefetch_related('items__product'), pk=pk)
     form=GoodsReceiptForm(_data(request))
     if not form.is_valid(): return JsonResponse({'detail':'Validation failed.','errors':form.errors.get_json_data()},status=400)
     receipt=form.save(commit=False); receipt.purchase_order=po; receipt.received_by=request.user; receipt.save()
