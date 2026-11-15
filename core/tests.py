@@ -15,6 +15,9 @@ class SystemFoundationTests(SimpleTestCase):
 from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
+from accounts.models import UserProfile
+from core.models import Department
+from sales.models import Customer, OrderRequest
 
 
 class DashboardTests(TestCase):
@@ -88,3 +91,35 @@ class DepartmentManagementTests(TestCase):
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 403)
+
+
+class CustomerRequestDepartmentAccessTests(TestCase):
+    def setUp(self):
+        self.a = Department.objects.create(code="requests-a", name="Requests A")
+        self.b = Department.objects.create(code="requests-b", name="Requests B")
+        self.manager = User.objects.create_user(username="request_a_mgr", password="StrongPass123!")
+        UserProfile.objects.create(user=self.manager, role=UserProfile.Role.MANAGER, department=self.a)
+        self.other_manager = User.objects.create_user(username="request_b_mgr", password="StrongPass123!")
+        UserProfile.objects.create(user=self.other_manager, role=UserProfile.Role.MANAGER, department=self.b)
+        self.customer_a = Customer.objects.create(name="Request Customer A", phone="9000000101", department=self.a)
+        self.customer_b = Customer.objects.create(name="Request Customer B", phone="9000000102", department=self.b)
+        self.request_a = OrderRequest.objects.create(
+            customer=self.customer_a, quantity=1, requirement="A request", assigned_to=self.manager
+        )
+        self.request_b = OrderRequest.objects.create(
+            customer=self.customer_b, quantity=1, requirement="B request", assigned_to=self.other_manager
+        )
+
+    def test_manager_sees_only_own_department_customer_requests(self):
+        self.client.force_login(self.manager)
+        response = self.client.get("/api/customer-requests/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([x["id"] for x in response.json()["items"]], [self.request_a.id])
+
+    def test_regular_customer_cannot_read_internal_request_queue(self):
+        customer_user = User.objects.create_user(username="portal_customer", password="StrongPass123!")
+        Customer.objects.create(user=customer_user, name="Portal Customer", phone="9000000103")
+        self.client.force_login(customer_user)
+        response = self.client.get("/api/customer-requests/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["items"], [])
