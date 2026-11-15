@@ -100,3 +100,23 @@ A full read-only `django_migrations` listing shows the staging branch records on
 Consequently, a simple migration rename, dependency edit, or `--fake` operation is not safe: Django's migration graph cannot infer the operations performed by missing historical files. Keep the current feature branch migrations unchanged until a verified schema reconciliation is designed. The next safe engineering step is to produce a disposable staging clone and compare all affected app tables, constraints, indexes, sequences, and row counts against the current model state; only then create a guarded reconciliation migration using explicit schema introspection and a state transition that is tested on the clone. If a disposable clone cannot be provisioned, pause DB migration work rather than guessing.
 
 No SQL writes were run during this investigation. All staging queries were SELECT-only.
+
+
+## 2026-11-15 stock-preservation regression found before cleanup migration
+
+A read-only query on the disposable staging clone found two legacy product rows with positive stock balances but no stock-ledger rows or other operational foreign-key references:
+
+- `ACR-2IN-BLK` — 10 Sheets, legacy cost ₹495.
+- `ACR-3IN` — 10 Sheets, legacy cost ₹595.
+
+The previous `products.0012_remove_demo_operational_data` queryset would have treated these as removable demo catalogue rows because it guarded stock transactions and foreign-key references but did not guard a non-zero `Product.stock_quantity`. This would have silently deleted 20 sheets of recorded stock.
+
+**Correction committed:** the cleanup queryset now excludes products with `stock_quantity > 0`. These two rows are preserved; their old rates are not treated as authoritative because they conflict with the final PDF. They must be reconciled against a physical stock count and the approved material master before any conversion or adjustment. No stock was changed.
+
+The same clone confirms 25 product rows total, 2 with positive stock, 0 referenced by purchase items, production materials, stock counts, stock transactions or customer order requests. The 3 customer order requests themselves remain untouched.
+
+## Staging clone: material and staff baseline
+
+- The staging-derived clone has no `products_materialvariant` table because `products.0010_material_master_and_costing_rates` has not been applied there. The material master and PDF-approved rate seed are present in feature-branch source only, not yet in staging schema.
+- The 5 existing staff profiles are Abdul Bsaith (Manager), Muhammed Rabeeh (Sales Executive), Muhammed Shibili, Sakkeer T, and Abdul Muhaimin. The PDF salary seed can safely match the Manager and Muhaimin by existing account, and Shibili/Sakkeer as work-based; no Junaid or Ashiq staff profiles exist and no profiles should be fabricated.
+- The old product catalogue contains legacy rates that differ from the final PDF. Use the separate `MaterialVariant` master from migration 0010 as the authoritative rate source after safe migration reconciliation; do not silently copy legacy Product.cost_price values into it.
