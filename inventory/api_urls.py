@@ -8,4 +8,5 @@ urlpatterns = [
     path("materials/options/", api.material_options_api, name="material_options"),
     path("materials/balances/create/", api.material_balance_create_api, name="material_balance_create"),
     path("materials/offcuts/", api.offcuts_api, name="material_offcuts"),
+    path("materials/issues/create/", api.production_material_issue_api, name="production_material_issue"),
 ]
