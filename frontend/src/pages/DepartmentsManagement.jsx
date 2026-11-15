@@ -5,6 +5,7 @@ const emptyForm = { code: "", name: "", description: "", manager: "", is_active:
 
 export default function DepartmentsManagement() {
   const [departments, setDepartments] = useState([]);
+  const [canManage, setCanManage] = useState(false);
   const [managers, setManagers] = useState([]);
   const [form, setForm] = useState(emptyForm);
   const [editing, setEditing] = useState(null);
@@ -19,6 +20,7 @@ export default function DepartmentsManagement() {
     try {
       const response = await api.get("/departments/");
       setDepartments(response.data.departments || []);
+      setCanManage(!!response.data.can_manage);
       setManagers(response.data.manager_options || []);
     } catch (e) {
       setError(e.response?.data?.detail || "Unable to load departments.");
@@ -84,11 +86,11 @@ export default function DepartmentsManagement() {
                     <span>Users: <b className="text-slate-700">{item.user_count}</b></span>
                   </div>
                 </div>
-                <button className="btn-secondary shrink-0" onClick={() => startEdit(item)}>Edit division</button>
+                {canManage && <button className="btn-secondary shrink-0" onClick={() => startEdit(item)}>Edit division</button>}
               </article>
             ))}
         </section>
-        <section className="card h-fit p-5">
+        {canManage && <section className="card h-fit p-5">
           <div className="mb-4 flex items-center justify-between"><h2 className="font-bold text-slate-900">{editing ? "Edit division" : "Add division"}</h2>{editing && <button className="text-xs font-semibold text-slate-500 hover:text-slate-900" onClick={reset}>Cancel</button>}</div>
           <form className="space-y-3" onSubmit={submit}>
             <label className="block text-xs font-semibold text-slate-600">Division code<input className="input mt-1" required value={form.code} onChange={e => setForm({ ...form, code: e.target.value })} placeholder="e.g. creatives" /></label>
@@ -101,7 +103,7 @@ export default function DepartmentsManagement() {
             <button className="btn-primary w-full" disabled={saving}>{saving ? "Saving…" : editing ? "Save changes" : "Create department"}</button>
           </form>
           {!editing && <p className="mt-3 text-xs leading-5 text-slate-400">After creating the division, edit it to assign its department manager.</p>}
-        </section>
+        </section>}
       </div>
     </div>
   );
