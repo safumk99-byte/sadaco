@@ -188,6 +188,18 @@ def update(request, pk):
     assigned_staff = form.cleaned_data.get("assigned_staff")
     if assigned_staff and not _staff_in_manager_department(request.user, assigned_staff):
         return JsonResponse({"detail": "You can only assign jobs to staff in your own department."}, status=403)
+    requested_status = form.cleaned_data["status"]
+    requested_stage = form.cleaned_data["stage"]
+    if (
+        requested_status == ProductionJob.Status.COMPLETED
+        or requested_stage == ProductionJob.Stage.COMPLETED
+    ) and not (
+        job.status == ProductionJob.Status.COMPLETED
+        and job.stage == ProductionJob.Stage.COMPLETED
+        and requested_status == job.status
+        and requested_stage == job.stage
+    ):
+        return JsonResponse({"detail": "Production jobs can only be finalized after a passing Final QC result in the Quality module."}, status=400)
     job = form.save()
     return JsonResponse({'job': _job(job)})
 
@@ -204,10 +216,8 @@ def add_progress(request, pk):
         progress_percent >= 100 or progress_stage == ProductionJob.Stage.COMPLETED
     ):
         return JsonResponse({"detail": "Only a manager can finalize a production job. Staff can report progress up to 99%."}, status=403)
-    if progress_stage == ProductionJob.Stage.COMPLETED and progress_percent != 100:
-        return JsonResponse({"detail": "Completed stage requires 100% progress."}, status=400)
-    if progress_percent == 100 and progress_stage != ProductionJob.Stage.COMPLETED:
-        return JsonResponse({"detail": "100% progress requires the Completed stage."}, status=400)
+    if progress_percent >= 100 or progress_stage == ProductionJob.Stage.COMPLETED:
+        return JsonResponse({"detail": "Final production completion is recorded only after a passing Final QC result in the Quality module."}, status=400)
     update_obj = form.save(commit=False); update_obj.job=job; update_obj.updated_by=request.user; update_obj.save()
     job.stage=update_obj.stage; job.progress_percent=update_obj.progress_percent
     if update_obj.progress_percent >= 100: job.status=ProductionJob.Status.COMPLETED
