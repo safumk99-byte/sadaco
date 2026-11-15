@@ -219,6 +219,9 @@ def add_issue(request, pk):
     job=get_object_or_404(ProductionJob,pk=pk)
     if not _job_visible(request.user,job): raise PermissionDenied
     form=ProductionIssueForm(_data(request))
+    if not _global_admin(request.user):
+        department_id = job.order.customer.department_id
+        form.fields["staff"].queryset = StaffProfile.objects.filter(department_id=department_id) if department_id else StaffProfile.objects.none()
     if not form.is_valid(): return JsonResponse({'detail':'Validation failed.','errors':form.errors.get_json_data()},status=400)
     obj=form.save(commit=False); obj.job=job; obj.created_by=request.user; obj.save()
     if obj.issue_type == ProductionIssue.Type.DELAY: job.status=ProductionJob.Status.ON_HOLD; job.save(update_fields=['status','updated_at'])
