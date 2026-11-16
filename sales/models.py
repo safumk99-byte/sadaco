@@ -1,7 +1,7 @@
 import uuid
 
 from django.conf import settings
-from django.core.validators import MinValueValidator
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from core.models import Department
 
@@ -99,8 +99,10 @@ class Enquiry(models.Model):
 class Quotation(models.Model):
     class Status(models.TextChoices):
         DRAFT = "draft", "Draft"
+        PENDING_APPROVAL = "pending_approval", "Pending Approval"
         SENT = "sent", "Sent"
-        APPROVED = "approved", "Approved"
+        ACCEPTED = "accepted", "Accepted"
+        APPROVED = "approved", "Approved"  # Legacy status retained for existing records.
         REJECTED = "rejected", "Rejected"
         EXPIRED = "expired", "Expired"
         CONVERTED = "converted", "Converted to Order"
@@ -123,6 +125,21 @@ class Quotation(models.Model):
     valid_until = models.DateField(null=True, blank=True)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.DRAFT)
     notes = models.TextField(blank=True)
+    dimensions = models.CharField(max_length=180, blank=True)
+    discount_percent = models.DecimalField(max_digits=5, decimal_places=2, default=0, validators=[MinValueValidator(0), MaxValueValidator(100)])
+    discount_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0, validators=[MinValueValidator(0)])
+    subtotal = models.DecimalField(max_digits=14, decimal_places=2, default=0, validators=[MinValueValidator(0)])
+    tax_rate = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, validators=[MinValueValidator(0), MaxValueValidator(100)])
+    tax_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0, validators=[MinValueValidator(0)])
+    terms = models.TextField(blank=True)
+    approval_requested_at = models.DateTimeField(null=True, blank=True)
+    approved_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="approved_quotations")
+    approved_at = models.DateTimeField(null=True, blank=True)
+    approval_notes = models.TextField(blank=True)
+    sent_at = models.DateTimeField(null=True, blank=True)
+    accepted_at = models.DateTimeField(null=True, blank=True)
+    rejected_at = models.DateTimeField(null=True, blank=True)
+    company_details_snapshot = models.JSONField(default=dict, blank=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="created_quotations")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -405,3 +422,89 @@ class CustomerInteraction(models.Model):
 
     def __str__(self):
         return f"{self.customer.name} - {self.subject}"
+
+
+class QuotationConfiguration(models.Model):
+    """Founder-managed quotation defaults. Tax and discount limits stay unset until configured."""
+
+    company_name = models.CharField(max_length=180, default="SADACO GROUP OF COMPANIES")
+    company_address = models.TextField(blank=True)
+    company_phone = models.CharField(max_length=60, blank=True)
+    company_email = models.EmailField(blank=True)
+    company_website = models.URLField(blank=True)
+    tax_label = models.CharField(max_length=40, blank=True)
+    tax_rate = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, validators=[MinValueValidator(0), MaxValueValidator(100)])
+    manager_discount_limit_percent = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, validators=[MinValueValidator(0), MaxValueValidator(100)])
+    default_terms = models.TextField(blank=True)
+    default_validity_days = models.PositiveIntegerField(null=True, blank=True)
+    updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="updated_quotation_configurations")
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Quotation Configuration"
+        verbose_name_plural = "Quotation Configuration"
+
+    def save(self, *args, **kwargs):
+        self.pk = 1
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def get_solo(cls):
+        return cls.objects.first() or cls(pk=1)
+
+    def __str__(self):
+        return "Quotation Configuration"
+
+
+class QuotationLineItem(models.Model):
+    class Category(models.TextChoices):
+        MATERIAL = "material", "Material"
+        LABOUR = "labour", "Labour"
+        MACHINE = "machine", "Machine"
+        FINISHING = "finishing", "Finishing"
+        PACKING = "packing", "Packing"
+        DELIVERY_INSTALLATION = "delivery_installation", "Delivery / Installation"
+
+    quotation = models.ForeignKey(Quotation, on_delete=models.CASCADE, related_name="line_items")
+    category = models.CharField(max_length=32, choices=Category.choices)
+    description = models.CharField(max_length=255)
+    dimensions = models.CharField(max_length=180, blank=True)
+    quantity = models.DecimalField(max_digits=12, decimal_places=3, validators=[MinValueValidator(0)])
+    unit = models.CharField(max_length=40, blank=True)
+    unit_price = models.DecimalField(max_digits=12, decimal_places=2, validators=[MinValueValidator(0)])
+    line_total = models.DecimalField(max_digits=14, decimal_places=2, default=0, validators=[MinValueValidator(0)])
+    sort_order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["sort_order", "id"]
+        indexes = [models.Index(fields=["quotation", "sort_order"])]
+
+    def save(self, *args, **kwargs):
+        from decimal import Decimal, ROUND_HALF_UP
+        self.line_total = (self.quantity * self.unit_price).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.quotation.quotation_no} · {self.get_category_display()} · {self.description}"
+
+
+class QuotationApproval(models.Model):
+    class Action(models.TextChoices):
+        REQUESTED = "requested", "Approval Requested"
+        APPROVED = "approved", "Approved"
+        REJECTED = "rejected", "Rejected"
+
+    quotation = models.ForeignKey(Quotation, on_delete=models.PROTECT, related_name="approval_history")
+    action = models.CharField(max_length=20, choices=Action.choices)
+    discount_percent = models.DecimalField(max_digits=5, decimal_places=2)
+    discount_amount = models.DecimalField(max_digits=12, decimal_places=2)
+    performed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="quotation_approval_actions")
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+        indexes = [models.Index(fields=["quotation", "created_at"])]
+
+    def __str__(self):
+        return f"{self.quotation.quotation_no} · {self.get_action_display()}"
