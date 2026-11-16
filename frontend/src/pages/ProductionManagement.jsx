@@ -329,7 +329,7 @@ export default function ProductionManagement() {
         </Modal>
       )}
       {detail && (
-        <JobDetail data={detail} materials={options.materials || []} close={() => setDetail(null)} refresh={load} />
+        <JobDetail data={detail} materials={options.materials || []} options={options} close={() => setDetail(null)} refresh={load} />
       )}
     </div>
   );
@@ -405,7 +405,7 @@ function JobTable({ jobs, onOpen }) {
     </div>
   );
 }
-function JobDetail({ data, materials, close, refresh }) {
+function JobDetail({ data, materials, options, close, refresh }) {
   const j = data.job;
   const [progress, setProgress] = useState({
     stage: j.stage,
@@ -440,6 +440,11 @@ function JobDetail({ data, materials, close, refresh }) {
   const [offcutForm, setOffcutForm] = useState({ source_issue: "", location: "", length_mm: "", width_mm: "", usable_area_sqft: "" });
   const [offcutUsageForm, setOffcutUsageForm] = useState({ offcut: "", material_line: "", used_area_sqft: "" });
   const [jobCostSummary, setJobCostSummary] = useState(data.material_costs || null);
+  const [costEntries, setCostEntries] = useState(data.cost_entries || []);
+  const [costForm, setCostForm] = useState({ cost_type: "machine", machine_rate: "", staff: "", material_line: "", quantity: "" });
+  const [costError, setCostError] = useState("");
+  const [costBusy, setCostBusy] = useState(false);
+  const selectedMachineRate = (options.machine_rates || []).find((x) => String(x.id) === String(costForm.machine_rate));
   const reloadOffcutData = async () => {
     const [offcutResponse, jobResponse] = await Promise.all([
       api.get("/inventory/materials/offcuts/"),
@@ -447,6 +452,25 @@ function JobDetail({ data, materials, close, refresh }) {
     ]);
     setOffcuts(offcutResponse.data.items || []);
     setJobCostSummary(jobResponse.data.material_costs || null);
+    setCostEntries(jobResponse.data.cost_entries || []);
+  };
+  const submitCostEntry = async () => {
+    setCostError("");
+    setCostBusy(true);
+    try {
+      const payload = costForm.cost_type === "machine"
+        ? { cost_type: "machine", machine_rate: costForm.machine_rate, material_line: costForm.material_line || null, quantity: costForm.quantity }
+        : { cost_type: "labour", staff: costForm.staff, quantity: costForm.quantity };
+      await api.post(`/production/jobs/${j.id}/cost-entries/`, payload);
+      const response = await api.get(`/production/jobs/${j.id}/`);
+      setJobCostSummary(response.data.material_costs || null);
+      setCostEntries(response.data.cost_entries || []);
+      setCostForm({ cost_type: "machine", machine_rate: "", staff: "", material_line: "", quantity: "" });
+    } catch (e) {
+      setCostError(e.response?.data?.detail || "Unable to record production cost.");
+    } finally {
+      setCostBusy(false);
+    }
   };
   useEffect(() => {
     api.get("/inventory/materials/stock/")
@@ -612,6 +636,80 @@ function JobDetail({ data, materials, close, refresh }) {
               {Number(jobCostSummary.unpriced_issue_count) > 0 && <span className="ml-2 text-amber-700">· {jobCostSummary.unpriced_issue_count} legacy issue(s) have no recorded cost</span>}
             </div>
           </div>
+        )}
+        {data.can_manage && (
+          <section className="rounded-xl border border-slate-200 p-4">
+            <h3 className="font-bold">Machine & Labour Costing</h3>
+            <p className="mt-1 text-xs text-slate-500">
+              Records use approved Machine Rates and verified monthly staff compensation. Work-based rates without an approved amount cannot be costed.
+            </p>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+              <select className={input} value={costForm.cost_type} onChange={(e) => setCostForm({ cost_type: e.target.value, machine_rate: "", staff: "", material_line: "", quantity: "" })}>
+                <option value="machine">Machine / Operation</option>
+                <option value="labour">Direct Labour</option>
+              </select>
+              {costForm.cost_type === "machine" ? (
+                <>
+                  <select className={input} value={costForm.machine_rate} onChange={(e) => setCostForm((x) => ({ ...x, machine_rate: e.target.value, material_line: "" }))}>
+                    <option value="">Select approved operation rate</option>
+                    {(options.machine_rates || []).map((rate) => (
+                      <option key={rate.id} value={rate.id}>{rate.label} · ₹{rate.rate}/{rate.unit}</option>
+                    ))}
+                  </select>
+                  {selectedMachineRate?.material_name ? (
+                    <select className={input} value={costForm.material_line} onChange={(e) => setCostForm((x) => ({ ...x, material_line: e.target.value }))}>
+                      <option value="">Select matching job material</option>
+                      {data.materials.filter((m) => m.material_variant_id).map((m) => (
+                        <option key={m.id} value={m.id}>{m.material_name}</option>
+                      ))}
+                    </select>
+                  ) : <div className="hidden lg:block" />}
+                </>
+              ) : (
+                <select className={input} value={costForm.staff} onChange={(e) => setCostForm((x) => ({ ...x, staff: e.target.value }))}>
+                  <option value="">Select monthly-paid staff</option>
+                  {(options.labour_staff || []).map((member) => (
+                    <option key={member.id} value={member.id}>{member.name} · ₹{member.minute_rate}/min</option>
+                  ))}
+                </select>
+              )}
+              <input className={input} type="number" min="0.001" step="0.001" placeholder={costForm.cost_type === "machine" ? (selectedMachineRate?.unit === "sqft" ? "Area (sq ft)" : "Machine minutes") : "Labour minutes"} value={costForm.quantity} onChange={(e) => setCostForm((x) => ({ ...x, quantity: e.target.value }))} />
+              <button className="rounded-xl bg-indigo-600 px-3 py-2.5 text-sm font-semibold text-white disabled:opacity-50" disabled={costBusy || !costForm.quantity || (costForm.cost_type === "machine" ? !costForm.machine_rate || (selectedMachineRate?.material_name && !costForm.material_line) : !costForm.staff)} onClick={submitCostEntry}>
+                {costBusy ? "Saving…" : "Record Cost"}
+              </button>
+            </div>
+            {selectedMachineRate && <p className="mt-2 text-xs text-slate-600">Selected rate: ₹{selectedMachineRate.rate} per {selectedMachineRate.unit}. Amount is snapshotted when saved.</p>}
+            {costError && <p className="mt-2 rounded-lg bg-red-50 p-2 text-sm text-red-700">{costError}</p>}
+            <div className="mt-4 grid gap-2 sm:grid-cols-3">
+              {[
+                ["Machine / Operation", jobCostSummary?.machine_operation_cost],
+                ["Direct Labour", jobCostSummary?.direct_labour_cost],
+                ["Total Conversion Cost", jobCostSummary?.total_conversion_cost],
+              ].map(([label, value]) => (
+                <div key={label} className="rounded-lg bg-slate-50 p-3">
+                  <div className="text-xs text-slate-500">{label}</div>
+                  <div className="mt-1 font-bold tabular-nums">₹{Number(value || 0).toFixed(2)}</div>
+                </div>
+              ))}
+            </div>
+            {costEntries.length > 0 && (
+              <div className="mt-3 overflow-x-auto">
+                <table className="w-full min-w-[560px] text-left text-xs">
+                  <thead className="text-slate-500"><tr><th className="py-2">Type / Description</th><th>Quantity</th><th>Rate</th><th className="text-right">Cost</th></tr></thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {costEntries.map((entry) => (
+                      <tr key={entry.id}>
+                        <td className="py-2">{entry.description || entry.operation || entry.cost_type}<span className="block text-slate-500">{entry.staff || entry.operation || entry.cost_type}</span></td>
+                        <td>{entry.quantity} {entry.unit}</td>
+                        <td>₹{Number(entry.unit_rate).toFixed(6)}/{entry.unit}</td>
+                        <td className="text-right font-semibold">₹{Number(entry.total_cost).toFixed(2)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
         )}
         <div>
           <h3 className="mb-2 font-bold">Update Progress</h3>
