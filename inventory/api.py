@@ -428,9 +428,24 @@ def offcut_action_api(request, pk):
                 return JsonResponse({"detail": "Target job belongs to another department."}, status=400)
             if line.material_variant_id != offcut.material_id:
                 return JsonResponse({"detail": "Target production material must match the offcut material."}, status=400)
+            if line.unit.strip().casefold() not in {"sheet", "sheets"}:
+                return JsonResponse({"detail": "Area-based offcuts can only fulfil a sheet-based production requirement. Use a compatible Sheet unit."}, status=400)
+            sheet_area = line.material_variant.sheet_area_sqft if line.material_variant_id else None
+            if sheet_area is None or sheet_area <= 0:
+                return JsonResponse({"detail": "The selected Material Master item must have a valid physical sheet size."}, status=400)
+            already_allocated = OffcutUsage.objects.filter(target_material=line).aggregate(
+                total=Sum("used_area_sqft")
+            )["total"] or Decimal("0")
+            supplied_sheet_quantity = max(line.issued_quantity - line.returned_quantity, Decimal("0"))
+            remaining_requirement_area = max(
+                (line.quantity_required - supplied_sheet_quantity) * sheet_area - already_allocated,
+                Decimal("0"),
+            )
             area = Decimal(str(data.get("used_area_sqft", remaining_area)))
             if area <= 0 or area > remaining_area:
-                return JsonResponse({"detail": f"Usage must be greater than zero and no more than {remaining_area} sq ft."}, status=400)
+                return JsonResponse({"detail": f"Usage must be greater than zero and no more than {remaining_area} sq ft of this offcut."}, status=400)
+            if area > remaining_requirement_area:
+                return JsonResponse({"detail": f"This production line needs no more than {remaining_requirement_area} additional sq ft after sheet issues and previous offcut use."}, status=400)
             if offcut.cost_per_sqft is None:
                 return JsonResponse({"detail": "This offcut has no source-batch cost snapshot and cannot be costed for production."}, status=400)
             total_cost = (area * offcut.cost_per_sqft).quantize(Decimal("0.01"))
@@ -445,6 +460,7 @@ def offcut_action_api(request, pk):
             return JsonResponse({
                 "ok": True, "id": offcut.pk, "status": offcut.status,
                 "used_area_sqft": str(area), "remaining_area_sqft": str(remaining_area - area),
+                "remaining_requirement_area_sqft": str(remaining_requirement_area - area),
                 "cost_per_sqft": str(offcut.cost_per_sqft), "allocated_cost": str(total_cost),
             })
         if action == "discarded":
