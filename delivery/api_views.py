@@ -102,6 +102,18 @@ def update(request, pk):
     if 'installation_required' in data:
         if not isinstance(data['installation_required'], bool):
             return JsonResponse({'detail': 'installation_required must be true or false.'}, status=400)
+        if (
+            d.installation_required
+            and data['installation_required'] is False
+            and current_status in (
+                DeliveryRecord.Status.OUT,
+                DeliveryRecord.Status.DELIVERED,
+                DeliveryRecord.Status.INSTALLED,
+            )
+        ):
+            return JsonResponse({
+                'detail': 'Installation cannot be removed after delivery has been dispatched. Complete the required installation before closing the order.'
+            }, status=400)
         d.installation_required = data['installation_required']
 
     if 'status' in data:
