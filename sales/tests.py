@@ -718,6 +718,30 @@ class QuotationWorkflowApiTests(TestCase):
         self.assertEqual(pdf["Content-Type"], "application/pdf")
 
 
+    def test_expired_pending_approval_cannot_be_approved(self):
+        quotation_data = self._create_quotation("15")
+        quotation = Quotation.objects.get(pk=quotation_data["id"])
+        submitted = self.client.post(
+            f"/api/sales/quotations/{quotation.pk}/submit/",
+            data="{}",
+            content_type="application/json",
+        )
+        self.assertEqual(submitted.status_code, 200, submitted.content)
+        quotation.refresh_from_db()
+        quotation.valid_until = date.today() - date.resolution
+        quotation.save(update_fields=["valid_until", "updated_at"])
+
+        self.client.logout()
+        self.client.login(username="quote_founder", password="StrongPass123!")
+        response = self.client.post(
+            f"/api/sales/quotations/{quotation.pk}/approval/",
+            data=json.dumps({"action": "approve"}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 409, response.content)
+        quotation.refresh_from_db()
+        self.assertEqual(quotation.status, Quotation.Status.EXPIRED)
+
     def test_fixed_amount_discount_limit_is_supported(self):
         self.config.manager_discount_limit_type = "amount"
         self.config.manager_discount_limit_value = Decimal("100.00")
