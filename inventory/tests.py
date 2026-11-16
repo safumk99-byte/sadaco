@@ -114,6 +114,76 @@ class MaterialLedgerWorkflowTests(TestCase):
         self.assertTrue(result["reconciled"])
         self.assertTrue(result["unbatched_warning"])
 
+    def test_founder_can_cost_unbatched_opening_stock_with_verified_reference(self):
+        from inventory.services import record_material_movement, issue_material
+        admin = User.objects.create_superuser(
+            username="opening-cost-admin", email="opening@example.com", password="StrongPass123!",
+        )
+        movement = record_material_movement(
+            balance_id=self.balance.pk, movement_type=MaterialStockMovement.Type.OPENING,
+            quantity="2", user=admin, reference="OPEN-COUNT-2026-11",
+            remarks="Verified opening physical count.",
+        )
+        self.client.force_login(admin)
+        response = self.client.get("/api/inventory/materials/opening-batches/unpriced/")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual([row["movement_id"] for row in response.json()["items"]], [movement.pk])
+
+        response = self.client.post(
+            f"/api/inventory/materials/opening-batches/{movement.pk}/cost/",
+            data=json.dumps({"unit_cost":"85.50","cost_source_reference":"Approved valuation sheet VAL-2026-11-16"}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 201, response.content)
+        lot = MaterialStockLot.objects.get(opening_movement=movement)
+        self.assertEqual(lot.original_quantity, Decimal("2"))
+        self.assertEqual(lot.remaining_quantity, Decimal("2"))
+        self.assertEqual(lot.unit_cost, Decimal("85.50"))
+        self.assertEqual(lot.cost_source_reference, "Approved valuation sheet VAL-2026-11-16")
+
+        issue, _ = issue_material(
+            material_id=self.line.pk, quantity="1", lot_id=lot.pk, user=admin,
+        )
+        self.assertEqual(issue.unit_rate, Decimal("85.50"))
+        lot.refresh_from_db()
+        self.assertEqual(lot.remaining_quantity, Decimal("1"))
+
+    def test_opening_stock_cannot_be_costed_without_source_reference(self):
+        from inventory.services import record_material_movement
+        admin = User.objects.create_superuser(
+            username="opening-no-ref-admin", email="opening-no-ref@example.com", password="StrongPass123!",
+        )
+        movement = record_material_movement(
+            balance_id=self.balance.pk, movement_type=MaterialStockMovement.Type.OPENING,
+            quantity="2", user=admin, reference="OPEN-COUNT-2026-11",
+        )
+        self.client.force_login(admin)
+        response = self.client.post(
+            f"/api/inventory/materials/opening-batches/{movement.pk}/cost/",
+            data=json.dumps({"unit_cost":"85.50","cost_source_reference":"  "}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(MaterialStockLot.objects.filter(opening_movement=movement).exists())
+
+    def test_department_manager_cannot_assign_opening_stock_cost(self):
+        from inventory.services import record_material_movement
+        admin = User.objects.create_superuser(
+            username="opening-permission-admin", email="opening-permission@example.com", password="StrongPass123!",
+        )
+        movement = record_material_movement(
+            balance_id=self.balance.pk, movement_type=MaterialStockMovement.Type.OPENING,
+            quantity="2", user=admin, reference="OPEN-COUNT-2026-11",
+        )
+        self.client.force_login(self.manager)
+        response = self.client.post(
+            f"/api/inventory/materials/opening-batches/{movement.pk}/cost/",
+            data=json.dumps({"unit_cost":"85.50","cost_source_reference":"Approved valuation sheet"}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(MaterialStockLot.objects.filter(opening_movement=movement).exists())
+
     def test_stock_reconciliation_api_is_scoped_to_manager_department(self):
         MaterialStockBalance.objects.create(
             material=self.material, department=self.other_department,
