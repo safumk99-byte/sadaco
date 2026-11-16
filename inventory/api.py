@@ -198,6 +198,11 @@ def offcuts_api(request):
             "cost_per_sqft": str(x.cost_per_sqft) if x.cost_per_sqft is not None else None,
             "source_issue_id": x.source_issue_id,
             "source_receipt": x.source_lot.receipt_line.receipt.receipt_no if x.source_lot_id else None,
+            "usages": [{
+                "target_job": u.target_job.job_no, "target_job_id": u.target_job_id,
+                "used_area_sqft": str(u.used_area_sqft), "cost_per_sqft": str(u.cost_per_sqft),
+                "total_cost": str(u.total_cost), "created_at": u.created_at.isoformat(),
+            } for u in x.usages.all()],
             "status": x.status, "source_job": x.source_job.job_no if x.source_job_id else None,
             "used_for_job": x.used_for_job.job_no if x.used_for_job_id else None, "notes": x.notes,
         })
