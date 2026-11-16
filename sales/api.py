@@ -300,3 +300,16 @@ def customer_interactions(request, pk):
         interaction.save()
         return JsonResponse({"id": interaction.pk}, status=201)
     return JsonResponse({"detail": "Validation failed.", "errors": form.errors.get_json_data()}, status=400)
+
+
+@login_required
+@require_http_methods(["POST"])
+def customer_interaction_complete(request, pk, interaction_id):
+    if not _manager(request.user):
+        raise PermissionDenied
+    customer = get_object_or_404(_customer_qs(request.user), pk=pk)
+    interaction = get_object_or_404(CustomerInteraction, pk=interaction_id, customer=customer)
+    if not interaction.completed:
+        interaction.completed = True
+        interaction.save(update_fields=["completed"])
+    return JsonResponse({"id": interaction.pk, "completed": interaction.completed})
