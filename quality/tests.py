@@ -184,3 +184,42 @@ class FinalQualityChecklistValidationTests(TestCase):
         self.assertEqual(response.status_code, 201)
         self.job.refresh_from_db()
         self.assertEqual(self.job.status, "completed")
+
+
+
+class ProductionStageStaffQualityVisibilityTests(TestCase):
+    def setUp(self):
+        from core.models import Department
+        from sales.models import Customer, SalesOrder
+        from production.models import ProductionJob, ProductionStageTask
+        from staff.models import StaffProfile
+
+        self.department = Department.objects.create(code="quality-stage-staff", name="Quality Stage Staff")
+        self.worker_user = User.objects.create_user(username="quality_stage_worker", password="StrongPass123!")
+        UserProfile.objects.create(user=self.worker_user, role=UserProfile.Role.STAFF, department=self.department)
+        self.worker = StaffProfile.objects.create(
+            user=self.worker_user, staff_id="QST-001", department=self.department
+        )
+        customer = Customer.objects.create(
+            name="Stage Visibility Customer", phone="9000000077", department=self.department
+        )
+        order = SalesOrder.objects.create(
+            customer=customer, item_description="Stage Visibility Item", quantity=1, confirmed_price=1000
+        )
+        self.job = ProductionJob.objects.create(order=order, station=ProductionJob.Station.CUSTOM)
+        ProductionStageTask.objects.create(
+            job=self.job, stage="cnc", assigned_staff=self.worker, status="assigned"
+        )
+
+    def test_assigned_stage_staff_can_view_quality_job_detail(self):
+        self.client.force_login(self.worker_user)
+        response = self.client.get(f"/api/quality/jobs/{self.job.pk}/")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()["job"]["id"], self.job.pk)
+
+    def test_unassigned_staff_cannot_view_quality_job_detail(self):
+        other = User.objects.create_user(username="quality_other_worker", password="StrongPass123!")
+        UserProfile.objects.create(user=other, role=UserProfile.Role.STAFF, department=self.department)
+        self.client.force_login(other)
+        response = self.client.get(f"/api/quality/jobs/{self.job.pk}/")
+        self.assertEqual(response.status_code, 404)
