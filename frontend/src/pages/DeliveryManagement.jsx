@@ -21,7 +21,9 @@ export default function DeliveryManagement() {
     [sel, setSel] = useState(null),
     [form, setForm] = useState(empty),
     [fb, setFb] = useState({ rating: "", comment: "" }),
-    [loading, setLoading] = useState(true);
+    [loading, setLoading] = useState(true),
+    [closing, setClosing] = useState(false),
+    [actionError, setActionError] = useState("");
   const load = async () => {
     setLoading(true);
     try {
@@ -39,7 +41,7 @@ export default function DeliveryManagement() {
     setForm(d);
     setFb(d.feedback || { rating: "", comment: "" });
   };
-  const save = async () => {
+  const closeOrder = async () => {\n    if (!window.confirm("Close this order? This locks further delivery edits.")) return;\n    setClosing(true); setActionError("");\n    try {\n      await api.post(`/delivery/orders/${sel}/close/`, {});\n      await open(sel);\n      await load();\n    } catch (e) {\n      setActionError(e.response?.data?.detail || "Unable to close order.");\n    } finally { setClosing(false); }\n  };\n  const save = async () => {
     await updateDelivery(sel, form);
     await saveDeliveryFeedback(sel, fb);
     setSel(null);
@@ -173,7 +175,7 @@ export default function DeliveryManagement() {
               }
             />
           </label>
-          <div className="border-t pt-4 mt-4">
+          {actionError && <div className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">{actionError}</div>}\n          {form.order_status === "closed" ? (\n            <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">\n              <div className="font-semibold">Order Closed</div>\n              <div>Closed at: {form.closed_at ? new Date(form.closed_at).toLocaleString() : "—"}</div>\n              <div>Closed by: {form.closed_by || "—"}</div>\n            </div>\n          ) : (form.status === "delivered" || form.status === "installed") && (\n            <div className="mt-4 flex justify-end">\n              <button className="btn-primary" disabled={closing} onClick={closeOrder}>{closing ? "Closing..." : "Close Order"}</button>\n            </div>\n          )}\n          <div className="border-t pt-4 mt-4">
             <h3 className="font-semibold mb-2">Customer Feedback</h3>
             <div className="grid md:grid-cols-2 gap-3">
               <input
