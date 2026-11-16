@@ -236,3 +236,21 @@ class SalesOrderClosureTests(TestCase):
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 409)
+
+
+    def test_dispatch_requires_packing_installation_stage_task_completion(self):
+        from production.models import ProductionJob
+        from quality.models import PackingRecord
+        job = ProductionJob.objects.create(
+            order=self.order,
+            station=ProductionJob.Station.CUSTOM,
+            status=ProductionJob.Status.COMPLETED,
+            stage=ProductionJob.Stage.COMPLETED,
+        )
+        PackingRecord.objects.create(job=job, status=PackingRecord.Status.PACKED)
+        self.order.status = SalesOrder.Status.READY
+        self.order.save(update_fields=["status", "updated_at"])
+        DeliveryRecord.objects.create(order=self.order, status=DeliveryRecord.Status.SCHEDULED)
+        response = self._update({"status": DeliveryRecord.Status.OUT})
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Packing must be completed", response.json()["detail"])
