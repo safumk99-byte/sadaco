@@ -616,6 +616,10 @@ class QuotationWorkflowApiTests(TestCase):
             name="Crystal Award", sku="QUO-CRYSTAL-01", category=category,
             customer_visible=True, actual_price=Decimal("2500.00"),
         )
+        self.client.login(username="quote_manager", password="StrongPass123!")
+        catalogue = self.client.get("/api/sales/quotations/products/")
+        self.assertEqual(catalogue.status_code, 200, catalogue.content)
+        self.assertEqual([item["id"] for item in catalogue.json()["products"]], [product.pk])
         quotation_data = self._create_quotation("0", product=product.pk)
         quotation = Quotation.objects.get(pk=quotation_data["id"])
         self.assertEqual(quotation.product_id, product.pk)
