@@ -294,11 +294,21 @@ def reconcile_material_stock_balance(balance):
     movements = list(balance.movements.all())
     movement_expected = Decimal("0")
     unknown_types = []
+    # Keep the calculation deterministic even when the caller did not prefetch
+    # movements in chronological order. Correction/closing rows are balance
+    # snapshots, not additive quantities: reset the running ledger to the
+    # recorded post-count balance.
+    movements.sort(key=lambda row: (row.created_at, row.pk))
     for movement in movements:
         if movement.movement_type in positive:
             movement_expected += movement.quantity
         elif movement.movement_type in negative:
             movement_expected -= movement.quantity
+        elif movement.movement_type in (
+            MaterialStockMovement.Type.CORRECTION,
+            MaterialStockMovement.Type.CLOSING,
+        ):
+            movement_expected = movement.balance_after
         elif movement.movement_type != MaterialStockMovement.Type.WASTAGE:
             unknown_types.append(movement.movement_type)
 
