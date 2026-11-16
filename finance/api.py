@@ -13,7 +13,7 @@ from accounts.models import UserProfile
 from sales.models import PaymentRecord, SalesOrder
 from purchase.models import PurchaseOrder
 from .forms import ExpenseForm, ExpenseCategoryForm, CustomerPaymentForm, SupplierPaymentForm
-from .models import Expense, ExpenseCategory, FinanceTransaction, SupplierPayment
+from .models import Expense, ExpenseCategory, FinanceTransaction, SupplierPayment, ApprovalThreshold
 MANAGER_ROLES={UserProfile.Role.SUPER_ADMIN,UserProfile.Role.INSTITUTION_ADMIN,UserProfile.Role.MANAGER}
 def _manager(user):
     profile = getattr(user, "profile", None)
@@ -170,3 +170,64 @@ def reconciliation(request):
     tx=_department_transactions(request.user).filter(status='posted',transaction_date__range=(start,end)); raw=tx.values('payment_method').annotate(income=Sum('amount',filter=Q(transaction_type='income')),expense=Sum('amount',filter=Q(transaction_type='expense')))
     by=[{'payment_method':r['payment_method'],'income':str(r['income'] or 0),'expense':str(r['expense'] or 0),'net':str((r['income'] or 0)-(r['expense'] or 0))} for r in raw]
     return JsonResponse({'start':start.isoformat(),'end':end.isoformat(),'by_method':by,'transactions':[_tx(x) for x in tx[:200]]})
+
+
+def _founder(user):
+    profile = getattr(user, "profile", None)
+    return user.is_superuser or bool(
+        profile and profile.is_active and profile.role == UserProfile.Role.SUPER_ADMIN
+    )
+
+
+@require_GET
+@login_required
+def approval_thresholds(request):
+    _deny(request.user)
+    config = ApprovalThreshold.objects.order_by("pk").first()
+    return JsonResponse({
+        "purchase_amount": str(config.purchase_amount) if config and config.purchase_amount is not None else None,
+        "expense_amount": str(config.expense_amount) if config and config.expense_amount is not None else None,
+        "configured": bool(config and config.purchase_amount is not None and config.expense_amount is not None),
+        "can_configure": _founder(request.user),
+        "updated_at": config.updated_at.isoformat() if config else None,
+    })
+
+
+@require_POST
+@login_required
+@transaction.atomic
+def approval_thresholds_update(request):
+    if not _founder(request.user):
+        return JsonResponse({"detail": "Only the Founder can configure purchase and expense approval thresholds."}, status=403)
+    data = _data(request)
+    values = {}
+    for key in ("purchase_amount", "expense_amount"):
+        raw = data.get(key)
+        if raw in (None, ""):
+            values[key] = None
+            continue
+        try:
+            amount = Decimal(str(raw))
+        except Exception:
+            return JsonResponse({"detail": f"{key} must be a valid amount or blank."}, status=400)
+        if not amount.is_finite() or amount < 0 or amount.as_tuple().exponent < -2:
+            return JsonResponse({"detail": f"{key} must be a non-negative amount with up to 2 decimal places."}, status=400)
+        values[key] = amount
+    config = ApprovalThreshold.objects.select_for_update().order_by("pk").first()
+    if config is None:
+        config = ApprovalThreshold.objects.create(**values, updated_by=request.user)
+    else:
+        for key, value in values.items():
+            setattr(config, key, value)
+        config.updated_by = request.user
+        config.save(update_fields=["purchase_amount", "expense_amount", "updated_by", "updated_at"])
+    from core.models import AuditLog
+    AuditLog.objects.create(
+        user=request.user, module="finance", action=AuditLog.Action.UPDATE,
+        reference="approval-thresholds",
+        description=f"Purchase threshold: {values['purchase_amount']}; Expense threshold: {values['expense_amount']}",
+        ip_address=request.META.get("REMOTE_ADDR"),
+    )
+    return JsonResponse({"ok": True, "purchase_amount": str(config.purchase_amount) if config.purchase_amount is not None else None,
+                         "expense_amount": str(config.expense_amount) if config.expense_amount is not None else None,
+                         "updated_at": config.updated_at.isoformat()})
