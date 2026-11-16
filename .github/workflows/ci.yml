@@ -70,12 +70,14 @@ jobs:
           sales.tests.SalesDepartmentAccessTests
           sales.tests.SalesOrderLifecyclePermissionTests
           production.tests.ProductionDepartmentAccessTests
+          production.tests.ProductionCostingTests
           quality.tests.QualityMutationPermissionTests
           quality.tests.QualityReworkLifecycleTests
           delivery.tests.DeliveryLifecycleTests
           purchase.tests.PurchaseDepartmentAccessTests
           inventory.tests.MaterialLedgerWorkflowTests
           inventory.tests.MaterialStockCountTests
+          inventory.tests.ReusableOffcutAreaLedgerTests
           finance.tests.FinanceDepartmentAccessTests
           finance.tests.FinancePositiveAmountValidationTests
           marketing.tests.MarketingDepartmentAccessTests
