@@ -194,7 +194,7 @@ def offcuts_api(request):
             "location": x.location, "thickness_mm": str(x.thickness_mm) if x.thickness_mm is not None else None,
             "length_mm": str(x.length_mm), "width_mm": str(x.width_mm),
             "usable_area_sqft": str(x.usable_area_sqft), "used_area_sqft": str(used_area),
-            "remaining_area_sqft": str(max(x.usable_area_sqft - used_area, Decimal("0"))),
+            "remaining_area_sqft": str(max(x.usable_area_sqft - used_area - x.discarded_area_sqft, Decimal("0"))),
             "cost_per_sqft": str(x.cost_per_sqft) if x.cost_per_sqft is not None else None,
             "discarded_area_sqft": str(x.discarded_area_sqft), "discarded_cost": str(x.discarded_cost),
             "source_issue_id": x.source_issue_id,
