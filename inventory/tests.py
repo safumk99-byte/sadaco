@@ -325,6 +325,24 @@ class ReusableOffcutAreaLedgerTests(TestCase):
         self.assertEqual(source_summary["offcut_inventory_value"], "0.00")
         self.assertEqual(source_summary["net_material_cost"], "87.50")
 
+    def test_return_cannot_restore_sheet_area_already_registered_as_offcut(self):
+        response = self._create_offcut(usable_area="10")
+        self.assertEqual(response.status_code, 201, response.content)
+        with self.assertRaisesMessage(ValidationError, "after registered offcuts"):
+            return_issued_material(material_issue_id=self.issue.pk, quantity="0.70", user=self.manager)
+        self.balance.refresh_from_db()
+        self.assertEqual(self.balance.quantity, Decimal("9"))
+        self.issue.refresh_from_db()
+        self.assertEqual(self.issue.returned_quantity, Decimal("0"))
+
+    def test_wastage_cannot_double_count_sheet_area_registered_as_offcut(self):
+        response = self._create_offcut(usable_area="10")
+        self.assertEqual(response.status_code, 201, response.content)
+        with self.assertRaisesMessage(ValidationError, "after registered offcuts"):
+            record_issued_wastage(material_issue_id=self.issue.pk, quantity="0.70", user=self.manager)
+        self.issue.refresh_from_db()
+        self.assertEqual(self.issue.wastage_quantity, Decimal("0"))
+
     def test_offcut_cannot_be_used_for_another_material_or_department(self):
         response = self._create_offcut()
         self.assertEqual(response.status_code, 201, response.content)
