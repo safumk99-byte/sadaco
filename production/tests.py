@@ -76,7 +76,12 @@ class ProductionDepartmentAccessTests(TestCase):
         self.client.force_login(self.creative_manager)
         response = self.client.post(
             "/api/production/jobs/create/",
-            data='{"order": %d, "station": "custom"}' % order.pk,
+            data=json.dumps({
+                "order": order.pk, "station": "custom", "stage": "planning",
+                "status": "pending", "assigned_staff": "", "priority": "normal",
+                "deadline": "", "safety_checked": False, "design_checked": False,
+                "material_ready": False, "notes": "",
+            }),
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 201, response.content)
