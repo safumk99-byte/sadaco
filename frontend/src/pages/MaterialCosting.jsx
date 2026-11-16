@@ -92,7 +92,7 @@ export default function MaterialCosting() {
       <p className="mt-2 max-w-3xl text-sm text-blue-100">Purchase rates, retail rates, sheet-area costing, machine charges and staff compensation. All rates remain editable by authorized management.</p>
     </header>
     <div className="flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white p-2">
-      {tabs.map(([key,label])=><button key={key} onClick={()=>setTab(key)} className={`rounded-xl px-4 py-2.5 text-sm font-semibold ${tab===key?"bg-indigo-600 text-white":"text-slate-600 hover:bg-slate-100"}`}>{label}</button>)}
+      {tabs.filter(([key])=>key!=="opening"||canManage).map(([key,label])=><button key={key} onClick={()=>setTab(key)} className={`rounded-xl px-4 py-2.5 text-sm font-semibold ${tab===key?"bg-indigo-600 text-white":"text-slate-600 hover:bg-slate-100"}`}>{label}</button>)}
     </div>
     {error&&<div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
     {notice&&<div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{notice}</div>}
