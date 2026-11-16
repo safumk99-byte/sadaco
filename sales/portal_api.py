@@ -121,6 +121,7 @@ def portal_request_detail(request, pk):
 def portal_quotations(request):
     c=_guard_customer(request)
     if not c: return JsonResponse({"detail":"Customer account required."}, status=403)
+    c.quotations.filter(status=Quotation.Status.SENT, valid_until__lt=timezone.localdate()).update(status=Quotation.Status.EXPIRED, updated_at=timezone.now())
     visible_statuses = [Quotation.Status.SENT, Quotation.Status.ACCEPTED, Quotation.Status.APPROVED, Quotation.Status.REJECTED, Quotation.Status.EXPIRED]
     return JsonResponse({"quotations":[_quotation(x) for x in c.quotations.filter(status__in=visible_statuses).prefetch_related("designs").all()]})
 
@@ -128,8 +129,14 @@ def portal_quotations(request):
 def portal_quotation_detail(request, pk):
     c=_guard_customer(request)
     if not c: return JsonResponse({"detail":"Customer account required."}, status=403)
+    quotation = get_object_or_404(Quotation.objects.prefetch_related("designs"), pk=pk, customer=c)
+    if quotation.status == Quotation.Status.SENT and quotation.valid_until and quotation.valid_until < timezone.localdate():
+        quotation.status = Quotation.Status.EXPIRED
+        quotation.save(update_fields=["status", "updated_at"])
     visible_statuses = [Quotation.Status.SENT, Quotation.Status.ACCEPTED, Quotation.Status.APPROVED, Quotation.Status.REJECTED, Quotation.Status.EXPIRED]
-    return JsonResponse({"quotation":_quotation(get_object_or_404(Quotation.objects.prefetch_related("designs"),pk=pk,customer=c,status__in=visible_statuses))})
+    if quotation.status not in visible_statuses:
+        return JsonResponse({"detail": "Quotation not found."}, status=404)
+    return JsonResponse({"quotation": _quotation(quotation)})
 
 @login_required
 @require_http_methods(["POST"])
@@ -139,7 +146,10 @@ def portal_quotation_response(request, pk):
     q=get_object_or_404(Quotation,pk=pk,customer=c); data=json.loads(request.body or "{}"); decision=data.get("decision")
     if decision not in ("accepted", "approved", Quotation.Status.REJECTED): return JsonResponse({"detail":"Invalid quotation response."}, status=400)
     if q.status != Quotation.Status.SENT: return JsonResponse({"detail":"Only a sent quotation can be accepted or rejected."}, status=409)
-    if q.valid_until and q.valid_until < timezone.localdate(): return JsonResponse({"detail":"This quotation has expired."}, status=409)
+    if q.valid_until and q.valid_until < timezone.localdate():
+        q.status=Quotation.Status.EXPIRED
+        q.save(update_fields=["status","updated_at"])
+        return JsonResponse({"detail":"This quotation has expired."}, status=409)
     if decision in ("accepted", "approved"):
         q.status=Quotation.Status.ACCEPTED
         q.accepted_at=timezone.now()
@@ -191,6 +201,10 @@ def portal_quotation_pdf(request, pk):
         Quotation.objects.prefetch_related("line_items"),
         pk=pk, customer=customer,
     )
+    if quotation.status == Quotation.Status.SENT and quotation.valid_until and quotation.valid_until < timezone.localdate():
+        quotation.status = Quotation.Status.EXPIRED
+        quotation.save(update_fields=["status", "updated_at"])
+        return JsonResponse({"detail": "This quotation has expired."}, status=409)
     if quotation.status not in (Quotation.Status.SENT, Quotation.Status.ACCEPTED, Quotation.Status.APPROVED):
         return JsonResponse({"detail": "This quotation is not available yet."}, status=409)
     return quotation_pdf_response(quotation)
