@@ -114,8 +114,14 @@ class MaterialLedgerWorkflowTests(TestCase):
         other_balance = MaterialStockBalance.objects.create(
             material=self.material, department=self.department, location="Other Store", quantity=0
         )
+        from purchase.models import GoodsReceipt, GoodsReceiptLine
+        receipt = GoodsReceipt.objects.create(purchase_order=issue.stock_lot.receipt_line.receipt.purchase_order)
+        receipt_line = GoodsReceiptLine.objects.create(
+            receipt=receipt, purchase_item=issue.stock_lot.receipt_line.purchase_item,
+            received_quantity=Decimal("2"), unit_cost=Decimal("100"), line_total=Decimal("200"),
+        )
         other_lot = MaterialStockLot.objects.create(
-            receipt_line=issue.stock_lot.receipt_line, balance=other_balance,
+            receipt_line=receipt_line, balance=other_balance,
             original_quantity=Decimal("2"), remaining_quantity=Decimal("2"), unit_cost=Decimal("100")
         )
         # A tampered issue-to-lot relationship must fail the job-department/location consistency check.
