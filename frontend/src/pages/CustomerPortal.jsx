@@ -142,9 +142,14 @@ export default function CustomerPortal() {
                 <span>{q.status}</span>
               </div>
               <p className="mt-2">
-                {q.item_description} · Qty {q.quantity}
+                {q.item_description} · {q.dimensions || "Dimensions not specified"} · Qty {q.quantity}
               </p>
-              <p className="font-semibold">₹ {q.quoted_price}</p>
+              <div className="mt-2 space-y-1 text-sm text-slate-600">
+                <div className="flex justify-between"><span>Subtotal</span><span>₹ {q.subtotal}</span></div>
+                <div className="flex justify-between"><span>Discount</span><span>− ₹ {q.discount_amount}</span></div>
+                {q.tax_rate != null && <div className="flex justify-between"><span>Tax ({q.tax_rate}%)</span><span>₹ {q.tax_amount}</span></div>}
+              </div>
+              <p className="mt-2 font-bold">Total: ₹ {q.quoted_price}</p>
               {q.designs?.map((d) => (
                 <div key={d.id} className="mt-3 rounded-xl bg-slate-50 p-3">
                   <div className="text-sm font-medium">
@@ -168,13 +173,18 @@ export default function CustomerPortal() {
                   )}
                 </div>
               ))}
-              {["sent", "draft"].includes(q.status) && (
+              {["sent", "accepted", "approved"].includes(q.status) && (
+                <button onClick={() => downloadQuotationPdf(q.id)} className="mt-3 rounded-lg border px-3 py-2 text-sm font-medium">
+                  Download Quotation PDF
+                </button>
+              )}
+              {q.status === "sent" && (
                 <div className="mt-3 flex gap-2">
                   <button
-                    onClick={() => respondQuotation(q.id, "approved")}
+                    onClick={() => respondQuotation(q.id, "accepted")}
                     className="rounded-lg bg-emerald-600 px-3 py-2 text-sm text-white"
                   >
-                    Approve Quotation
+                    Accept Quotation
                   </button>
                   <button
                     onClick={() => respondQuotation(q.id, "rejected")}
