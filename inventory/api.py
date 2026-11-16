@@ -442,10 +442,13 @@ def offcut_action_api(request, pk):
                 Decimal("0"),
             )
             area = Decimal(str(data.get("used_area_sqft", remaining_area)))
-            if area <= 0 or area > remaining_area:
-                return JsonResponse({"detail": f"Usage must be greater than zero and no more than {remaining_area} sq ft of this offcut."}, status=400)
+            if not area.is_finite() or area <= 0 or area > remaining_area:
+                return JsonResponse({"detail": f"Usage must be greater than zero and no more than {remaining_area.quantize(Decimal('0.0001'))} sq ft of this offcut."}, status=400)
+            if max(-area.as_tuple().exponent, 0) > 4:
+                return JsonResponse({"detail": "Offcut usage supports up to 4 decimal places."}, status=400)
             if area > remaining_requirement_area:
-                return JsonResponse({"detail": f"This production line needs no more than {remaining_requirement_area} additional sq ft after sheet issues and previous offcut use."}, status=400)
+                available_area = remaining_requirement_area.quantize(Decimal("0.0001"))
+                return JsonResponse({"detail": f"This production line needs no more than {available_area} additional sq ft after sheet issues and previous offcut use."}, status=400)
             if offcut.cost_per_sqft is None:
                 return JsonResponse({"detail": "This offcut has no source-batch cost snapshot and cannot be costed for production."}, status=400)
             total_cost = (area * offcut.cost_per_sqft).quantize(Decimal("0.01"))
@@ -459,8 +462,9 @@ def offcut_action_api(request, pk):
             offcut.save(update_fields=["status", "updated_at"])
             return JsonResponse({
                 "ok": True, "id": offcut.pk, "status": offcut.status,
-                "used_area_sqft": str(area), "remaining_area_sqft": str(remaining_area - area),
-                "remaining_requirement_area_sqft": str(remaining_requirement_area - area),
+                "used_area_sqft": str(area.quantize(Decimal("0.0001"))),
+                "remaining_area_sqft": str((remaining_area - area).quantize(Decimal("0.0001"))),
+                "remaining_requirement_area_sqft": str((remaining_requirement_area - area).quantize(Decimal("0.0001"))),
                 "cost_per_sqft": str(offcut.cost_per_sqft), "allocated_cost": str(total_cost),
             })
         if action == "discarded":
