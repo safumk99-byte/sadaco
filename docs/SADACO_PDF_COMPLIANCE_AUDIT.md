@@ -291,3 +291,14 @@ No application source, migration, database, production, `main`, or Render change
 - These tests call the migration RunPython functions against the test database's current app registry; they are seed-function regression tests, not a historical-state MigrationExecutor test. A dedicated legacy migration-graph test remains outstanding.
 - No test command has been run in this session because the PC/local Django environment is unavailable. GitHub commit status currently reports no checks for the test commit; do not describe the tests as passing.
 - No Neon branch, production database, `main`, or Render deployment was changed.
+
+
+## 2026-11-16 — Duplicate products migration leaf resolved in source
+
+- CI run #194 (`4f9c824b80061b15a3ee86ed34cdc7da4f9dd3c6`) confirmed Django's system check and the React frontend build passed, but the Django migration step failed before tests ran.
+- The exact error was two `products` leaf nodes: `0013_configurable_labour_hours` and `0013_staff_compensation_working_capacity`.
+- Read-only source comparison showed both files had the same dependency (`products.0012_remove_demo_operational_data`) and the same two AddField operations with identical defaults: 26 working days/month and 8.25 productive hours/day. They were duplicate migrations, not independent schema changes.
+- Kept the pre-existing canonical migration `products.0013_configurable_labour_hours.py` and deleted the duplicate `products.0013_staff_compensation_working_capacity.py` from the feature branch. Updated the regression-test module docstring to name the retained migration.
+- Source-only correction commits: duplicate removal `7e6522ce3267eda675c6395da56678dfd0bb75e8`; test documentation clarification `821d2a684df62679798a0ba961223283b01de1c2`.
+- CI has not yet rerun on the corrected head. Do not claim migration or Django regression tests pass until the new run completes.
+- No Neon branch, production database, `main`, or Render deployment was changed.
