@@ -86,9 +86,9 @@ class MaterialLedgerWorkflowTests(TestCase):
 
         self.assertEqual(self.balance.quantity, Decimal("7"))
         self.assertEqual(self.lot.remaining_quantity, Decimal("7"))
-        self.assertEqual(result["movement_expected_balance"], "7")
-        self.assertEqual(result["receipt_lot_remaining"], "7")
-        self.assertEqual(result["unbatched_quantity"], "0")
+        self.assertEqual(result["movement_expected_balance"], "7.000")
+        self.assertEqual(result["receipt_lot_remaining"], "7.000")
+        self.assertEqual(result["unbatched_quantity"], "0.000")
         self.assertTrue(result["reconciled"])
         self.assertFalse(result["unbatched_warning"])
 
@@ -108,9 +108,9 @@ class MaterialLedgerWorkflowTests(TestCase):
 
         result = reconcile_material_stock_balance(self.balance)
 
-        self.assertEqual(result["movement_expected_balance"], "12")
-        self.assertEqual(result["receipt_lot_remaining"], "10")
-        self.assertEqual(result["unbatched_quantity"], "2")
+        self.assertEqual(result["movement_expected_balance"], "12.000")
+        self.assertEqual(result["receipt_lot_remaining"], "10.000")
+        self.assertEqual(result["unbatched_quantity"], "2.000")
         self.assertTrue(result["reconciled"])
         self.assertTrue(result["unbatched_warning"])
 
