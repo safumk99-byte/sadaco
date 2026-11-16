@@ -858,7 +858,14 @@ def approvals_api(request):
     qs = _approval_requests_for_user(request.user).select_related("requested_by", "reviewed_by")
     status = request.GET.get("status", "").strip()
     if status: qs = qs.filter(status=status)
-    return JsonResponse({"items": [_approval_payload(x) for x in qs[:300]], "can_review": True})
+    profile = getattr(request.user, "profile", None)
+    founder = request.user.is_superuser or bool(profile and profile.is_active and profile.role == UserProfile.Role.SUPER_ADMIN)
+    items = []
+    for item in qs[:300]:
+        payload = _approval_payload(item)
+        payload["can_review"] = item.status == ApprovalRequest.Status.PENDING and (item.module not in ("purchase", "finance") or founder)
+        items.append(payload)
+    return JsonResponse({"items": items, "can_review": True})
 
 
 @require_POST
