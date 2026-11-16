@@ -239,7 +239,7 @@ def quotation_workflow_create(request):
         discount = _decimal(data.get("discount_value", data.get("discount_percent", 0)), "discount_value", Decimal("0"))
         if discount is None or discount < 0:
             raise ValueError("Discount cannot be negative.")
-        item_description = str(data.get("item_description") or "").strip()
+        item_description = str(data.get("item_description") or (product.name if product else "")).strip()
         if not item_description:
             raise ValueError("Product / service description is required.")
         quantity = _decimal(data.get("quantity", 1), "quantity", Decimal("1"))
