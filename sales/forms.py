@@ -1,5 +1,6 @@
 from django import forms
 from django.contrib.auth.models import User
+import re
 
 from products.models import Product
 from staff.models import StaffProfile
@@ -12,9 +13,19 @@ INPUT = "w-full rounded-lg border border-slate-300 px-3 py-2.5 outline-none focu
 class CustomerForm(forms.ModelForm):
     class Meta:
         model = Customer
-        fields = ["name", "phone", "alternate_phone", "email", "address", "status", "notes"]
-        widgets = {f: forms.TextInput(attrs={"class": INPUT}) for f in ["name", "phone", "alternate_phone", "email"]}
+        fields = ["name", "customer_type", "phone", "alternate_phone", "email", "address", "status", "notes"]
+        widgets = {f: forms.TextInput(attrs={"class": INPUT}) for f in ["name", "customer_type", "phone", "alternate_phone", "email"]}
         widgets.update({"address": forms.Textarea(attrs={"class": INPUT, "rows": 3}), "status": forms.Select(attrs={"class": INPUT}), "notes": forms.Textarea(attrs={"class": INPUT, "rows": 3})})
+
+    def clean_phone(self):
+        phone = self.cleaned_data.get("phone", "").strip()
+        digits = re.sub(r"\D", "", phone)
+        if not digits:
+            raise forms.ValidationError("Enter a valid mobile number.")
+        for existing in Customer.objects.exclude(pk=self.instance.pk).only("id", "phone").iterator():
+            if re.sub(r"\D", "", existing.phone) == digits:
+                raise forms.ValidationError("A customer with this mobile number already exists. Open the existing customer record instead.")
+        return phone
 
 
 class EnquiryForm(forms.ModelForm):
