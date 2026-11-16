@@ -66,6 +66,32 @@ class MaterialLedgerWorkflowTests(TestCase):
         self.assertEqual(movement.movement_type, MaterialStockMovement.Type.JOB_ISSUE)
         self.assertEqual(issue.quantity, Decimal("3"))
 
+    def test_stock_reconciliation_matches_movement_and_receipt_lot_after_issue_and_wastage(self):
+        from inventory.services import reconcile_material_stock_balance
+
+        MaterialStockMovement.objects.create(
+            balance=self.balance, movement_type=MaterialStockMovement.Type.OPENING,
+            quantity=Decimal("10"), balance_after=Decimal("10"), reference="OPENING-TEST",
+        )
+        issue, _ = issue_material(
+            material_id=self.line.pk, quantity="3", lot_id=self.lot.pk, user=self.manager,
+        )
+        record_issued_wastage(
+            material_issue_id=issue.pk, quantity="1", user=self.manager,
+        )
+
+        self.balance.refresh_from_db()
+        self.lot.refresh_from_db()
+        result = reconcile_material_stock_balance(self.balance)
+
+        self.assertEqual(self.balance.quantity, Decimal("7"))
+        self.assertEqual(self.lot.remaining_quantity, Decimal("7"))
+        self.assertEqual(result["movement_expected_balance"], "7")
+        self.assertEqual(result["receipt_lot_remaining"], "7")
+        self.assertEqual(result["unbatched_quantity"], "0")
+        self.assertTrue(result["reconciled"])
+        self.assertFalse(result["unbatched_warning"])
+
     def test_issue_rejects_insufficient_stock(self):
         with self.assertRaises(ValidationError):
             issue_material(material_id=self.line.pk, quantity="11", lot_id=self.lot.pk, user=self.manager)
