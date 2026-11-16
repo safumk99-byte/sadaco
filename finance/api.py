@@ -175,6 +175,8 @@ def supplier_payment_create(request):
         pk=p.purchase_order_id,
     )
     p.purchase_order=po
+    if po.status not in (PurchaseOrder.Status.SENT, PurchaseOrder.Status.PARTIAL, PurchaseOrder.Status.RECEIVED):
+        return JsonResponse({"detail": "Supplier payments are allowed only after the purchase order has been sent to the supplier."}, status=409)
     paid=po.supplier_payments.filter(status=SupplierPayment.Status.PAID).aggregate(total=Sum('amount'))['total'] or 0
     balance=po.total-paid
     if p.status==SupplierPayment.Status.PAID and p.amount>balance: return JsonResponse({'detail':f'Payment cannot exceed current supplier balance of ₹ {balance:,.2f}.'},status=400)
