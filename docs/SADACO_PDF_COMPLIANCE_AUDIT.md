@@ -336,3 +336,28 @@ Target: `sadaco-phase1-migration-validation-2026-11-16` (`br-lucky-pond-azm200bm
 The read-only evidence does not show a concrete Finance schema collision with current 0003: the target SupplierPayment table exists in the expected shape, the new FinanceTransaction field is absent, and both related tables are empty. The three unknown legacy recorder names and the extra PaymentMethod table remain compatibility items to document, not grounds to alter the migration graph speculatively.
 
 **Still required before calling Phase 1 migration validation complete:** execute `python manage.py migrate --plan`, then the normal `python manage.py migrate --noinput`, then `python manage.py migrate --check` with the exact feature-branch checkout against this disposable clone; inspect the resulting constraints/indexes/schema and compare preserved account/staff identities. The connected GitHub CI run is against fresh PostgreSQL, not this Neon clone. No migration or SQL write was run here. Production, `main`, Render, staging and the validation clone remain unchanged.
+
+
+### Pre-migration protected-identity baseline captured on validation clone
+
+Read-only counts captured before any Django migration run:
+
+| Relation | Rows |
+|---|---:|
+| `auth_user` | 9 |
+| `accounts_userprofile` | 9 |
+| `staff_staffprofile` | 5 |
+| `staff_designation` | 5 |
+| `staff_workarea` | 5 |
+| `auth_user_groups` | 9 |
+| `auth_user_user_permissions` | 0 |
+| `auth_group_permissions` | 0 |
+
+ID/membership fingerprints for before/after comparison (not credentials or personal data):
+
+- User IDs: `4465827426a5fff877ca7c2b8cc1aab5`
+- UserProfile IDs: `eac5e1a344782c05d087e0f1886cdeca`
+- StaffProfile IDs: `c436b71eac35fe591730a7a4e18d0989`
+- User-to-group membership pairs: `e661300fb53419a755bb1bd700eceb41`
+
+These values are the validation clone's pre-migration comparison baseline. They are not evidence of a migration run; compare them only after a later approved test execution on this disposable branch.
