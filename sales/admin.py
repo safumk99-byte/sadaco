@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Customer, CustomerFeedback, CustomerInteraction, CustomerNotification, DeliveryRecord, DesignApproval, Enquiry, OrderRequest, PaymentRecord, Quotation, SalesOrder
+from .models import Customer, CustomerFeedback, CustomerInteraction, CustomerNotification, DeliveryRecord, DesignApproval, Enquiry, OrderRequest, PaymentRecord, Quotation, QuotationApproval, QuotationConfiguration, QuotationLineItem, SalesOrder
 
 
 @admin.register(Customer)
