@@ -150,6 +150,7 @@ def create(request):
         from core.models import Department
         po.department = get_object_or_404(Department, pk=department_id, is_active=True)
         po.subtotal=item_form.cleaned_data['quantity'] * item_form.cleaned_data['unit_cost']
+        po.total = max(po.subtotal - po.discount + po.tax, Decimal('0'))
         requested_status = po.status
         if requested_status == PurchaseOrder.Status.SENT:
             from finance.models import ApprovalThreshold
