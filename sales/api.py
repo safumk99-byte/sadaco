@@ -3,13 +3,14 @@ from django.core.exceptions import PermissionDenied
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 from django.db.models import Q, Sum
+from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 
 from accounts.models import UserProfile
 from core.models import Department
 from staff.models import StaffProfile
-from .forms import CustomerForm, EnquiryForm, QuotationForm, SalesOrderForm
-from .models import Customer, Enquiry, Quotation, SalesOrder, OrderRequest
+from .forms import CustomerForm, CustomerInteractionForm, EnquiryForm, QuotationForm, SalesOrderForm
+from .models import Customer, CustomerInteraction, Enquiry, Quotation, SalesOrder, OrderRequest
 
 MANAGER_ROLES = {UserProfile.Role.SUPER_ADMIN, UserProfile.Role.INSTITUTION_ADMIN, UserProfile.Role.MANAGER}
 
@@ -262,3 +263,40 @@ def order_update(request,pk):
             return JsonResponse({"detail": status_error}, status=400)
         return JsonResponse({'order':_order(form.save())})
     return JsonResponse({'detail':'Validation failed.','errors':form.errors.get_json_data()},status=400)
+
+
+@login_required
+def customer_interactions(request, pk):
+    customer = get_object_or_404(_customer_qs(request.user), pk=pk)
+    if request.method == "GET":
+        today = timezone.localdate()
+        records = customer.interactions.select_related("created_by").all()[:200]
+        return JsonResponse({"interactions": [{
+            "id": item.pk,
+            "interaction_type": item.interaction_type,
+            "interaction_type_label": item.get_interaction_type_display(),
+            "subject": item.subject,
+            "notes": item.notes,
+            "next_follow_up": item.next_follow_up.isoformat() if item.next_follow_up else None,
+            "completed": item.completed,
+            "overdue": bool(item.next_follow_up and not item.completed and item.next_follow_up < today),
+            "created_by": (item.created_by.get_full_name() or item.created_by.username) if item.created_by else "System",
+            "created_at": item.created_at.isoformat(),
+        } for item in records]})
+    if request.method != "POST":
+        return JsonResponse({"detail": "Method not allowed."}, status=405)
+    if not _manager(request.user):
+        raise PermissionDenied
+    import json
+    try:
+        data = json.loads(request.body or "{}")
+    except (TypeError, ValueError):
+        return JsonResponse({"detail": "Invalid JSON payload."}, status=400)
+    form = CustomerInteractionForm(data)
+    if form.is_valid():
+        interaction = form.save(commit=False)
+        interaction.customer = customer
+        interaction.created_by = request.user
+        interaction.save()
+        return JsonResponse({"id": interaction.pk}, status=201)
+    return JsonResponse({"detail": "Validation failed.", "errors": form.errors.get_json_data()}, status=400)
