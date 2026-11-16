@@ -2,7 +2,7 @@ from django.urls import path
 from .api import *
 from .portal_api import *
 urlpatterns = [
-    path("summary/", summary), path("customers/", customers), path("customers/create/", customer_create), path("customers/<int:pk>/update/", customer_update),
+    path("summary/", summary), path("customers/", customers), path("customers/create/", customer_create), path("customers/<int:pk>/interactions/", customer_interactions), path("customers/<int:pk>/update/", customer_update),
     path("enquiries/", enquiries), path("enquiries/create/", enquiry_create), path("enquiries/<int:pk>/update/", enquiry_update),
     path("quotations/", quotations), path("quotations/create/", quotation_create), path("quotations/<int:pk>/update/", quotation_update),
     path("orders/", orders), path("orders/create/", order_create), path("orders/<int:pk>/update/", order_update),
