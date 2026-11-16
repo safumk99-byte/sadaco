@@ -216,6 +216,9 @@ export default function SalesManagement() {
           </div>
         </>
       )}
+      {historyCustomer && (
+        <CustomerHistory customer={historyCustomer} canManage={data.can_manage} onClose={() => setHistoryCustomer(null)} />
+      )}
       {form && (
         <SalesForm
           type={form.type}
@@ -402,12 +405,12 @@ function SalesTable({ tab, rows, onEdit, onHistory }) {
               )}
               <td className="px-5 py-4 text-right">
                 {
-                  <button
-                    onClick={() => onEdit(x)}
-                    className="font-semibold text-blue-600"
-                  >
-                    Edit
-                  </button>
+                  <div className="inline-flex items-center gap-3">
+                    {tab === "customers" && (
+                      <button onClick={() => onHistory?.(x)} className="font-semibold text-indigo-600">History</button>
+                    )}
+                    <button onClick={() => onEdit(x)} className="font-semibold text-blue-600">Edit</button>
+                  </div>
                 }
               </td>
             </tr>
@@ -797,6 +800,76 @@ function SalesForm({ type, initial = {}, customers, departments = [], onClose, o
     </Modal>
   );
 }
+
+function CustomerHistory({ customer, canManage, onClose }) {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [form, setForm] = useState({ interaction_type: "call", subject: "", notes: "", next_follow_up: "", completed: false });
+  const load = async () => {
+    setLoading(true);
+    try {
+      const response = await api.get(`/sales/customers/${customer.id}/interactions/`);
+      setItems(response.data.interactions || []);
+      setError("");
+    } catch (e) {
+      setError(e.response?.data?.detail || "Unable to load customer history.");
+    } finally {
+      setLoading(false);
+    }
+  };
+  useEffect(() => { load(); }, [customer.id]);
+  const save = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    setError("");
+    try {
+      await api.post(`/sales/customers/${customer.id}/interactions/`, form);
+      setForm({ interaction_type: "call", subject: "", notes: "", next_follow_up: "", completed: false });
+      await load();
+    } catch (e) {
+      setError(e.response?.data?.detail || Object.values(e.response?.data?.errors || {})?.[0]?.[0]?.message || "Unable to save follow-up.");
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <Modal title={`Customer History · ${customer.name}`} onClose={onClose}>
+      <div className="mb-4 rounded-xl bg-slate-50 p-3 text-sm text-slate-600">
+        <div className="font-semibold text-slate-900">{customer.customer_no}</div>
+        <div>{customer.phone}{customer.email ? ` · ${customer.email}` : ""}</div>
+      </div>
+      {canManage && (
+        <form onSubmit={save} className="mb-6 grid gap-3 rounded-xl border border-slate-200 p-4 md:grid-cols-2">
+          <h3 className="font-semibold md:col-span-2">Record Interaction / Follow-up</h3>
+          <Select label="Type" value={form.interaction_type} set={(v) => setForm((x) => ({ ...x, interaction_type: v }))} options={[["call", "Phone Call"], ["whatsapp", "WhatsApp"], ["email", "Email"], ["meeting", "Meeting"], ["follow_up", "Follow-up"], ["note", "Note"]]} required />
+          <Field label="Subject" value={form.subject} set={(v) => setForm((x) => ({ ...x, subject: v }))} required />
+          <Field label="Next Follow-up Date" value={form.next_follow_up} set={(v) => setForm((x) => ({ ...x, next_follow_up: v }))} date />
+          <label className="flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={form.completed} onChange={(e) => setForm((x) => ({ ...x, completed: e.target.checked }))} /> Completed</label>
+          <Field label="Notes" value={form.notes} set={(v) => setForm((x) => ({ ...x, notes: v }))} area />
+          <div className="flex justify-end md:col-span-2"><button disabled={saving} className="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white">{saving ? "Saving..." : "Save Interaction"}</button></div>
+        </form>
+      )}
+      {error && <div className="mb-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+      <div className="space-y-3">
+        <h3 className="font-semibold text-slate-900">Communication Timeline</h3>
+        {loading ? <div className="py-5 text-center text-sm text-slate-500">Loading history...</div> : items.length ? items.map((item) => (
+          <div key={item.id} className="rounded-xl border border-slate-200 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="font-semibold text-slate-900">{item.subject}</div>
+              <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${item.overdue ? "bg-red-100 text-red-700" : item.completed ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>{item.overdue ? "Overdue" : item.completed ? "Completed" : "Open"}</span>
+            </div>
+            <div className="mt-1 text-xs text-slate-500">{item.interaction_type_label} · {new Date(item.created_at).toLocaleString()} · {item.created_by}</div>
+            {item.notes && <p className="mt-2 whitespace-pre-wrap text-sm text-slate-700">{item.notes}</p>}
+            {item.next_follow_up && <div className="mt-2 text-sm font-medium text-slate-600">Next follow-up: {item.next_follow_up}</div>}
+          </div>
+        )) : <Empty />}
+      </div>
+    </Modal>
+  );
+}
+
 function Field({
   label,
   value,
