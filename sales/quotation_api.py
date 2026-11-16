@@ -362,6 +362,10 @@ def quotation_approval_action(request, pk):
         return JsonResponse({"detail": "Action must be approve or reject."}, status=400)
     with transaction.atomic():
         quotation = get_object_or_404(Quotation.objects.select_for_update(), pk=pk, status=Quotation.Status.PENDING_APPROVAL)
+        if quotation.valid_until and quotation.valid_until < timezone.localdate():
+            quotation.status = Quotation.Status.EXPIRED
+            quotation.save(update_fields=["status", "updated_at"])
+            return JsonResponse({"detail": "This quotation has expired and can no longer be approved."}, status=409)
         quotation.approval_notes = str(data.get("notes") or "").strip()
         if action == "approve":
             quotation.status = Quotation.Status.SENT
@@ -385,7 +389,7 @@ def quotation_approval_action(request, pk):
 @login_required
 def quotation_workflow_detail(request, pk):
     quotation = get_object_or_404(_quotation_qs(request.user).select_related("customer").prefetch_related("line_items", "approval_history__performed_by"), pk=pk)
-    if quotation.status == Quotation.Status.SENT and quotation.valid_until and quotation.valid_until < timezone.localdate():
+    if quotation.status in (Quotation.Status.SENT, Quotation.Status.PENDING_APPROVAL) and quotation.valid_until and quotation.valid_until < timezone.localdate():
         quotation.status = Quotation.Status.EXPIRED
         quotation.save(update_fields=["status", "updated_at"])
     return JsonResponse({"quotation": _quotation_payload(quotation)})
@@ -394,7 +398,7 @@ def quotation_workflow_detail(request, pk):
 @login_required
 def quotation_pdf(request, pk):
     quotation = get_object_or_404(_quotation_qs(request.user).select_related("customer").prefetch_related("line_items"), pk=pk)
-    if quotation.status == Quotation.Status.SENT and quotation.valid_until and quotation.valid_until < timezone.localdate():
+    if quotation.status in (Quotation.Status.SENT, Quotation.Status.PENDING_APPROVAL) and quotation.valid_until and quotation.valid_until < timezone.localdate():
         quotation.status = Quotation.Status.EXPIRED
         quotation.save(update_fields=["status", "updated_at"])
         return JsonResponse({"detail": "This quotation has expired."}, status=409)
