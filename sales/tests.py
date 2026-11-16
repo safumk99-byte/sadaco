@@ -11,7 +11,7 @@ from core.models import Department
 from products.models import ProductCategory
 from staff.models import Designation, StaffProfile, WorkArea
 
-from .models import Customer, CustomerFeedback, CustomerNotification, DeliveryRecord, DesignApproval, Enquiry, OrderRequest, PaymentRecord, Quotation, SalesOrder
+from .models import Customer, CustomerFeedback, CustomerNotification, DeliveryRecord, DesignApproval, Enquiry, OrderRequest, PaymentRecord, Quotation, QuotationApproval, QuotationConfiguration, QuotationLineItem, SalesOrder
 
 
 class SalesModelTests(TestCase):
@@ -559,3 +559,157 @@ class CustomerInteractionApiTests(TestCase):
         request.user = staff_user
         with self.assertRaises(Exception):
             customer_interactions(request, self.customer.pk)
+
+
+
+class QuotationWorkflowApiTests(TestCase):
+    def setUp(self):
+        self.department = Department.objects.create(name="Creatives", code="CRE")
+        self.manager = User.objects.create_user(username="quote_manager", password="StrongPass123!")
+        UserProfile.objects.create(user=self.manager, role=UserProfile.Role.MANAGER, department=self.department)
+        self.founder = User.objects.create_user(username="quote_founder", password="StrongPass123!")
+        UserProfile.objects.create(user=self.founder, role=UserProfile.Role.SUPER_ADMIN)
+        self.customer = Customer.objects.create(
+            name="Quotation Customer", phone="9876543210", department=self.department,
+        )
+        self.config = QuotationConfiguration.objects.create(
+            company_name="SADACO GROUP OF COMPANIES",
+            tax_label="Tax",
+            tax_rate=Decimal("5.00"),
+            manager_discount_limit_percent=Decimal("10.00"),
+            default_terms="Payment terms as agreed.",
+        )
+
+    def _create_quotation(self, discount="15"):
+        self.client.login(username="quote_manager", password="StrongPass123!")
+        response = self.client.post(
+            "/api/sales/quotations/create-workflow/",
+            data=json.dumps({
+                "customer": self.customer.pk,
+                "item_description": "Custom Acrylic Award",
+                "dimensions": "12 x 8 inch",
+                "quantity": "1",
+                "discount_percent": discount,
+                "valid_until": "2026-12-31",
+                "line_items": [{
+                    "category": "material",
+                    "description": "Acrylic sheet and base",
+                    "dimensions": "12 x 8 inch",
+                    "quantity": "2",
+                    "unit": "piece",
+                    "unit_price": "500",
+                }],
+            }),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 201, response.content)
+        return response.json()["quotation"]
+
+    def test_discount_above_manager_limit_requires_founder_approval(self):
+        quotation_data = self._create_quotation("15")
+        quotation_id = quotation_data["id"]
+        self.assertEqual(quotation_data["subtotal"], "1000.00")
+        self.assertEqual(quotation_data["quoted_price"], "1000.00")
+
+        response = self.client.post(
+            f"/api/sales/quotations/{quotation_id}/submit/",
+            data="{}",
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()["quotation"]["status"], Quotation.Status.PENDING_APPROVAL)
+        self.assertEqual(QuotationApproval.objects.filter(quotation_id=quotation_id, action=QuotationApproval.Action.REQUESTED).count(), 1)
+
+        denied = self.client.post(
+            f"/api/sales/quotations/{quotation_id}/approval/",
+            data=json.dumps({"action": "approve"}),
+            content_type="application/json",
+        )
+        self.assertEqual(denied.status_code, 403)
+
+        self.client.logout()
+        self.client.login(username="quote_founder", password="StrongPass123!")
+        approved = self.client.post(
+            f"/api/sales/quotations/{quotation_id}/approval/",
+            data=json.dumps({"action": "approve", "notes": "Approved by Founder."}),
+            content_type="application/json",
+        )
+        self.assertEqual(approved.status_code, 200, approved.content)
+        result = approved.json()["quotation"]
+        self.assertEqual(result["status"], Quotation.Status.SENT)
+        self.assertEqual(result["discount_amount"], "150.00")
+        self.assertEqual(result["tax_amount"], "42.50")
+        self.assertEqual(result["quoted_price"], "892.50")
+        self.assertEqual(QuotationApproval.objects.filter(quotation_id=quotation_id, action=QuotationApproval.Action.APPROVED).count(), 1)
+
+        pdf = self.client.get(f"/api/sales/quotations/{quotation_id}/pdf/")
+        self.assertEqual(pdf.status_code, 200)
+        self.assertEqual(pdf["Content-Type"], "application/pdf")
+        self.assertTrue(pdf.content.startswith(b"%PDF"))
+
+    def test_discount_within_manager_limit_can_be_sent_without_approval(self):
+        quotation_data = self._create_quotation("5")
+        response = self.client.post(
+            f"/api/sales/quotations/{quotation_data['id']}/submit/",
+            data="{}",
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()["quotation"]["status"], Quotation.Status.SENT)
+        self.assertEqual(response.json()["quotation"]["quoted_price"], "997.50")
+        self.assertFalse(QuotationApproval.objects.filter(quotation_id=quotation_data["id"]).exists())
+
+    def test_tax_must_be_configured_before_sending(self):
+        self.config.tax_rate = None
+        self.config.save()
+        quotation_data = self._create_quotation("0")
+        response = self.client.post(
+            f"/api/sales/quotations/{quotation_data['id']}/submit/",
+            data="{}",
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("configure the tax rate", response.json()["detail"])
+
+    def test_founder_only_can_change_quotation_configuration(self):
+        self.client.login(username="quote_manager", password="StrongPass123!")
+        denied = self.client.post(
+            "/api/sales/quotations/configuration/",
+            data=json.dumps({"tax_rate": "7.5"}),
+            content_type="application/json",
+        )
+        self.assertEqual(denied.status_code, 403)
+        self.client.logout()
+        self.client.login(username="quote_founder", password="StrongPass123!")
+        allowed = self.client.post(
+            "/api/sales/quotations/configuration/",
+            data=json.dumps({"tax_rate": "7.5", "manager_discount_limit_percent": "12"}),
+            content_type="application/json",
+        )
+        self.assertEqual(allowed.status_code, 200, allowed.content)
+        self.assertEqual(allowed.json()["configuration"]["tax_rate"], "7.5")
+        self.assertEqual(allowed.json()["configuration"]["manager_discount_limit_percent"], "12")
+
+    def test_customer_acceptance_uses_accepted_status(self):
+        quotation_data = self._create_quotation("0")
+        quotation_id = quotation_data["id"]
+        self.client.post(
+            f"/api/sales/quotations/{quotation_id}/submit/",
+            data="{}",
+            content_type="application/json",
+        )
+        customer_user = User.objects.create_user(username="quotation_customer", password="StrongPass123!")
+        self.customer.user = customer_user
+        self.customer.save(update_fields=["user"])
+        self.client.logout()
+        self.client.login(username="quotation_customer", password="StrongPass123!")
+        response = self.client.post(
+            f"/api/sales/portal/quotations/{quotation_id}/respond/",
+            data=json.dumps({"decision": "accepted"}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()["quotation"]["status"], Quotation.Status.ACCEPTED)
+        pdf = self.client.get(f"/api/sales/portal/quotations/{quotation_id}/pdf/")
+        self.assertEqual(pdf.status_code, 200)
+        self.assertEqual(pdf["Content-Type"], "application/pdf")
