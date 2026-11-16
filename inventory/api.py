@@ -65,22 +65,32 @@ def material_stock_api(request):
 @require_GET
 @login_required
 def material_stock_lots_api(request):
-    qs = MaterialStockLot.objects.select_related("balance", "receipt_line__receipt", "receipt_line__purchase_item__purchase_order")
+    qs = MaterialStockLot.objects.select_related(
+        "balance", "receipt_line__receipt", "receipt_line__purchase_item__purchase_order",
+        "opening_movement",
+    )
     scope = _manager_department(request.user)
     if scope is not None:
         qs = qs.filter(balance__department_id=scope) if scope else qs.none()
     balance_id = request.GET.get("balance", "").strip()
     if balance_id:
         qs = qs.filter(balance_id=balance_id)
-    return JsonResponse({"items": [{
-        "id": lot.pk, "balance_id": lot.balance_id,
-        "receipt_no": lot.receipt_line.receipt.receipt_no,
-        "received_date": lot.receipt_line.receipt.received_date.isoformat(),
-        "purchase_order": lot.receipt_line.receipt.purchase_order.po_no,
-        "original_quantity": str(lot.original_quantity),
-        "remaining_quantity": str(lot.remaining_quantity),
-        "unit_cost": str(lot.unit_cost),
-    } for lot in qs.filter(remaining_quantity__gt=0)[:500]]})
+    items = []
+    for lot in qs.filter(remaining_quantity__gt=0)[:500]:
+        receipt = lot.receipt_line.receipt if lot.receipt_line_id else None
+        items.append({
+            "id": lot.pk, "balance_id": lot.balance_id,
+            "source_type": "purchase_receipt" if receipt else "opening_stock",
+            "receipt_no": receipt.receipt_no if receipt else None,
+            "opening_movement_id": lot.opening_movement_id,
+            "received_date": receipt.received_date.isoformat() if receipt else lot.opening_movement.created_at.isoformat(),
+            "purchase_order": receipt.purchase_order.po_no if receipt else None,
+            "cost_source_reference": lot.cost_source_reference,
+            "original_quantity": str(lot.original_quantity),
+            "remaining_quantity": str(lot.remaining_quantity),
+            "unit_cost": str(lot.unit_cost),
+        })
+    return JsonResponse({"items": items})
 
 
 @require_GET
@@ -278,7 +288,7 @@ def material_balance_create_api(request):
 def offcuts_api(request):
     qs = ReusableOffcut.objects.select_related(
         "material", "department", "source_job", "used_for_job", "source_issue",
-        "source_lot__receipt_line__receipt",
+        "source_lot__receipt_line__receipt", "source_lot__opening_movement",
     ).prefetch_related("usages")
     scope = _manager_department(request.user)
     if scope is not None:
@@ -296,7 +306,7 @@ def offcuts_api(request):
             "cost_per_sqft": str(x.cost_per_sqft) if x.cost_per_sqft is not None else None,
             "discarded_area_sqft": str(x.discarded_area_sqft), "discarded_cost": str(x.discarded_cost),
             "source_issue_id": x.source_issue_id,
-            "source_receipt": x.source_lot.receipt_line.receipt.receipt_no if x.source_lot_id else None,
+            "source_receipt": (x.source_lot.receipt_line.receipt.receipt_no if x.source_lot.receipt_line_id else f"Opening #{x.source_lot.opening_movement_id}") if x.source_lot_id else None,
             "usages": [{
                 "target_job": u.target_job.job_no, "target_job_id": u.target_job_id,
                 "used_area_sqft": str(u.used_area_sqft), "cost_per_sqft": str(u.cost_per_sqft),
