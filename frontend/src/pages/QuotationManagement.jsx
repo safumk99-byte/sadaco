@@ -19,6 +19,7 @@ export default function QuotationManagement() {
   const isFounder = user?.is_superuser || user?.role === "super_admin";
   const [quotations, setQuotations] = useState([]);
   const [customers, setCustomers] = useState([]);
+  const [products, setProducts] = useState([]);
   const [config, setConfig] = useState(null);
   const [canManage, setCanManage] = useState(false);
   const [canConfigure, setCanConfigure] = useState(false);
@@ -33,16 +34,18 @@ export default function QuotationManagement() {
     setLoading(true);
     setError("");
     try {
-      const [q, c, customersResponse] = await Promise.all([
+      const [q, c, customersResponse, productsResponse] = await Promise.all([
         api.get("/sales/quotations/"),
         api.get("/sales/quotations/configuration/"),
         api.get("/sales/customers/"),
+        api.get("/sales/quotations/products/"),
       ]);
       setQuotations(q.data.quotations || []);
       setCanManage(Boolean(q.data.can_manage));
       setConfig(c.data.configuration);
       setCanConfigure(Boolean(c.data.can_configure));
       setCustomers(customersResponse.data.customers || []);
+      setProducts(productsResponse.data.products || []);
     } catch (e) {
       setError(e.response?.data?.detail || "Unable to load quotation workspace.");
     } finally {
@@ -61,7 +64,7 @@ export default function QuotationManagement() {
       const response = await api.get(`/sales/quotations/${quotation.id}/detail/`);
       const q = response.data.quotation;
       setEditor({ initial: q, form: {
-        customer: String(q.customer.id), item_description: q.item_description, dimensions: q.dimensions || "",
+        customer: String(q.customer.id), product: q.product?.id ? String(q.product.id) : "", item_description: q.item_description, dimensions: q.dimensions || "",
         quantity: q.quantity, discount_type: q.discount_type || "percentage", discount_value: q.discount_value ?? q.discount_percent ?? "0", advance_required: q.advance_required,
         delivery_timeline: q.delivery_timeline || "", valid_until: q.valid_until || "", terms: q.terms || "",
         notes: q.notes || "", line_items: q.line_items.map((x) => ({
@@ -161,7 +164,7 @@ export default function QuotationManagement() {
       </section>
 
       {editor && <QuotationEditor
-        initial={editor.initial} form={editor.form} customers={customers} config={config}
+        initial={editor.initial} form={editor.form} customers={customers} products={products} config={config}
         onClose={() => setEditor(null)}
         onSave={async (payload) => {
           try {
@@ -195,7 +198,7 @@ function Status({ value }) {
   return <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${tone}`}>{value}</span>;
 }
 
-function QuotationEditor({ initial, form: initialForm, customers, config, onClose, onSave }) {
+function QuotationEditor({ initial, form: initialForm, customers, products, config, onClose, onSave }) {
   const [form, setForm] = useState(initialForm);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -214,7 +217,11 @@ function QuotationEditor({ initial, form: initialForm, customers, config, onClos
     <form onSubmit={submit} className="space-y-5">
       <div className="grid gap-3 md:grid-cols-2">
         <Select label="Customer" required value={form.customer} onChange={(v) => set("customer", v)} options={customers.map(c => [String(c.id), c.name])} />
-        <Field label="Product / Service" required value={form.item_description} onChange={(v) => set("item_description", v)} />
+        <Select label="Standard Product (optional)" value={form.product} onChange={(v) => {
+          const selected = products.find((product) => String(product.id) === v);
+          setForm((old) => ({ ...old, product: v, item_description: selected ? selected.name : old.item_description }));
+        }} options={products.map(product => [String(product.id), product.name + " · " + product.sku])} />
+        <Field label="Product / Service (custom or selected)" required value={form.item_description} onChange={(v) => set("item_description", v)} />
         <Field label="Dimensions" value={form.dimensions} onChange={(v) => set("dimensions", v)} />
         <Field label="Overall Quantity" type="number" min="0.001" step="0.001" value={form.quantity} onChange={(v) => set("quantity", v)} />
         <Field label="Valid Until" required type="date" value={form.valid_until} onChange={(v) => set("valid_until", v)} />
