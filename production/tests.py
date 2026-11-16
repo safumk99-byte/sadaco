@@ -3,7 +3,7 @@ from django.test import TestCase
 
 from accounts.models import UserProfile
 from core.models import Department
-from sales.models import Customer, SalesOrder
+from sales.models import Customer, SalesOrder, Quotation, DesignApproval
 from staff.models import StaffProfile
 from .api import _job_visible, _visible_jobs
 from .models import ProductionJob
@@ -47,6 +47,29 @@ class ProductionDepartmentAccessTests(TestCase):
         self.cnc_job = ProductionJob.objects.create(
             order=order_b, station=ProductionJob.Station.CNC, assigned_staff=self.cnc_staff
         )
+
+
+    def test_production_creation_requires_fifty_percent_advance(self):
+        order = self.creative_job.order
+        quotation = Quotation.objects.create(
+            customer=order.customer, item_description=order.item_description,
+            quantity=order.quantity, quoted_price=order.confirmed_price,
+        )
+        order.quotation = quotation
+        order.save(update_fields=["quotation", "updated_at"])
+        DesignApproval.objects.create(
+            quotation=quotation, version=1, status=DesignApproval.Status.APPROVED,
+        )
+        self.client.force_login(self.creative_manager)
+        response = self.client.post(
+            "/api/production/jobs/create/",
+            data='{"order": %d, "station": "custom"}' % order.pk,
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("50% advance", response.json()["detail"])
+        self.assertEqual(response.json()["advance_required"], "500.00")
+        self.assertEqual(response.json()["advance_received"], "0.00")
 
     def test_manager_only_sees_jobs_from_own_department(self):
         visible_ids = set(_visible_jobs(self.creative_manager).values_list("id", flat=True))
