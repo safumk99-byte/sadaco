@@ -20,6 +20,7 @@ import MaterialCosting from './pages/MaterialCosting'
 import ProductDetail from './pages/ProductDetail'
 import StockManagement from './pages/StockManagement'
 import SalesManagement from './pages/SalesManagement'
+import QuotationManagement from './pages/QuotationManagement'
 import ProductionManagement from './pages/ProductionManagement'
 import QualityManagement from './pages/QualityManagement'
 import PurchaseManagement from './pages/PurchaseManagement'
@@ -60,6 +61,7 @@ export default function App() {
               <Route path="inventory" element={<StockManagement />} />
               <Route path="products/:id" element={<ProductDetail />} />
               <Route path="sales" element={<SalesManagement />} />
+              <Route path="quotations" element={<QuotationManagement />} />
               <Route path="production" element={<ProductionManagement />} />
               <Route path="quality" element={<QualityManagement />} />
               <Route path="purchase" element={<PurchaseManagement />} />
