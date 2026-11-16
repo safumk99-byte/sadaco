@@ -22,8 +22,19 @@ class ProductionProgressForm(forms.ModelForm):
 class ProductionMaterialForm(forms.ModelForm):
     class Meta:
         model = ProductionMaterial
-        fields = ["product","material_name","quantity_required","unit","issued_quantity","notes"]
+        fields = ["product","material_variant","material_name","quantity_required","unit","notes"]
         widgets = {"notes": forms.Textarea(attrs={"rows":2})}
+
+    def clean(self):
+        cleaned = super().clean()
+        product = cleaned.get("product")
+        material_variant = cleaned.get("material_variant")
+        if product and material_variant:
+            raise forms.ValidationError("Select either a finished product or a Material Master item, not both.")
+        if material_variant:
+            cleaned["material_name"] = material_variant.material_name
+            cleaned["unit"] = material_variant.unit
+        return cleaned
 
 class ProductionIssueForm(forms.ModelForm):
     class Meta:
