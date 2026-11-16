@@ -13,6 +13,8 @@ class MaterialIssue(models.Model):
     job = models.ForeignKey("production.ProductionJob", on_delete=models.PROTECT, related_name="material_issues")
     material = models.ForeignKey("production.ProductionMaterial", on_delete=models.PROTECT, related_name="inventory_issues")
     quantity = models.DecimalField(max_digits=12, decimal_places=2, validators=[MinValueValidator(0.01)])
+    returned_quantity = models.DecimalField(max_digits=12, decimal_places=2, default=0, validators=[MinValueValidator(0)])
+    wastage_quantity = models.DecimalField(max_digits=12, decimal_places=2, default=0, validators=[MinValueValidator(0)])
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.ISSUED)
     reference = models.CharField(max_length=120, blank=True)
     remarks = models.TextField(blank=True)
@@ -95,6 +97,7 @@ class MaterialStockMovement(models.Model):
         CORRECTION = "correction", "Authorized Correction"
 
     balance = models.ForeignKey(MaterialStockBalance, on_delete=models.PROTECT, related_name="movements")
+    source_issue = models.ForeignKey("inventory.MaterialIssue", on_delete=models.PROTECT, null=True, blank=True, related_name="usage_movements")
     movement_type = models.CharField(max_length=24, choices=Type.choices)
     quantity = models.DecimalField(max_digits=14, decimal_places=3, validators=[MinValueValidator(0.001)])
     balance_after = models.DecimalField(max_digits=14, decimal_places=3, validators=[MinValueValidator(0)])
