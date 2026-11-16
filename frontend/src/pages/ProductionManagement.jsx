@@ -728,8 +728,13 @@ function JobDetail({ data, materials, close, refresh }) {
                 <span>
                   {m.material_name} · {m.quantity_required} {m.unit}
                 </span>
-                <span>
-                  Issued {m.issued_quantity} · Pending {m.pending_quantity}
+                <span className="text-right">
+                  <span className="block">Issued {m.issued_quantity} · Pending {m.pending_quantity}</span>
+                  {Number(m.offcut_consumed_area_sqft || 0) > 0 && (
+                    <span className="block text-xs text-emerald-700">
+                      Offcut {m.offcut_consumed_area_sqft} sq ft · {m.offcut_equivalent_quantity} {m.unit} equivalent
+                    </span>
+                  )}
                 </span>
               </div>
             ))}
