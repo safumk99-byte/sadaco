@@ -12,6 +12,7 @@ from inventory.services import issue_material, return_issued_material, record_is
 from products.models import MaterialVariant
 from production.models import ProductionJob, ProductionMaterial
 from sales.models import Customer, SalesOrder
+from purchase.models import MaterialStockLot
 
 
 class MaterialLedgerWorkflowTests(TestCase):
