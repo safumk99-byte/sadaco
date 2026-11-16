@@ -127,7 +127,7 @@ The same clone confirms 25 product rows total, 2 with positive stock, 0 referenc
 
 The user has explicitly superseded the earlier conservative operational-data preservation rule:
 
-- The final requirements PDF is the sole source of truth.- Legacy operational/catalogue data may be fully removed and rebuilt; do not preserve old demo products, old rates, orders, stock, customer records or old workflow history merely because they exist.
+- The final requirements PDF is the sole source of truth.\n- Legacy operational/catalogue data may be fully removed and rebuilt; do not preserve old demo products, old rates, orders, stock, customer records or old workflow history merely because they exist.
 - **Mandatory preservation boundary:** retain every existing Django User/account, UserProfile, authentication credential, role/group/permission assignment, and every existing StaffProfile. Never delete or recreate these identities.
 - Retain only staff-linked designation/work-area master rows required by retained staff foreign keys; all other legacy business data/configuration is eligible for cleanup and PDF-based reseeding.
 - Before any cleanup, generate a table-by-table deletion plan and verify that cascades cannot delete Users, UserProfiles or StaffProfiles. Apply and test only on the isolated disposable/staging clone first. Do not touch production Neon or the main branch.
@@ -256,7 +256,7 @@ Reviewed the current feature-branch seed migrations against the verified PDF val
 
 **Remaining blockers:**
 
-1. The actual Django migration engine still must run `migrate --plan`, `migrate --noinput`, and `migrate --check` against `br-lucky-pond-azm200bm` using the exact feature-branch checkout. The Mobile Commander PC Bridge timed out during this session, so this could not be executed.2. Add automated migration/seed assertions for 51 material variants, 51 initial rate-history rows, 5 machine rates, the expected staff compensation mapping and the 3 department codes. Current inspection found no dedicated tests for these migration seed expectations in `products/tests.py`.
+1. The actual Django migration engine still must run `migrate --plan`, `migrate --noinput`, and `migrate --check` against `br-lucky-pond-azm200bm` using the exact feature-branch checkout. The Mobile Commander PC Bridge timed out during this session, so this could not be executed.\n2. Add automated migration/seed assertions for 51 material variants, 51 initial rate-history rows, 5 machine rates, the expected staff compensation mapping and the 3 department codes. Current inspection found no dedicated tests for these migration seed expectations in `products/tests.py`.
 3. Verify model/schema parity, indexes, constraints, foreign keys and row counts after the normal Django migration run. Do not substitute hand-written DDL or manual migration-record insertion.
 4. Do not run the broad PDF-baseline cleanup migration as if it reproduced the authorized operational reset. The checked-in `products.0012_remove_demo_operational_data` is catalogue-only and intentionally preserves multiple legacy business relations; the broader reset was a separate, explicitly authorized transaction already recorded above.
 
