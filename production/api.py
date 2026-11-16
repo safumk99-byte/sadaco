@@ -2,7 +2,7 @@ import json
 from decimal import Decimal
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied, ValidationError
-from django.db.models import Q
+from django.db.models import Q, Sum
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -304,7 +304,7 @@ def create(request):
     advance_received = order.payments.filter(
         payment_type=PaymentRecord.PaymentType.ADVANCE,
         status__in=[PaymentRecord.Status.RECEIVED, PaymentRecord.Status.VERIFIED],
-    ).aggregate(total=__import__("django.db.models", fromlist=["Sum"]).Sum("amount"))["total"] or Decimal("0.00")
+    ).aggregate(total=Sum("amount"))["total"] or Decimal("0.00")
     if advance_received < advance_target and not order.advance_exception_approved_by_id:
         remaining = advance_target - advance_received
         return JsonResponse({
