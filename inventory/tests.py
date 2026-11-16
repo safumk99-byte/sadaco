@@ -325,6 +325,20 @@ class MaterialStockCountTests(TestCase):
             material=material, department=self.department, location="Store 1", quantity=Decimal("12")
         )
 
+    def test_opening_stock_movement_rejects_invalid_quantity_precision(self):
+        self.client.force_login(self.admin)
+        for value in ("NaN", "Infinity", "1.0001", "100000000000"):
+            with self.subTest(value=value):
+                response = self.client.post(
+                    "/api/inventory/materials/movements/create/",
+                    data=json.dumps({"balance": self.balance.pk, "type": "opening", "quantity": value}),
+                    content_type="application/json",
+                )
+                self.assertEqual(response.status_code, 400)
+        self.balance.refresh_from_db()
+        self.assertEqual(self.balance.quantity, Decimal("12"))
+        self.assertFalse(MaterialStockMovement.objects.filter(balance=self.balance).exists())
+
     def test_count_submission_does_not_change_stock_until_approval(self):
         count = submit_material_stock_count(
             balance_id=self.balance.pk, counted_quantity="10", user=self.manager, reason="Physical count"
