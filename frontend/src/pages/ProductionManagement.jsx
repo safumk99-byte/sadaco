@@ -750,7 +750,9 @@ function JobDetail({ data, materials, options, close, refresh }) {
               <div key={task.id} className="rounded-lg bg-slate-50 p-3 text-sm">
                 <div className="flex flex-wrap justify-between gap-2">
                   <strong>{task.stage_label}</strong>
-                  <span className="rounded-full bg-white px-2 py-1 text-xs">{task.status_label}</span>
+                  <span className={`rounded-full px-2 py-1 text-xs ${task.is_overdue ? "bg-red-100 text-red-700" : "bg-white text-slate-700"}`}>
+                    {task.is_overdue ? `Overdue · ${task.days_overdue}d` : task.status_label}
+                  </span>
                 </div>
                 <div className="mt-1 text-xs text-slate-600">
                   Owner: {task.assigned_staff?.name || "Unassigned"} · Planned: {task.planned_start || "—"} to {task.expected_completion || "—"}
