@@ -9,7 +9,7 @@ const categories = [
 const money = (value) => `₹${Number(value || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const blankLine = () => ({ category: "material", description: "", dimensions: "", quantity: "1", unit: "Nos", unit_price: "0" });
 const blankQuote = () => ({
-  customer: "", item_description: "", dimensions: "", quantity: "1", discount_percent: "0",
+  customer: "", item_description: "", dimensions: "", quantity: "1",
   advance_required: "0", delivery_timeline: "", valid_until: "", terms: "", notes: "",
   discount_type: "percentage", discount_value: "0", line_items: [blankLine()],
 });
@@ -238,7 +238,8 @@ function QuotationEditor({ initial, form: initialForm, customers, config, onClos
         </div>)}
       </div>
       <div className="grid gap-3 rounded-xl bg-slate-50 p-4 md:grid-cols-2">
-        <Field label="Discount (%)" type="number" min="0" max="100" step="0.01" value={form.discount_percent} onChange={(v) => set("discount_percent", v)} />
+        <Select label="Discount Type" value={form.discount_type} onChange={(v) => set("discount_type", v)} options={[["percentage", "Percentage"], ["amount", "Fixed Amount (₹)"]]} />
+        <Field label={form.discount_type === "amount" ? "Discount Amount (₹)" : "Discount (%)"} type="number" min="0" max={form.discount_type === "percentage" ? "100" : undefined} step="0.01" value={form.discount_value} onChange={(v) => set("discount_value", v)} />
         <Field label="Advance Required (₹)" type="number" min="0" step="0.01" value={form.advance_required} onChange={(v) => set("advance_required", v)} />
         <div className="space-y-1 text-sm md:col-span-2">
           <div className="flex justify-between"><span>Subtotal</span><b>{money(subtotal)}</b></div>
