@@ -55,7 +55,8 @@ def _config_payload(config):
         "company_website": config.company_website,
         "tax_label": config.tax_label,
         "tax_rate": str(config.tax_rate) if config.tax_rate is not None else None,
-        "manager_discount_limit_percent": str(config.manager_discount_limit_percent) if config.manager_discount_limit_percent is not None else None,
+        "manager_discount_limit_type": config.manager_discount_limit_type or None,
+        "manager_discount_limit_value": str(config.manager_discount_limit_value) if config.manager_discount_limit_value is not None else None,
         "default_terms": config.default_terms,
         "default_validity_days": config.default_validity_days,
         "is_configured_for_sending": config.tax_rate is not None,
@@ -76,6 +77,8 @@ def _quotation_payload(quotation):
             "unit": item.unit, "unit_price": str(item.unit_price), "line_total": str(item.line_total),
         } for item in quotation.line_items.all()],
         "subtotal": str(quotation.subtotal),
+        "discount_type": quotation.discount_type,
+        "discount_value": str(quotation.discount_value),
         "discount_percent": str(quotation.discount_percent),
         "discount_amount": str(quotation.discount_amount),
         "tax_rate": str(quotation.tax_rate) if quotation.tax_rate is not None else None,
@@ -109,12 +112,21 @@ def quotation_configuration(request):
     if data is None:
         return JsonResponse({"detail": "Invalid JSON payload."}, status=400)
     try:
-        for field in ("tax_rate", "manager_discount_limit_percent"):
-            if field in data:
-                value = _decimal(data.get(field), field, None)
-                if value is not None and not (Decimal("0") <= value <= Decimal("100")):
-                    raise ValueError(f"{field} must be between 0 and 100.")
-                setattr(config, field, value)
+        if "tax_rate" in data:
+            value = _decimal(data.get("tax_rate"), "tax_rate", None)
+            if value is not None and not (Decimal("0") <= value <= Decimal("100")):
+                raise ValueError("tax_rate must be between 0 and 100.")
+            config.tax_rate = value
+        if "manager_discount_limit_type" in data:
+            limit_type = str(data.get("manager_discount_limit_type") or "").strip()
+            if limit_type not in ("", "percentage", "amount"):
+                raise ValueError("Choose percentage or fixed amount for the Manager Discount Limit.")
+            config.manager_discount_limit_type = limit_type
+        if "manager_discount_limit_value" in data:
+            limit_value = _decimal(data.get("manager_discount_limit_value"), "manager_discount_limit_value", None)
+            if limit_value is not None and limit_value < 0:
+                raise ValueError("Manager Discount Limit cannot be negative.")
+            config.manager_discount_limit_value = limit_value
         for field in ("company_name", "company_address", "company_phone", "company_email", "company_website", "tax_label", "default_terms"):
             if field in data:
                 setattr(config, field, str(data.get(field) or "").strip())
@@ -165,11 +177,25 @@ def _save_line_items(quotation, items):
 
 def _calculate(quotation, config):
     subtotal = _money(sum((item.line_total for item in quotation.line_items.all()), Decimal("0")))
-    discount_percent = quotation.discount_percent or Decimal("0")
-    if discount_percent < 0 or discount_percent > 100:
-        raise ValueError("Discount percentage must be between 0 and 100.")
-    discount_amount = _money(subtotal * discount_percent / Decimal("100"))
+    discount_type = quotation.discount_type or "percentage"
+    discount_value = quotation.discount_value or Decimal("0")
+    if discount_value < 0:
+        raise ValueError("Discount cannot be negative.")
+    if discount_type == "percentage":
+        if discount_value > 100:
+            raise ValueError("Discount percentage must be between 0 and 100.")
+        discount_percent = discount_value
+        discount_amount = _money(subtotal * discount_value / Decimal("100"))
+    elif discount_type == "amount":
+        if discount_value > subtotal:
+            raise ValueError("Fixed discount cannot exceed the quotation subtotal.")
+        discount_amount = _money(discount_value)
+        discount_percent = _money(discount_amount * Decimal("100") / subtotal) if subtotal else Decimal("0.00")
+    else:
+        raise ValueError("Choose percentage or fixed amount for the discount.")
     taxable = subtotal - discount_amount
+    quotation.discount_percent = discount_percent
+    quotation.discount_amount = discount_amount
     tax_rate = config.tax_rate
     if tax_rate is None:
         tax_amount = Decimal("0.00")
@@ -194,9 +220,12 @@ def quotation_workflow_create(request):
     try:
         items = _validated_items(data.get("line_items"))
         customer = get_object_or_404(_customer_qs(request.user).filter(status=Customer.Status.ACTIVE), pk=data.get("customer"))
-        discount = _decimal(data.get("discount_percent", 0), "discount_percent", Decimal("0"))
-        if discount < 0 or discount > 100:
-            raise ValueError("Discount percentage must be between 0 and 100.")
+        discount_type = str(data.get("discount_type") or "percentage")
+        if discount_type not in ("percentage", "amount"):
+            raise ValueError("Choose percentage or fixed amount for the discount.")
+        discount = _decimal(data.get("discount_value", data.get("discount_percent", 0)), "discount_value", Decimal("0"))
+        if discount is None or discount < 0:
+            raise ValueError("Discount cannot be negative.")
         item_description = str(data.get("item_description") or "").strip()
         if not item_description:
             raise ValueError("Product / service description is required.")
@@ -212,7 +241,7 @@ def quotation_workflow_create(request):
             quotation = Quotation.objects.create(
                 customer=customer, item_description=item_description,
                 quantity=quantity, dimensions=str(data.get("dimensions") or "").strip(),
-                discount_percent=discount, advance_required=advance, valid_until=valid_until,
+                discount_type=discount_type, discount_value=discount, advance_required=advance, valid_until=valid_until,
                 delivery_timeline=str(data.get("delivery_timeline") or "").strip(),
                 terms=str(data.get("terms") if data.get("terms") is not None else config.default_terms or ""),
                 notes=str(data.get("notes") or "").strip(), status=Quotation.Status.DRAFT,
@@ -248,8 +277,13 @@ def quotation_workflow_update(request, pk):
             quotation.quantity = _decimal(data["quantity"], "quantity", Decimal("1"))
             if quotation.quantity is None or quotation.quantity <= 0:
                 raise ValueError("Quantity must be greater than zero.")
-        if "discount_percent" in data:
-            quotation.discount_percent = _decimal(data["discount_percent"], "discount_percent", Decimal("0"))
+        if "discount_type" in data:
+            quotation.discount_type = str(data.get("discount_type") or "percentage")
+        if "discount_value" in data:
+            quotation.discount_value = _decimal(data["discount_value"], "discount_value", Decimal("0"))
+        elif "discount_percent" in data:
+            quotation.discount_type = "percentage"
+            quotation.discount_value = _decimal(data["discount_percent"], "discount_percent", Decimal("0"))
         if "advance_required" in data:
             quotation.advance_required = _decimal(data["advance_required"], "advance_required", Decimal("0"))
             if quotation.advance_required is None or quotation.advance_required < 0:
@@ -284,15 +318,22 @@ def quotation_submit(request, pk):
         if config.tax_rate is None:
             return JsonResponse({"detail": "Founder must configure the tax rate before a quotation can be sent."}, status=400)
         _calculate(quotation, config)
-        limit = config.manager_discount_limit_percent
-        if quotation.discount_percent > 0 and limit is None:
-            return JsonResponse({"detail": "Founder must configure the Manager Discount Limit before applying a discount."}, status=400)
+        limit_type = config.manager_discount_limit_type
+        limit_value = config.manager_discount_limit_value
+        if quotation.discount_amount > 0 and (not limit_type or limit_value is None):
+            return JsonResponse({"detail": "Founder must configure the Manager Discount Limit and choose percentage or fixed amount before applying a discount."}, status=400)
+        requires_approval = False
+        if quotation.discount_amount > 0:
+            if limit_type == "percentage":
+                requires_approval = quotation.discount_percent > limit_value
+            elif limit_type == "amount":
+                requires_approval = quotation.discount_amount > limit_value
         quotation.company_details_snapshot = {
             "company_name": config.company_name, "company_address": config.company_address,
             "company_phone": config.company_phone, "company_email": config.company_email,
             "company_website": config.company_website, "tax_label": config.tax_label,
         }
-        quotation.status = Quotation.Status.PENDING_APPROVAL if limit is not None and quotation.discount_percent > limit else Quotation.Status.SENT
+        quotation.status = Quotation.Status.PENDING_APPROVAL if requires_approval else Quotation.Status.SENT
         if quotation.status == Quotation.Status.PENDING_APPROVAL:
             quotation.approval_requested_at = timezone.now()
             QuotationApproval.objects.create(
