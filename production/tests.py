@@ -193,15 +193,17 @@ class ProductionMaterialFormSafetyTests(TestCase):
             unit="Sheet",
         )
         self.client.force_login(self.manager)
+        import json
         response = self.client.post(
             f"/api/production/jobs/{self.job.pk}/materials/",
-            data={
+            data=json.dumps({
                 "material_variant": material.pk,
                 "material_name": "Forged name must be replaced",
                 "quantity_required": "2",
                 "unit": "Piece",
                 "issued_quantity": "2",
-            },
+            }),
+            content_type="application/json",
         )
         self.assertEqual(response.status_code, 201, response.content)
         from .models import ProductionMaterial
@@ -220,11 +222,13 @@ class ProductionMaterialFormSafetyTests(TestCase):
             material_name="Acrylic Sheet", brand="Astari", thickness_mm=Decimal("3"), unit="Sheet",
         )
         self.client.force_login(self.manager)
+        import json
         response = self.client.post(
             f"/api/production/jobs/{self.job.pk}/materials/",
-            data={
+            data=json.dumps({
                 "product": product.pk, "material_variant": material.pk,
                 "material_name": "Acrylic Sheet", "quantity_required": "2", "unit": "Sheet",
-            },
+            }),
+            content_type="application/json",
         )
         self.assertEqual(response.status_code, 400)
