@@ -148,9 +148,18 @@ def issue_material(*, material_id, quantity, user=None, reference="", remarks=""
 def complete_stock_count(*, product_id, counted_quantity, user=None, reason=""):
     from products.models import Product
     product = Product.objects.select_for_update().get(pk=product_id)
-    counted = Decimal(str(counted_quantity))
+    try:
+        counted = Decimal(str(counted_quantity))
+    except (InvalidOperation, TypeError, ValueError):
+        raise ValidationError("Counted quantity must be a valid decimal number.")
+    if not counted.is_finite():
+        raise ValidationError("Counted quantity must be finite.")
     if counted < 0:
         raise ValidationError("Counted quantity cannot be negative.")
+    if max(-counted.as_tuple().exponent, 0) > 3:
+        raise ValidationError("Counted quantity supports up to three decimal places.")
+    if counted > Decimal("99999999999.999"):
+        raise ValidationError("Counted quantity exceeds the supported stock quantity.")
     system = product.stock_quantity
     variance = counted - system
     StockCount.objects.create(product=product, system_quantity=system, counted_quantity=counted, variance=variance, reason=reason, counted_by=user)
