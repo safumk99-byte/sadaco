@@ -183,8 +183,6 @@ def options(request):
         'materials': [{'id': m.id, 'name': m.material_name, 'brand': m.brand, 'thickness_mm': str(m.thickness_mm) if m.thickness_mm is not None else None, 'unit': m.unit} for m in MaterialVariant.objects.filter(is_active=True).order_by('material_name', 'brand', 'thickness_mm')[:500]],
         'machine_rates': machine_rates, 'labour_staff': labour_staff})
 
-@require_GET
-@login_required
 def _job_material_cost_summary(job):
     """Calculate receipt-backed material cost with offcut asset transfers and write-offs."""
     from decimal import Decimal
@@ -240,6 +238,8 @@ def _job_material_cost_summary(job):
     }
 
 
+@require_GET
+@login_required
 def detail(request, pk):
     job = get_object_or_404(_visible_jobs(request.user).prefetch_related('progress_updates__updated_by', 'materials__product', 'issues__staff'), pk=pk)
     if not _job_visible(request.user, job): raise PermissionDenied
