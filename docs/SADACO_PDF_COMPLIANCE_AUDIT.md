@@ -474,3 +474,10 @@ This remains a source-level review only. No Django test command, migration, Neon
 - Added a regression test covering ₹100 issue cost, ₹31.25 salvage credit for 10 sq ft, ₹12.50 transfer for 4 sq ft to another job, and ₹18.75 write-off for the remaining 6 sq ft. Expected source-job net material cost after discard is ₹87.50; target-job offcut material cost is ₹12.50.
 - This is a receipt-backed raw-material cost view, not a complete job margin: labour, machine time, overhead, consumables and sales revenue are not included. No finance transactions or accounting journal entries are created by this operational costing view.
 - CI run for the final commit is pending. No local Django/Playwright command, Neon write, production change, `main` merge, or Render deployment was performed.
+
+
+### Additional safeguard — offcut area cannot be returned or wasted twice
+
+- A receipt-backed sheet issue now reduces its returnable/wastage quantity by the sheet-equivalent of all offcut area already registered against that issue. This prevents a sheet area already transferred into reusable offcut inventory from also being restored as a whole/partial sheet return or counted again as sheet wastage.
+- Added regression tests for both return and wastage rejection when the requested sheet-equivalent quantity would overlap registered offcut area.
+- The source-issue offcut-registration guard already checks cumulative registered offcut area against the issue's remaining area after prior returns and wastage.
