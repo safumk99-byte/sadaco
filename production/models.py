@@ -126,7 +126,11 @@ class ProductionMaterial(models.Model):
 
     @property
     def pending_quantity(self):
-        return max(self.quantity_required - self.effective_fulfilled_quantity, Decimal("0"))
+        pending = max(self.quantity_required - self.effective_fulfilled_quantity, Decimal("0"))
+        # The requirement and issue quantities are stored to 2 decimal places.
+        # Treat a smaller residual as satisfied because it cannot be issued
+        # without exceeding the requested quantity at the supported precision.
+        return Decimal("0") if pending < Decimal("0.01") else pending
 
     @property
     def actual_consumption(self):
