@@ -507,6 +507,7 @@ export default function PurchaseManagement() {
               />
             </Field>
             <div className="sm:col-span-2">
+              {form.status === "sent" && <Field label="Approval reason (required if above Founder threshold)"><textarea className={input} rows="2" value={form.approval_reason || ""} onChange={(e) => setForm({ ...form, approval_reason: e.target.value })} /></Field>}
               <Field label="Notes">
                 <textarea
                   className={input}
