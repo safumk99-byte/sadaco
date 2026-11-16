@@ -48,7 +48,7 @@ def record_production_cost(*, job_id, cost_type, quantity, user, machine_rate_id
 
         material_line = None
         if material_line_id:
-            material_line = ProductionMaterial.objects.select_for_update().select_related(
+            material_line = ProductionMaterial.objects.select_for_update(of=("self",)).select_related(
                 "material_variant"
             ).filter(pk=material_line_id, job=job).first()
             if not material_line:
