@@ -1,12 +1,12 @@
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Q, Sum
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 from django.views.decorators.http import require_GET, require_POST
 from django.utils.dateparse import parse_date
 from accounts.decorators import role_required
-from sales.models import CustomerFeedback, DeliveryRecord, SalesOrder
+from sales.models import CustomerFeedback, DeliveryRecord, SalesOrder, PaymentRecord
 
 manager_required = role_required('super_admin','institution_admin','manager')
 
@@ -118,6 +118,17 @@ def update(request, pk):
             return JsonResponse({'detail': 'This delivery status transition is not allowed.'}, status=400)
         if requested in (DeliveryRecord.Status.READY, DeliveryRecord.Status.OUT, DeliveryRecord.Status.DELIVERED, DeliveryRecord.Status.INSTALLED) and order.status not in (SalesOrder.Status.READY, SalesOrder.Status.DELIVERED):
             return JsonResponse({'detail': 'The Sales Order must pass Final QC and be marked Ready before delivery can proceed.'}, status=400)
+        if requested in (DeliveryRecord.Status.OUT, DeliveryRecord.Status.DELIVERED, DeliveryRecord.Status.INSTALLED):
+            paid_total = order.payments.filter(
+                status__in=[PaymentRecord.Status.RECEIVED, PaymentRecord.Status.VERIFIED]
+            ).aggregate(total=Sum("amount"))["total"] or 0
+            if paid_total < order.confirmed_price and not order.credit_exception_approved_by_id:
+                return JsonResponse({
+                    "detail": "Final payment must be received before dispatch unless a Founder-approved credit exception is recorded.",
+                    "order_total": str(order.confirmed_price),
+                    "paid_total": str(paid_total),
+                    "balance": str(order.confirmed_price - paid_total),
+                }, status=400)
         if requested == DeliveryRecord.Status.INSTALLED and not d.installation_required:
             return JsonResponse({'detail': 'Installation must be marked as required before an order can be marked Installed.'}, status=400)
         d.status = requested
