@@ -318,7 +318,7 @@ function SalesTable({ tab, rows, onEdit, onHistory }) {
   if (!rows.length) return <Empty />;
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[760px] text-left text-sm">
+      <table className="w-full min-w-[980px] text-left text-sm">
         <thead className="bg-slate-50 text-xs uppercase text-slate-500">
           <tr>
             {tab === "customers" ? (
@@ -343,9 +343,11 @@ function SalesTable({ tab, rows, onEdit, onHistory }) {
               </>
             ) : (
               <>
-                <th className="px-5 py-3">Order</th>
-                <th>Customer</th>
-                <th>Value</th>
+                <th className="px-5 py-3">Order ID</th>
+                <th>Customer / Division</th>
+                <th>Order Value</th>
+                <th>Advance Received</th>
+                <th>Balance</th>
                 <th>Delivery</th>
                 <th>Status</th>
               </>
@@ -395,8 +397,16 @@ function SalesTable({ tab, rows, onEdit, onHistory }) {
               ) : (
                 <>
                   <td className="px-5 py-4 font-semibold">{x.order_no}</td>
-                  <td>{x.customer.name}</td>
+                  <td>
+                    {x.customer.name}
+                    <div className="text-xs text-slate-500">{x.division?.name || "Division not assigned"}</div>
+                  </td>
                   <td>{money(x.confirmed_price)}</td>
+                  <td>
+                    {money(x.advance_paid)}
+                    <div className="text-xs text-slate-500">Target: {money(x.advance_target)}</div>
+                  </td>
+                  <td>{money(x.balance)}</td>
                   <td>{x.delivery_date || "—"}</td>
                   <td>
                     <Badge value={x.status_label} />
@@ -756,11 +766,6 @@ function SalesForm({ type, initial = {}, customers, departments = [], onClose, o
               options={[
                 "confirmed",
                 "design_pending",
-                "production_pending",
-                "in_production",
-                "ready",
-                "delivered",
-                "cancelled",
               ].map((x) => [x, x.replaceAll("_", " ")])}
             />
             <Field
