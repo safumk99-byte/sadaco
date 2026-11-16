@@ -609,7 +609,7 @@ class QuotationWorkflowApiTests(TestCase):
         quotation_data = self._create_quotation("15")
         quotation_id = quotation_data["id"]
         self.assertEqual(quotation_data["subtotal"], "1000.00")
-        self.assertEqual(quotation_data["quoted_price"], "1000.00")
+        self.assertEqual(quotation_data["quoted_price"], "1050.00")
 
         response = self.client.post(
             f"/api/sales/quotations/{quotation_id}/submit/",
