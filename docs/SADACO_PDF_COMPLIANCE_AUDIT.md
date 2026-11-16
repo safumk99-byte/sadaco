@@ -489,3 +489,13 @@ This remains a source-level review only. No Django test command, migration, Neon
 - Offcut registration now validates that the measured piece dimensions fit within one physical source sheet, allowing rotation. The prior area-only check could accept an impossible long/narrow rectangle whose area was small enough but whose length exceeded the sheet.
 - Added a regression test for an offcut dimension that exceeds the source sheet even though its declared usable area is small.
 - CI for these newest commits is pending; no production DB, main, or deployment was changed.
+
+
+### Read-only stock ledger and receipt-lot reconciliation
+
+- Added `reconcile_material_stock_balance()` and the department-scoped read-only endpoint `/api/inventory/materials/reconciliation/`.
+- The report compares recorded department/location balance with the reconstructed movement ledger and separately verifies each receipt lot (`original_quantity - issued_quantity + returned_quantity`).
+- Wastage movements are intentionally treated as annotations with zero additional stock delta because the sheet quantity was already deducted at original issue. Offcut area remains outside the sheet-unit stock balance.
+- Opening/legacy quantities not backed by receipt lots are reported as `unbatched_quantity` warnings rather than falsely labelled as movement mismatches. Such quantities remain uncosted/unbatched and are not eligible for the receipt-lot issue workflow until a legitimate costed batch exists.
+- Added tests for a balanced issue+wastage path and for separately identifying unbatched opening stock. This report is diagnostic only; it performs no stock correction or write.
+- CI for the reconciliation endpoint and new tests is pending. No database, production, main, or deployment changes were made.
