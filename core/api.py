@@ -866,11 +866,40 @@ def approvals_api(request):
 def approval_review_api(request, pk):
     if getattr(getattr(request.user, "profile", None), "role", None) not in ("super_admin", "institution_admin", "manager") and not request.user.is_superuser:
         return JsonResponse({"detail": "You do not have permission to review approvals."}, status=403)
-    item = get_object_or_404(_approval_requests_for_user(request.user), pk=pk)
+    item = get_object_or_404(_approval_requests_for_user(request.user).select_for_update(), pk=pk)
     data = _request_data(request)
     status = str(data.get("status", "")).strip()
     if status not in (ApprovalRequest.Status.APPROVED, ApprovalRequest.Status.REJECTED):
         return JsonResponse({"detail": "Status must be approved or rejected."}, status=400)
+    if item.status != ApprovalRequest.Status.PENDING:
+        return JsonResponse({"detail": "This approval request has already been reviewed."}, status=409)
+    if item.module in ("purchase", "finance"):
+        profile = getattr(request.user, "profile", None)
+        if not (request.user.is_superuser or (profile and profile.is_active and profile.role == UserProfile.Role.SUPER_ADMIN)):
+            return JsonResponse({"detail": "Only the Founder can review Purchase and Expense threshold approvals."}, status=403)
+        if status == ApprovalRequest.Status.APPROVED:
+            if item.module == "purchase" and item.action == "send_purchase_order":
+                from purchase.models import PurchaseOrder
+                record = get_object_or_404(PurchaseOrder.objects.select_for_update(), po_no=item.reference)
+                if record.status != PurchaseOrder.Status.DRAFT or record.total != item.amount:
+                    return JsonResponse({"detail": "Purchase order changed after the approval request. Review is blocked; create a new request."}, status=409)
+                record.status = PurchaseOrder.Status.SENT
+                record.save(update_fields=["status", "updated_at"])
+            elif item.module == "finance" and item.action == "pay_expense":
+                from finance.models import Expense, FinanceTransaction
+                record = get_object_or_404(Expense.objects.select_for_update(), expense_no=item.reference)
+                if record.status != Expense.Status.DRAFT or record.amount != item.amount:
+                    return JsonResponse({"detail": "Expense changed after the approval request. Review is blocked; create a new request."}, status=409)
+                record.status = Expense.Status.PAID
+                record.save(update_fields=["status"])
+                FinanceTransaction.objects.get_or_create(expense=record, defaults={
+                    "transaction_type": FinanceTransaction.Type.EXPENSE, "amount": record.amount,
+                    "transaction_date": record.expense_date, "payment_method": record.payment_method,
+                    "reference": record.expense_no, "description": record.description or record.category.name,
+                    "created_by": request.user,
+                })
+            else:
+                return JsonResponse({"detail": "Unsupported approval action."}, status=400)
     item.status = status
     item.reviewer_note = str(data.get("reviewer_note", "")).strip()
     item.reviewed_by = request.user
