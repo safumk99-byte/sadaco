@@ -449,3 +449,16 @@ This remains a source-level review only. No Django test command, migration, Neon
 - Production UI currently exposes receipt-batch issue, return and wastage flows; no matching offcut registration/selection/consumption interface was found in the reviewed Production Management page.
 - Safe next design: retain offcuts as individually traceable pieces with dimensions and square-foot area, and add a separate area-based ledger/consumption record tied to the source issue/receipt lot and target production material. Only calculate cost when source-lot cost and the material's source sheet area are known; do not infer sheet size or value from the current MaterialVariant record.
 - No offcut code, schema, database, `main`, or deployment was changed during this review. Implementation is held pending confirmation of the business unit/cost rule.
+
+
+## 2026-11-16 — Offcut area ledger implementation (CI pending)
+
+- Added `ReusableOffcut.source_issue`, `source_lot` and a six-decimal `cost_per_sqft` snapshot. New offcuts must be registered against an issued, receipt-costed Sheet material issue; legacy offcut rows remain nullable and readable.
+- Registration validates positive dimensions/usable area, checks usable area does not exceed the measured rectangle (mm² → sq ft), verifies material/department/source-job/receipt-lot consistency, and prevents aggregate registered offcut area from exceeding the unreturned/unwasted source issue's sheet area.
+- Sheet area uses the material master dimensions already present on `MaterialVariant`; cost per sq ft is the exact source lot unit cost divided by that sheet area. The sheet-stock balance is deliberately not incremented or decremented by square feet.
+- Added `OffcutUsage` as a separate area-based consumption ledger, linking each partial use to a target ProductionJob and matching ProductionMaterial line. Each usage snapshots cost per sq ft and rounded total cost. Multiple partial uses are supported; the offcut is marked Used only when its full usable area has been allocated.
+- The offcut API now returns source receipt, cost snapshot, remaining area and usage history. Production detail exposes the material master ID; the Production UI can register a measured offcut from a source issue and allocate available area to a matching material line in the current job.
+- Added regression coverage for source-lot cost snapshot, rectangle-area validation, partial use and cost allocation, full-use status transition, and material mismatch rejection.
+- Cost attribution is recorded in `OffcutUsage`, but no existing consolidated production-job costing/report service was found in this audit. This change does not yet calculate source-job salvage credit or roll offcut usage into a final job margin/report; those require a separate, explicit costing/reporting step. No sheet stock quantity is altered by area-based offcuts.
+- Files changed: `inventory/models.py`, `inventory/migrations/0006_offcut_area_cost_ledger.py`, `inventory/api.py`, `inventory/tests.py`, `production/api.py`, `frontend/src/pages/ProductionManagement.jsx`.
+- CI runs #214–#219 were triggered; final results must be checked after completion. No local Django/Playwright command, Neon write, production change, `main` merge, or Render deployment was performed.
