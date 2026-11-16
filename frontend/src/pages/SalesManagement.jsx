@@ -356,7 +356,7 @@ function SalesTable({ tab, rows, onEdit }) {
                   <td className="px-5 py-4 font-semibold">
                     {x.name}
                     <div className="text-xs font-normal text-slate-500">
-                      {x.email || "No email"}
+                      {x.customer_no} · {x.customer_type || "Type not set"} · {x.email || "No email"}
                     </div>
                   </td>
                   <td>{x.phone}</td>
@@ -427,6 +427,7 @@ function SalesForm({ type, initial = {}, customers, departments = [], onClose, o
   const defaults = {
     customer: {
       name: "",
+      customer_type: "",
       department: "",
       phone: "",
       alternate_phone: "",
@@ -533,6 +534,7 @@ function SalesForm({ type, initial = {}, customers, departments = [], onClose, o
               set={(v) => set("name", v)}
               required
             />
+            <Field label="Customer Type" value={f.customer_type} set={(v) => set("customer_type", v)} />
             <Field
               label="Phone"
               value={f.phone}
@@ -583,6 +585,7 @@ function SalesForm({ type, initial = {}, customers, departments = [], onClose, o
                 "instagram",
                 "facebook",
                 "walk_in",
+                "direct_visit",
                 "referral",
                 "other",
               ].map((x) => [x, x.replace("_", " ")])}
