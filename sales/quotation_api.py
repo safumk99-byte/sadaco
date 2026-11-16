@@ -383,14 +383,19 @@ def quotation_approval_action(request, pk):
 @login_required
 def quotation_workflow_detail(request, pk):
     quotation = get_object_or_404(_quotation_qs(request.user).select_related("customer").prefetch_related("line_items", "approval_history__performed_by"), pk=pk)
+    if quotation.status == Quotation.Status.SENT and quotation.valid_until and quotation.valid_until < timezone.localdate():
+        quotation.status = Quotation.Status.EXPIRED
+        quotation.save(update_fields=["status", "updated_at"])
     return JsonResponse({"quotation": _quotation_payload(quotation)})
 
 
 @login_required
 def quotation_pdf(request, pk):
     quotation = get_object_or_404(_quotation_qs(request.user).select_related("customer").prefetch_related("line_items"), pk=pk)
+    if quotation.status == Quotation.Status.SENT and quotation.valid_until and quotation.valid_until < timezone.localdate():
+        quotation.status = Quotation.Status.EXPIRED
+        quotation.save(update_fields=["status", "updated_at"])
+        return JsonResponse({"detail": "This quotation has expired."}, status=409)
     if quotation.status not in (Quotation.Status.SENT, Quotation.Status.ACCEPTED, Quotation.Status.APPROVED):
         return JsonResponse({"detail": "A quotation PDF is available after it has been sent or accepted."}, status=409)
-    if quotation.valid_until and quotation.valid_until < timezone.localdate() and quotation.status == Quotation.Status.SENT:
-        return JsonResponse({"detail": "This quotation has expired."}, status=409)
     return quotation_pdf_response(quotation)
