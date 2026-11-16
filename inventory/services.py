@@ -364,9 +364,18 @@ def reconcile_material_stock_balance(balance):
 @transaction.atomic
 def submit_material_stock_count(*, balance_id, counted_quantity, user=None, reason=""):
     from .models import MaterialStockCount
-    counted = Decimal(str(counted_quantity))
+    try:
+        counted = Decimal(str(counted_quantity))
+    except (InvalidOperation, TypeError, ValueError):
+        raise ValidationError("Counted quantity must be a valid decimal number.")
+    if not counted.is_finite():
+        raise ValidationError("Counted quantity must be finite.")
     if counted < 0:
         raise ValidationError("Counted quantity cannot be negative.")
+    if max(-counted.as_tuple().exponent, 0) > 3:
+        raise ValidationError("Counted quantity supports up to three decimal places.")
+    if counted > Decimal("99999999999.999"):
+        raise ValidationError("Counted quantity exceeds the supported stock quantity.")
     balance = MaterialStockBalance.objects.select_for_update().get(pk=balance_id)
     variance = counted - balance.quantity
     return MaterialStockCount.objects.create(
