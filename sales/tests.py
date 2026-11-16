@@ -466,3 +466,35 @@ class SalesOrderLifecyclePermissionTests(TestCase):
         order.refresh_from_db()
         self.assertEqual(order.status, SalesOrder.Status.DELIVERED)
         self.assertEqual(order.notes, "Updated note")
+
+
+class CustomerMasterRequirementsTests(TestCase):
+    def test_customer_number_is_generated_and_stable(self):
+        customer = Customer.objects.create(
+            name="Unique Customer", phone="+91 98765 43210", customer_type="Retail"
+        )
+        first_number = customer.customer_no
+        self.assertTrue(first_number.startswith("CUS-"))
+        customer.name = "Updated Customer"
+        customer.save()
+        self.assertEqual(customer.customer_no, first_number)
+        self.assertEqual(customer.customer_type, "Retail")
+
+    def test_customer_form_rejects_duplicate_mobile_with_different_formatting(self):
+        from .forms import CustomerForm
+        Customer.objects.create(name="Existing", phone="+91 98765-43210")
+        form = CustomerForm(data={
+            "name": "Duplicate", "customer_type": "Retail", "phone": "919876543210",
+            "alternate_phone": "", "email": "", "address": "", "status": "active", "notes": "",
+        })
+        self.assertFalse(form.is_valid())
+        self.assertIn("phone", form.errors)
+
+    def test_customer_form_allows_same_customer_to_keep_its_mobile(self):
+        from .forms import CustomerForm
+        customer = Customer.objects.create(name="Existing", phone="+91 98765-43210")
+        form = CustomerForm(data={
+            "name": "Existing Updated", "customer_type": "Business", "phone": "+91 98765-43210",
+            "alternate_phone": "", "email": "", "address": "", "status": "active", "notes": "",
+        }, instance=customer)
+        self.assertTrue(form.is_valid(), form.errors)
