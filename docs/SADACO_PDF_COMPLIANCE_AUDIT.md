@@ -499,3 +499,6 @@ This remains a source-level review only. No Django test command, migration, Neon
 - Opening/legacy quantities not backed by receipt lots are reported as `unbatched_quantity` warnings rather than falsely labelled as movement mismatches. Such quantities remain uncosted/unbatched and are not eligible for the receipt-lot issue workflow until a legitimate costed batch exists.
 - Added tests for a balanced issue+wastage path and for separately identifying unbatched opening stock. This report is diagnostic only; it performs no stock correction or write.
 - CI for the reconciliation endpoint and new tests is pending. No database, production, main, or deployment changes were made.
+
+- Added a Stock Reconciliation tab to Material Master & Job Costing. Authorized users can refresh a read-only view of recorded stock, movement-derived expected stock, receipt-lot remaining stock, differences and unbatched quantities. The API is department-scoped; no automatic corrections are offered.
+- Added an endpoint regression test confirming a department manager cannot see another department's balance through the reconciliation report.
