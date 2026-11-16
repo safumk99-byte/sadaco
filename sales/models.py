@@ -186,6 +186,7 @@ class SalesOrder(models.Model):
         IN_PRODUCTION = "in_production", "In Production"
         READY = "ready", "Ready"
         DELIVERED = "delivered", "Delivered"
+        CLOSED = "closed", "Closed"
         CANCELLED = "cancelled", "Cancelled"
 
     order_no = models.CharField(max_length=30, unique=True, editable=False)
@@ -205,6 +206,8 @@ class SalesOrder(models.Model):
     credit_exception_reason = models.TextField(blank=True)
     credit_exception_approved_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="approved_sales_credit_exceptions")
     credit_exception_approved_at = models.DateTimeField(null=True, blank=True)
+    closed_at = models.DateTimeField(null=True, blank=True)
+    closed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="closed_sales_orders")
     status = models.CharField(max_length=30, choices=Status.choices, default=Status.CONFIRMED)
     notes = models.TextField(blank=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="created_sales_orders")
