@@ -57,7 +57,13 @@ export default function QuotationManagement() {
   const pendingCount = useMemo(() => quotations.filter((q) => q.status === "pending_approval").length, [quotations]);
   const openEditor = async (quotation) => {
     if (!quotation) {
-      setEditor({ initial: null, form: blankQuote() });
+      const form = blankQuote();
+      if (config?.default_validity_days) {
+        const validUntil = new Date();
+        validUntil.setDate(validUntil.getDate() + Number(config.default_validity_days));
+        form.valid_until = [validUntil.getFullYear(), String(validUntil.getMonth() + 1).padStart(2, "0"), String(validUntil.getDate()).padStart(2, "0")].join("-");
+      }
+      setEditor({ initial: null, form });
       return;
     }
     try {
