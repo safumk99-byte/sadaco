@@ -619,7 +619,9 @@ def material_stock_count_submit_api(request):
         scope = _manager_department(request.user)
         if scope is False:
             return JsonResponse({"detail": "You do not have permission to submit stock counts."}, status=403)
-        balance = _visible_balances(request.user).get(pk=data.get("balance"))
+        balance = _visible_balances(request.user).filter(pk=data.get("balance")).first()
+        if balance is None:
+            return JsonResponse({"detail": "Stock balance not found."}, status=404)
         count = submit_material_stock_count(
             balance_id=balance.pk, counted_quantity=data.get("counted_quantity"),
             user=request.user, reason=str(data.get("reason", "")),
