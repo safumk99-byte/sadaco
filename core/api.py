@@ -863,6 +863,7 @@ def approvals_api(request):
 
 @require_POST
 @login_required
+@transaction.atomic
 def approval_review_api(request, pk):
     if getattr(getattr(request.user, "profile", None), "role", None) not in ("super_admin", "institution_admin", "manager") and not request.user.is_superuser:
         return JsonResponse({"detail": "You do not have permission to review approvals."}, status=403)
