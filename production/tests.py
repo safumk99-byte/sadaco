@@ -168,6 +168,16 @@ class ProductionDepartmentAccessTests(TestCase):
         self.assertNotEqual(self.creative_job.status, ProductionJob.Status.COMPLETED)
 
 
+
+    def test_job_detail_endpoint_requires_authentication_and_serves_cost_summary(self):
+        response = self.client.get(f"/api/production/jobs/{self.creative_job.pk}/")
+        self.assertIn(response.status_code, (302, 401))
+        self.client.force_login(self.creative_manager)
+        response = self.client.get(f"/api/production/jobs/{self.creative_job.pk}/")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertIsNotNone(response.json()["material_costs"])
+
+
 class ProductionMaterialFormSafetyTests(TestCase):
     def setUp(self):
         self.department = Department.objects.get_or_create(
