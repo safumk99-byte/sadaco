@@ -462,3 +462,15 @@ This remains a source-level review only. No Django test command, migration, Neon
 - Cost attribution is recorded in `OffcutUsage`, but no existing consolidated production-job costing/report service was found in this audit. This change does not yet calculate source-job salvage credit or roll offcut usage into a final job margin/report; those require a separate, explicit costing/reporting step. No sheet stock quantity is altered by area-based offcuts.
 - Files changed: `inventory/models.py`, `inventory/migrations/0006_offcut_area_cost_ledger.py`, `inventory/api.py`, `inventory/tests.py`, `production/api.py`, `frontend/src/pages/ProductionManagement.jsx`.
 - CI runs #214–#219 were triggered; final results must be checked after completion. No local Django/Playwright command, Neon write, production change, `main` merge, or Render deployment was performed.
+
+
+## 2026-11-16 — Offcut cost transfer and production-job material costing
+
+- Added discard snapshots `discarded_area_sqft` and `discarded_cost`. Discarding an offcut now writes off only its remaining area at the original source-batch cost per sq ft; previously consumed area remains allocated to the jobs that used it.
+- Added `_job_material_cost_summary(job)` to the Production Job detail response. The calculation reports receipt-backed issue cost, returned-material credit, generated-offcut salvage credit, discarded-offcut write-off, offcut cost consumed by this job, remaining reusable-offcut inventory value and net material cost.
+- Cost transfer treatment: when a reusable offcut is registered, its full area value is credited against the source job and held as reusable inventory value; when used by another job, its consumed area cost is charged to that target job; if remaining area is discarded, the source job receives the write-off. This prevents counting the same area as both source-job consumption and target-job consumption.
+- Legacy material issues without a recorded unit rate are excluded from monetary totals and surfaced as an unpriced issue count. No estimated price is substituted.
+- Production Job detail UI now displays the material cost reconciliation and permits discarding remaining offcut area with the resulting write-off displayed in the offcut record.
+- Added a regression test covering ₹100 issue cost, ₹31.25 salvage credit for 10 sq ft, ₹12.50 transfer for 4 sq ft to another job, and ₹18.75 write-off for the remaining 6 sq ft. Expected source-job net material cost after discard is ₹87.50; target-job offcut material cost is ₹12.50.
+- This is a receipt-backed raw-material cost view, not a complete job margin: labour, machine time, overhead, consumables and sales revenue are not included. No finance transactions or accounting journal entries are created by this operational costing view.
+- CI run for the final commit is pending. No local Django/Playwright command, Neon write, production change, `main` merge, or Render deployment was performed.
