@@ -1,3 +1,4 @@
+import json
 from decimal import Decimal
 
 from django.contrib.auth.models import User
@@ -189,3 +190,114 @@ class MaterialStockCountTests(TestCase):
             review_material_stock_count(count_id=count.pk, approve=True, user=self.admin)
         self.balance.refresh_from_db()
         self.assertEqual(self.balance.quantity, Decimal("11"))
+
+
+class ReusableOffcutAreaLedgerTests(TestCase):
+    def setUp(self):
+        from inventory.models import ReusableOffcut, OffcutUsage
+        from inventory.services import issue_material
+        from purchase.models import Supplier, PurchaseOrder, PurchaseItem, GoodsReceipt, GoodsReceiptLine, MaterialStockLot
+
+        self.department = Department.objects.create(code="offcut-a", name="Offcut A")
+        self.manager = User.objects.create_user(username="offcut-manager", password="StrongPass123!")
+        UserProfile.objects.create(user=self.manager, role=UserProfile.Role.MANAGER, department=self.department)
+        customer = Customer.objects.create(name="Offcut Customer", phone="9000000011", department=self.department)
+        self.source_job = ProductionJob.objects.create(
+            order=SalesOrder.objects.create(customer=customer, item_description="Source job", quantity=1, confirmed_price=Decimal("1000")),
+            station=ProductionJob.Station.LASER,
+        )
+        self.target_job = ProductionJob.objects.create(
+            order=SalesOrder.objects.create(customer=customer, item_description="Target job", quantity=1, confirmed_price=Decimal("1000")),
+            station=ProductionJob.Station.LASER,
+        )
+        self.material = MaterialVariant.objects.create(
+            material_name="Offcut Acrylic", brand="Test", thickness_mm=Decimal("3"),
+            purchase_rate=Decimal("100"), unit="Sheet", sheet_width_ft=Decimal("8"), sheet_height_ft=Decimal("4"),
+        )
+        self.balance = MaterialStockBalance.objects.create(
+            material=self.material, department=self.department, location="Offcut Store", quantity=Decimal("10"),
+        )
+        self.source_line = ProductionMaterial.objects.create(
+            job=self.source_job, material_variant=self.material, material_name="Offcut Acrylic",
+            quantity_required=Decimal("2"), unit="Sheet",
+        )
+        self.target_line = ProductionMaterial.objects.create(
+            job=self.target_job, material_variant=self.material, material_name="Offcut Acrylic",
+            quantity_required=Decimal("2"), unit="Sheet",
+        )
+        supplier = Supplier.objects.create(name="Offcut Supplier")
+        po = PurchaseOrder.objects.create(supplier=supplier, department=self.department)
+        item = PurchaseItem.objects.create(purchase_order=po, material_variant=self.material, quantity=Decimal("10"), unit_cost=Decimal("100"))
+        receipt = GoodsReceipt.objects.create(purchase_order=po)
+        receipt_line = GoodsReceiptLine.objects.create(receipt=receipt, purchase_item=item, received_quantity=Decimal("10"), unit_cost=Decimal("100"), line_total=Decimal("1000"))
+        lot = MaterialStockLot.objects.create(receipt_line=receipt_line, balance=self.balance, original_quantity=Decimal("10"), remaining_quantity=Decimal("10"), unit_cost=Decimal("100"))
+        self.issue, _ = issue_material(material_id=self.source_line.pk, quantity="1", lot_id=lot.pk, user=self.manager)
+        self.client.force_login(self.manager)
+
+    def _create_offcut(self, usable_area="10"):
+        return self.client.post(
+            "/api/inventory/materials/offcuts/create/",
+            data=json.dumps({
+                "material": self.material.pk, "location": "Offcut Rack",
+                "length_mm": "1000", "width_mm": "1000", "usable_area_sqft": usable_area,
+                "source_issue": self.issue.pk,
+            }),
+            content_type="application/json",
+        )
+
+    def test_offcut_registration_snapshots_source_batch_cost_per_square_foot(self):
+        response = self._create_offcut()
+        self.assertEqual(response.status_code, 201, response.content)
+        from inventory.models import ReusableOffcut
+        offcut = ReusableOffcut.objects.get(pk=response.json()["id"])
+        self.assertEqual(offcut.source_issue_id, self.issue.pk)
+        self.assertEqual(offcut.source_lot_id, self.issue.stock_lot_id)
+        self.assertEqual(offcut.cost_per_sqft, Decimal("3.125000"))
+
+    def test_offcut_area_cannot_exceed_measured_rectangle(self):
+        response = self._create_offcut(usable_area="11")
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(ReusableOffcut.objects.exists())
+
+    def test_offcut_usage_can_be_partial_and_is_costed_to_matching_job_material(self):
+        response = self._create_offcut()
+        self.assertEqual(response.status_code, 201, response.content)
+        offcut_id = response.json()["id"]
+        first = self.client.post(
+            f"/api/inventory/materials/offcuts/{offcut_id}/action/",
+            data=json.dumps({"action": "used", "job": self.target_job.pk, "material_line": self.target_line.pk, "used_area_sqft": "4"}),
+            content_type="application/json",
+        )
+        self.assertEqual(first.status_code, 200, first.content)
+        self.assertEqual(first.json()["remaining_area_sqft"], "6")
+        self.assertEqual(first.json()["allocated_cost"], "12.50")
+        from inventory.models import ReusableOffcut, OffcutUsage
+        offcut = ReusableOffcut.objects.get(pk=offcut_id)
+        self.assertEqual(offcut.status, ReusableOffcut.Status.AVAILABLE)
+        second = self.client.post(
+            f"/api/inventory/materials/offcuts/{offcut_id}/action/",
+            data=json.dumps({"action": "used", "job": self.target_job.pk, "material_line": self.target_line.pk, "used_area_sqft": "6"}),
+            content_type="application/json",
+        )
+        self.assertEqual(second.status_code, 200, second.content)
+        offcut.refresh_from_db()
+        self.assertEqual(offcut.status, ReusableOffcut.Status.USED)
+        self.assertEqual(OffcutUsage.objects.filter(offcut=offcut).count(), 2)
+        self.assertEqual(sum(OffcutUsage.objects.filter(offcut=offcut).values_list("total_cost", flat=True)), Decimal("31.25"))
+
+    def test_offcut_cannot_be_used_for_another_material_or_department(self):
+        response = self._create_offcut()
+        self.assertEqual(response.status_code, 201, response.content)
+        other_material = MaterialVariant.objects.create(material_name="Other Sheet", unit="Sheet")
+        wrong_line = ProductionMaterial.objects.create(
+            job=self.target_job, material_variant=other_material, material_name="Other Sheet",
+            quantity_required=Decimal("1"), unit="Sheet",
+        )
+        rejected = self.client.post(
+            f"/api/inventory/materials/offcuts/{response.json()['id']}/action/",
+            data=json.dumps({"action": "used", "job": self.target_job.pk, "material_line": wrong_line.pk, "used_area_sqft": "1"}),
+            content_type="application/json",
+        )
+        self.assertEqual(rejected.status_code, 400)
+        from inventory.models import OffcutUsage
+        self.assertFalse(OffcutUsage.objects.exists())
