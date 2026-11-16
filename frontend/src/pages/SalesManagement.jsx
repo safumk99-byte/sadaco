@@ -486,10 +486,10 @@ function OrderPayments({ order, onClose, onSaved }) {
         )) : <Empty />}
       </div>
       <form onSubmit={submit} className="grid gap-3 md:grid-cols-2">
-        <Field label="Amount" value={amount} set={setAmount} required />
-        <Field label="Payment Type" value={paymentType} set={setPaymentType} select options={["advance", "final", "other"]} />
-        <Field label="Payment Method" value={method} set={setMethod} select options={["cash", "upi", "bank", "card", "other"]} />
-        <Field label="Paid On" value={paidOn} set={setPaidOn} type="date" />
+        <Field label="Amount" value={amount} set={setAmount} required number />
+        <Select label="Payment Type" value={paymentType} set={setPaymentType} options={[["advance", "Advance"], ["final", "Final"], ["other", "Other"]]} required />
+        <Select label="Payment Method" value={method} set={setMethod} options={[["cash", "Cash"], ["upi", "UPI"], ["bank", "Bank Transfer"], ["card", "Card"], ["other", "Other"]]} required />
+        <Field label="Paid On" value={paidOn} set={setPaidOn} date />
         <Field label="Reference" value={reference} set={setReference} />
         <Field label="Notes" value={notes} set={setNotes} />
         {error && <div className="md:col-span-2 rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</div>}
