@@ -21,6 +21,7 @@ export default function SalesManagement() {
     quotations: [],
     orders: [],
     can_manage: false,
+    can_approve_payment_exceptions: false,
     statuses: [],
   });
   const [q, setQ] = useState("");
@@ -49,6 +50,7 @@ export default function SalesManagement() {
         quotations: qu.data.quotations,
         orders: o.data.orders,
         can_manage: c.data.can_manage,
+        can_approve_payment_exceptions: o.data.can_approve_payment_exceptions || false,
         statuses: e.data.statuses,
       });
     } catch (e) {
@@ -219,7 +221,7 @@ export default function SalesManagement() {
         </>
       )}
       {paymentOrder && (
-        <OrderPayments order={paymentOrder} onClose={() => setPaymentOrder(null)} onSaved={() => { setPaymentOrder(null); load(); }} />
+        <OrderPayments order={paymentOrder} canApproveExceptions={data.can_approve_payment_exceptions} onClose={() => setPaymentOrder(null)} onSaved={() => { setPaymentOrder(null); load(); }} />
       )}
       {historyCustomer && (
         <CustomerHistory customer={historyCustomer} canManage={data.can_manage} onClose={() => setHistoryCustomer(null)} />
@@ -444,13 +446,15 @@ function Badge({ value }) {
 }
 
 
-function OrderPayments({ order, onClose, onSaved }) {
+function OrderPayments({ order, canApproveExceptions, onClose, onSaved }) {
   const [amount, setAmount] = useState("");
   const [paymentType, setPaymentType] = useState("advance");
   const [method, setMethod] = useState("cash");
   const [paidOn, setPaidOn] = useState(new Date().toISOString().slice(0, 10));
   const [reference, setReference] = useState("");
   const [notes, setNotes] = useState("");
+  const [exceptionType, setExceptionType] = useState("advance");
+  const [exceptionReason, setExceptionReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const submit = async (event) => {
@@ -485,6 +489,23 @@ function OrderPayments({ order, onClose, onSaved }) {
           </div>
         )) : <Empty />}
       </div>
+      {canApproveExceptions && (
+        <form onSubmit={async (event) => {
+          event.preventDefault();
+          setError("");
+          try {
+            await api.post("/sales/orders/" + order.id + "/payment-exception/", { type: exceptionType, reason: exceptionReason });
+            onSaved();
+          } catch (e) {
+            setError(e.response?.data?.detail || "Unable to approve payment exception.");
+          }
+        }} className="mb-5 grid gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 md:grid-cols-2">
+          <div className="md:col-span-2 text-sm font-semibold text-amber-900">Founder Approval · Payment Exception</div>
+          <Select label="Exception Type" value={exceptionType} set={setExceptionType} options={[["advance", "Advance Below 50%"], ["credit", "Delivery on Credit"]]} />
+          <Field label="Approval Reason" value={exceptionReason} set={setExceptionReason} required />
+          <div className="md:col-span-2"><button className="rounded-xl bg-amber-700 px-4 py-2 text-sm font-semibold text-white">Approve Exception</button></div>
+        </form>
+      )}
       <form onSubmit={submit} className="grid gap-3 md:grid-cols-2">
         <Field label="Amount" value={amount} set={setAmount} required number />
         <Select label="Payment Type" value={paymentType} set={setPaymentType} options={[["advance", "Advance"], ["final", "Final"], ["other", "Other"]]} required />
