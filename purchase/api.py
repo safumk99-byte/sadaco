@@ -149,7 +149,27 @@ def create(request):
             return JsonResponse({"detail": "Select a department for this purchase order."}, status=400)
         from core.models import Department
         po.department = get_object_or_404(Department, pk=department_id, is_active=True)
-        po.subtotal=item_form.cleaned_data['quantity'] * item_form.cleaned_data['unit_cost']; po.save()
+        po.subtotal=item_form.cleaned_data['quantity'] * item_form.cleaned_data['unit_cost']
+        requested_status = po.status
+        if requested_status == PurchaseOrder.Status.SENT:
+            from finance.models import ApprovalThreshold
+            config = ApprovalThreshold.objects.order_by("pk").first()
+            if not config or config.purchase_amount is None:
+                return JsonResponse({"detail": "Founder must configure the Purchase approval threshold before a purchase order can be Sent. Save it as Draft or ask the Founder to configure the threshold."}, status=409)
+            if po.total > config.purchase_amount:
+                reason = str(data.get("approval_reason", "")).strip()
+                if not reason:
+                    return JsonResponse({"detail": "An approval reason is required for a purchase order above the configured threshold."}, status=400)
+                from core.models import ApprovalRequest
+                po.status = PurchaseOrder.Status.DRAFT
+                po.save()
+                item=item_form.save(commit=False); item.purchase_order=po; item.save()
+                ApprovalRequest.objects.create(
+                    module="purchase", action="send_purchase_order", reference=po.po_no,
+                    amount=po.total, reason=reason, requested_by=request.user,
+                )
+                return JsonResponse({"order":_po(po), "approval_required":True, "detail":"Purchase order saved as Draft and submitted for Founder approval."},status=202)
+        po.save()
         item=item_form.save(commit=False); item.purchase_order=po; item.save()
         return JsonResponse({'order':_po(po)},status=201)
     return JsonResponse({'detail':'Validation failed.','errors':{**po_form.errors.get_json_data(), **item_form.errors.get_json_data()}},status=400)
