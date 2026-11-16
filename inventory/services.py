@@ -180,7 +180,7 @@ def return_issued_material(*, material_issue_id, quantity, user=None, reference=
     if quantity <= 0:
         raise ValidationError("Return quantity must be greater than zero.")
     issue = MaterialIssue.objects.select_for_update(of=("self",)).select_related(
-        "material", "stock_lot", "material__job__order__customer"
+        "material", "stock_lot", "stock_movement", "material__job__order__customer"
     ).get(pk=material_issue_id, status=MaterialIssue.Status.ISSUED)
     material = ProductionMaterial.objects.select_for_update(of=("self",)).get(pk=issue.material_id)
     if not material.material_variant_id or not issue.stock_lot_id or issue.unit_rate is None:
@@ -189,6 +189,8 @@ def return_issued_material(*, material_issue_id, quantity, user=None, reference=
     if quantity > available:
         raise ValidationError(f"Return exceeds this issue's remaining unaccounted quantity: {available} {material.unit}.")
     lot = issue.stock_lot.__class__.objects.select_for_update().get(pk=issue.stock_lot_id)
+    if issue.stock_movement_id and issue.stock_movement.balance_id != lot.balance_id:
+        raise ValidationError("The issue receipt batch must match the original issue stock location.")
     balance = MaterialStockBalance.objects.select_for_update().get(
         pk=lot.balance_id, material_id=material.material_variant_id,
         department_id=material.job.order.customer.department_id,
@@ -228,6 +230,8 @@ def record_issued_wastage(*, material_issue_id, quantity, user=None, reference="
     if quantity > available:
         raise ValidationError(f"Wastage exceeds this issue's remaining unaccounted quantity: {available} {material.unit}.")
     lot = issue.stock_lot.__class__.objects.select_for_update().get(pk=issue.stock_lot_id)
+    if issue.stock_movement_id and issue.stock_movement.balance_id != lot.balance_id:
+        raise ValidationError("The issue receipt batch must match the original issue stock location.")
     balance = MaterialStockBalance.objects.select_for_update().get(
         pk=lot.balance_id, material_id=material.material_variant_id,
         department_id=material.job.order.customer.department_id,
