@@ -132,3 +132,55 @@ class QualityReworkLifecycleTests(TestCase):
         self.job.refresh_from_db()
         self.assertEqual(self.job.status, "on_hold")
         self.assertEqual(self.job.stage, "qc_pending")
+
+
+class FinalQualityChecklistValidationTests(TestCase):
+    def setUp(self):
+        from core.models import Department
+        from sales.models import Customer, SalesOrder
+        from production.models import ProductionJob
+
+        department = Department.objects.create(code="final-qc-checklist", name="Final QC Checklist")
+        self.manager = User.objects.create_user(username="final_qc_manager", password="StrongPass123!")
+        UserProfile.objects.create(user=self.manager, role=UserProfile.Role.MANAGER, department=department)
+        customer = Customer.objects.create(name="Final QC Customer", phone="9000000088", department=department)
+        order = SalesOrder.objects.create(customer=customer, item_description="QC Item", quantity=1, confirmed_price=1000)
+        self.job = ProductionJob.objects.create(
+            order=order, station=ProductionJob.Station.CUSTOM,
+            status=ProductionJob.Status.ON_HOLD, stage=ProductionJob.Stage.QC_PENDING,
+        )
+        self.client.force_login(self.manager)
+
+    def _payload(self, **overrides):
+        payload = {
+            "check_type": "final", "result": "pass", "inspector": "",
+            "stage": "final", "design_match": True, "measurement_ok": True,
+            "finishing_ok": True, "colour_ok": True, "engraving_ok": True,
+            "cutting_ok": True, "assembly_ok": True, "sticking_ok": True,
+            "polishing_ok": True, "electrical_ok": True, "appearance_ok": True,
+            "packing_ok": True, "defects": "", "rework_reason": "",
+            "corrective_action": "", "remarks": "",
+        }
+        payload.update(overrides)
+        return payload
+
+    def test_final_qc_cannot_pass_with_incomplete_checklist(self):
+        response = self.client.post(
+            "/api/quality/checks/create/",
+            data=json.dumps({"job": self.job.pk, **self._payload(packing_ok=False)}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Packing", str(response.json()["errors"]))
+        self.job.refresh_from_db()
+        self.assertNotEqual(self.job.status, "completed")
+
+    def test_final_qc_passes_when_all_checklist_items_are_confirmed(self):
+        response = self.client.post(
+            "/api/quality/checks/create/",
+            data=json.dumps({"job": self.job.pk, **self._payload()}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 201)
+        self.job.refresh_from_db()
+        self.assertEqual(self.job.status, "completed")
