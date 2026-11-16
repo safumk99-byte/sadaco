@@ -8,6 +8,8 @@ import {
   getReceivables,
   getReconciliation,
   getSupplierPayments,
+  getApprovalThresholds,
+  updateApprovalThresholds,
 } from "../services/api";
 const money = (v) =>
   `₹ ${Number(v || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
@@ -31,7 +33,9 @@ export default function FinanceManagement() {
     [recon, setRecon] = useState({ by_method: [], transactions: [] }),
     [modal, setModal] = useState(null),
     [form, setForm] = useState({}),
-    [error, setError] = useState("");
+    [error, setError] = useState(""),
+    [thresholds, setThresholds] = useState({ purchase_amount: "", expense_amount: "", can_configure: false }),
+    [thresholdSaving, setThresholdSaving] = useState(false);
   const load = async () => {
     try {
       setError("");
@@ -42,6 +46,8 @@ export default function FinanceManagement() {
         getSupplierPayments(),
         getReconciliation(),
       ]);
+      const controls = await getApprovalThresholds();
+      setThresholds({ purchase_amount: controls.purchase_amount ?? "", expense_amount: controls.expense_amount ?? "", can_configure: controls.can_configure });
       setStats(d.stats);
       setTx(d.transactions);
       setExpenses(e);
@@ -55,6 +61,17 @@ export default function FinanceManagement() {
   useEffect(() => {
     load();
   }, []);
+  const saveThresholds = async (e) => {
+    e.preventDefault();
+    setThresholdSaving(true);
+    try {
+      const saved = await updateApprovalThresholds({ purchase_amount: thresholds.purchase_amount || null, expense_amount: thresholds.expense_amount || null });
+      setThresholds((current) => ({ ...current, purchase_amount: saved.purchase_amount ?? "", expense_amount: saved.expense_amount ?? "" }));
+      setError("");
+    } catch (e) {
+      setError(e.response?.data?.detail || "Could not update approval thresholds.");
+    } finally { setThresholdSaving(false); }
+  };
   const submitExpense = async (e) => {
     e.preventDefault();
     try {
@@ -147,6 +164,7 @@ export default function FinanceManagement() {
             ["receivables", "Receivables"],
             ["supplier", "Supplier Payments"],
             ["reconciliation", "Reconciliation"],
+            ["controls", "Approval Controls"],
           ].map(([k, l]) => (
             <button
               key={k}
@@ -169,6 +187,14 @@ export default function FinanceManagement() {
           <div className="mt-3 rounded-xl bg-red-50 p-3 text-sm text-red-700">
             {error}
           </div>
+        )}
+        {tab === "controls" && (
+          <form onSubmit={saveThresholds} className="max-w-2xl space-y-4 py-5">
+            <div><h3 className="font-semibold">Founder Approval Thresholds</h3><p className="mt-1 text-sm text-slate-500">Transactions above these amounts require Founder approval before a Purchase Order can be sent or an Expense can be marked Paid. Leave a field blank only when intentionally removing its configuration.</p></div>
+            <Field label="Purchase approval threshold (₹)"><input type="number" min="0" step="0.01" disabled={!thresholds.can_configure} className={input} value={thresholds.purchase_amount} onChange={(e) => setThresholds({ ...thresholds, purchase_amount: e.target.value })} placeholder="Not configured" /></Field>
+            <Field label="Expense approval threshold (₹)"><input type="number" min="0" step="0.01" disabled={!thresholds.can_configure} className={input} value={thresholds.expense_amount} onChange={(e) => setThresholds({ ...thresholds, expense_amount: e.target.value })} placeholder="Not configured" /></Field>
+            {thresholds.can_configure ? <button disabled={thresholdSaving} className="rounded-xl bg-slate-900 px-4 py-2 font-semibold text-white">{thresholdSaving ? "Saving..." : "Save Thresholds"}</button> : <p className="text-sm text-amber-700">Only the Founder can change these settings.</p>}
+          </form>
         )}
         {tab === "overview" && (
           <div className="py-4 overflow-x-auto">
@@ -366,6 +392,7 @@ export default function FinanceManagement() {
               </select>
             </Field>
             <div className="sm:col-span-2">
+              {Number(form.amount || 0) > Number(thresholds.expense_amount || 0) && thresholds.expense_amount !== "" && <Field label="Approval reason"><textarea required className={input} rows="2" value={form.approval_reason || ""} onChange={(e) => setForm({ ...form, approval_reason: e.target.value })} /></Field>}
               <Field label="Description">
                 <textarea
                   className={input}
