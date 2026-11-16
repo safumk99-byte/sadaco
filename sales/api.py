@@ -10,7 +10,7 @@ from accounts.models import UserProfile
 from core.models import Department
 from staff.models import StaffProfile
 from .forms import CustomerForm, CustomerInteractionForm, EnquiryForm, QuotationForm, SalesOrderForm
-from .models import Customer, CustomerInteraction, Enquiry, Quotation, SalesOrder, OrderRequest
+from .models import Customer, CustomerInteraction, Enquiry, Quotation, SalesOrder, OrderRequest, PaymentRecord
 
 MANAGER_ROLES = {UserProfile.Role.SUPER_ADMIN, UserProfile.Role.INSTITUTION_ADMIN, UserProfile.Role.MANAGER}
 
@@ -149,6 +149,9 @@ def _order(o):
         "advance_remaining": str(max(advance_target - advance_paid, Decimal("0.00"))),
         "total_paid": str(total_paid),
         "balance": str(max(o.confirmed_price - total_paid, Decimal("0.00"))),
+        "advance_exception": {"approved": bool(o.advance_exception_approved_by_id), "reason": o.advance_exception_reason, "approved_by": (o.advance_exception_approved_by.get_full_name() or o.advance_exception_approved_by.username) if o.advance_exception_approved_by_id else None, "approved_at": o.advance_exception_approved_at.isoformat() if o.advance_exception_approved_at else None},
+        "credit_exception": {"approved": bool(o.credit_exception_approved_by_id), "reason": o.credit_exception_reason, "approved_by": (o.credit_exception_approved_by.get_full_name() or o.credit_exception_approved_by.username) if o.credit_exception_approved_by_id else None, "approved_at": o.credit_exception_approved_at.isoformat() if o.credit_exception_approved_at else None},
+        "payments": [{"id": p.pk, "receipt_no": p.receipt_no, "payment_type": p.payment_type, "amount": str(p.amount), "payment_method": p.payment_method, "reference": p.reference, "paid_on": p.paid_on.isoformat() if p.paid_on else None, "status": p.status, "notes": p.notes} for p in o.payments.all()],
         "approved_design": {"id": approved_design.pk, "version": approved_design.version, "file": approved_design.file.url if approved_design.file else None} if approved_design else None,
         "delivery_date": o.delivery_date.isoformat() if o.delivery_date else None,
         "deadline": o.deadline.isoformat() if o.deadline else None,
@@ -308,6 +311,77 @@ def order_update(request,pk):
             return JsonResponse({"detail": status_error}, status=400)
         return JsonResponse({'order':_order(form.save())})
     return JsonResponse({'detail':'Validation failed.','errors':form.errors.get_json_data()},status=400)
+
+
+@require_http_methods(["POST"])
+@login_required
+def order_payment_create(request, pk):
+    if not _manager(request.user):
+        raise PermissionDenied
+    import json
+    from decimal import Decimal, InvalidOperation
+    from django.utils.dateparse import parse_date
+    try:
+        data = json.loads(request.body or "{}")
+    except (TypeError, ValueError):
+        return JsonResponse({"detail": "Invalid JSON payload."}, status=400)
+    order = get_object_or_404(_order_qs(request.user), pk=pk)
+    try:
+        amount = Decimal(str(data.get("amount", "")))
+    except (InvalidOperation, TypeError, ValueError):
+        return JsonResponse({"detail": "Enter a valid payment amount."}, status=400)
+    if not amount.is_finite() or amount <= 0:
+        return JsonResponse({"detail": "Payment amount must be greater than zero."}, status=400)
+    payment_type = data.get("payment_type")
+    method = data.get("payment_method", PaymentRecord.PaymentMethod.CASH)
+    if payment_type not in PaymentRecord.PaymentType.values or method not in PaymentRecord.PaymentMethod.values:
+        return JsonResponse({"detail": "Select a valid payment type and method."}, status=400)
+    raw_date = data.get("paid_on")
+    paid_on = parse_date(raw_date) if raw_date else timezone.localdate()
+    if raw_date and paid_on is None:
+        return JsonResponse({"detail": "Enter a valid payment date."}, status=400)
+    payment = PaymentRecord.objects.create(
+        order=order, payment_type=payment_type, amount=amount,
+        payment_method=method, reference=str(data.get("reference", ""))[:120],
+        paid_on=paid_on, status=PaymentRecord.Status.RECEIVED,
+        notes=str(data.get("notes", "")), created_by=request.user,
+    )
+    return JsonResponse({"payment": {
+        "id": payment.pk, "receipt_no": payment.receipt_no,
+        "payment_type": payment.payment_type, "amount": str(payment.amount),
+        "payment_method": payment.payment_method, "paid_on": payment.paid_on.isoformat(),
+        "status": payment.status,
+    }, "order": _order(order)}, status=201)
+
+
+@require_http_methods(["POST"])
+@login_required
+def order_payment_exception(request, pk):
+    if not _global_admin(request.user):
+        raise PermissionDenied
+    import json
+    try:
+        data = json.loads(request.body or "{}")
+    except (TypeError, ValueError):
+        return JsonResponse({"detail": "Invalid JSON payload."}, status=400)
+    kind = data.get("type")
+    reason = str(data.get("reason", "")).strip()
+    if kind not in ("advance", "credit") or not reason:
+        return JsonResponse({"detail": "Choose an exception type and provide an approval reason."}, status=400)
+    order = get_object_or_404(SalesOrder, pk=pk)
+    now = timezone.now()
+    if kind == "advance":
+        order.advance_exception_reason = reason
+        order.advance_exception_approved_by = request.user
+        order.advance_exception_approved_at = now
+        fields = ["advance_exception_reason", "advance_exception_approved_by", "advance_exception_approved_at", "updated_at"]
+    else:
+        order.credit_exception_reason = reason
+        order.credit_exception_approved_by = request.user
+        order.credit_exception_approved_at = now
+        fields = ["credit_exception_reason", "credit_exception_approved_by", "credit_exception_approved_at", "updated_at"]
+    order.save(update_fields=fields)
+    return JsonResponse({"order": _order(order)})
 
 
 @login_required
