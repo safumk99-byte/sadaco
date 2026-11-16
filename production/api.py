@@ -1,6 +1,7 @@
 import json
+from decimal import Decimal
 from django.contrib.auth.decorators import login_required
-from django.core.exceptions import PermissionDenied
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.db.models import Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
@@ -10,9 +11,9 @@ from django.views.decorators.http import require_GET, require_POST
 from accounts.models import UserProfile
 from sales.models import SalesOrder, DesignApproval
 from staff.models import StaffProfile
-from products.models import Product, MaterialVariant
+from products.models import Product, MaterialVariant, MachineRate, StaffCompensation
 from .forms import ProductionJobForm, ProductionProgressForm, ProductionMaterialForm, ProductionIssueForm
-from .models import ProductionJob, ProductionProgress, ProductionMaterial, ProductionIssue
+from .models import ProductionJob, ProductionProgress, ProductionMaterial, ProductionIssue, ProductionCostEntry
 
 MANAGER_ROLES = {UserProfile.Role.SUPER_ADMIN, UserProfile.Role.INSTITUTION_ADMIN, UserProfile.Role.MANAGER}
 
@@ -146,10 +147,41 @@ def options(request):
         orders = orders.filter(customer__department_id=department_id) if department_id else orders.none()
     orders = orders[:200]
     products = Product.objects.filter(status=Product.Status.ACTIVE).order_by('name')[:300]
+    machine_rates = []
+    labour_staff = []
+    if _manager(request.user):
+        machine_rates = [{
+            "id": rate.pk, "operation": rate.operation,
+            "label": f"{rate.get_operation_display()} · {rate.material_name or 'All materials'}"
+                     + (f" · {rate.thickness_mm}mm" if rate.thickness_mm is not None else ""),
+            "rate": str(rate.rate), "unit": rate.unit,
+            "material_name": rate.material_name,
+            "thickness_mm": str(rate.thickness_mm) if rate.thickness_mm is not None else None,
+        } for rate in MachineRate.objects.filter(is_active=True).order_by("operation", "material_name", "thickness_mm")]
+        labour_qs = StaffProfile.objects.filter(
+            status=StaffProfile.Status.ACTIVE,
+            compensation__is_active=True,
+            compensation__payment_type=StaffCompensation.PaymentType.MONTHLY,
+            compensation__monthly_salary__isnull=False,
+        ).select_related("user", "compensation")
+        if not _global_admin(request.user):
+            department_id = _manager_department_id(request.user)
+            labour_qs = labour_qs.filter(department_id=department_id) if department_id else labour_qs.none()
+        for member in labour_qs.order_by("staff_id"):
+            comp = member.compensation
+            monthly_hours = Decimal(comp.working_days_per_month) * comp.productive_hours_per_day
+            if monthly_hours <= 0:
+                continue
+            minute_rate = (comp.monthly_salary / monthly_hours / Decimal("60")).quantize(Decimal("0.000001"))
+            labour_staff.append({
+                "id": member.pk, "name": str(member),
+                "minute_rate": str(minute_rate),
+            })
     return JsonResponse({'staff': [{'id': s.id, 'name': str(s)} for s in staff],
         'orders': [{'id': o.id, 'order_no': o.order_no, 'customer': o.customer.name, 'item_description': o.item_description, 'deadline': o.deadline.isoformat() if o.deadline else None} for o in orders],
         'products': [{'id': p.id, 'name': p.name, 'sku': p.sku} for p in products],
-        'materials': [{'id': m.id, 'name': m.material_name, 'brand': m.brand, 'thickness_mm': str(m.thickness_mm) if m.thickness_mm is not None else None, 'unit': m.unit} for m in MaterialVariant.objects.filter(is_active=True).order_by('material_name', 'brand', 'thickness_mm')[:500]]})
+        'materials': [{'id': m.id, 'name': m.material_name, 'brand': m.brand, 'thickness_mm': str(m.thickness_mm) if m.thickness_mm is not None else None, 'unit': m.unit} for m in MaterialVariant.objects.filter(is_active=True).order_by('material_name', 'brand', 'thickness_mm')[:500]],
+        'machine_rates': machine_rates, 'labour_staff': labour_staff})
 
 @require_GET
 @login_required
@@ -182,6 +214,10 @@ def _job_material_cost_summary(job):
     target_usages = OffcutUsage.objects.filter(target_job_id=job.pk)
     consumed_offcut_cost = sum((row.total_cost for row in target_usages), Decimal("0"))
     consumed_offcut_area = sum((row.used_area_sqft for row in target_usages), Decimal("0"))
+    cost_entries = ProductionCostEntry.objects.filter(job_id=job.pk)
+    machine_cost = sum((row.total_cost for row in cost_entries.filter(cost_type=ProductionCostEntry.CostType.MACHINE)), Decimal("0"))
+    labour_cost = sum((row.total_cost for row in cost_entries.filter(cost_type=ProductionCostEntry.CostType.LABOUR)), Decimal("0"))
+    conversion_cost = machine_cost + labour_cost
     net_cost = issued_cost - returned_cost - salvage_credit + discarded_writeoff + consumed_offcut_cost
     return {
         "currency": "INR",
@@ -192,6 +228,10 @@ def _job_material_cost_summary(job):
         "offcut_consumed_cost": str(consumed_offcut_cost.quantize(money)),
         "offcut_inventory_value": str(inventory_value.quantize(money)),
         "net_material_cost": str(net_cost.quantize(money)),
+        "machine_operation_cost": str(machine_cost.quantize(money)),
+        "direct_labour_cost": str(labour_cost.quantize(money)),
+        "total_conversion_cost": str(conversion_cost.quantize(money)),
+        "total_tracked_job_cost": str((net_cost + conversion_cost).quantize(money)),
         "offcut_registered_area_sqft": str(registered_area.quantize(Decimal("0.0001"))),
         "generated_offcut_transferred_area_sqft": str(generated_used_area.quantize(Decimal("0.0001"))),
         "offcut_consumed_here_area_sqft": str(consumed_offcut_area.quantize(Decimal("0.0001"))),
@@ -226,6 +266,13 @@ def detail(request, pk):
         'materials': [_material(x) for x in job.materials.all()], 'issues': [_issue(x) for x in job.issues.all()],
         'material_issues': issue_rows,
         'material_costs': _job_material_cost_summary(job) if _manager(request.user) else None,
+        'cost_entries': [{
+            "id": entry.pk, "cost_type": entry.cost_type,
+            "description": entry.description, "operation": entry.operation_snapshot,
+            "staff": entry.staff_name_snapshot, "quantity": str(entry.quantity),
+            "unit": entry.unit, "unit_rate": str(entry.unit_rate),
+            "total_cost": str(entry.total_cost), "created_at": entry.created_at.isoformat(),
+        } for entry in ProductionCostEntry.objects.filter(job_id=job.pk).order_by("-created_at", "-pk")] if _manager(request.user) else [],
         'can_manage': _manager(request.user)})
 
 def _data(request):
@@ -343,3 +390,34 @@ def add_issue(request, pk):
     obj=form.save(commit=False); obj.job=job; obj.created_by=request.user; obj.save()
     if obj.issue_type == ProductionIssue.Type.DELAY: job.status=ProductionJob.Status.ON_HOLD; job.save(update_fields=['status','updated_at'])
     return JsonResponse({'issue':_issue(obj), 'job':_job(job)},status=201)
+
+
+@require_POST
+@login_required
+def add_cost_entry(request, pk):
+    if not _manager(request.user):
+        raise PermissionDenied
+    job = get_object_or_404(_visible_jobs(request.user), pk=pk)
+    if not _job_visible(request.user, job):
+        raise PermissionDenied
+    from .costing import record_production_cost
+    data = _data(request)
+    try:
+        entry = record_production_cost(
+            job_id=job.pk,
+            cost_type=data.get("cost_type"),
+            quantity=data.get("quantity"),
+            user=request.user,
+            machine_rate_id=data.get("machine_rate") or None,
+            staff_id=data.get("staff") or None,
+            material_line_id=data.get("material_line") or None,
+            description=data.get("description", ""),
+        )
+        return JsonResponse({
+            "ok": True, "id": entry.pk, "cost_type": entry.cost_type,
+            "description": entry.description, "quantity": str(entry.quantity),
+            "unit": entry.unit, "unit_rate": str(entry.unit_rate),
+            "total_cost": str(entry.total_cost),
+        }, status=201)
+    except (ValueError, TypeError, ValidationError) as exc:
+        return JsonResponse({"detail": str(exc)}, status=400)
