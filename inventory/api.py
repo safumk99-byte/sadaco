@@ -309,10 +309,9 @@ def offcut_action_api(request, pk):
                 used_area_sqft=area, cost_per_sqft=offcut.cost_per_sqft,
                 total_cost=total_cost, created_by=request.user,
             )
-            offcut.used_for_job = job
             if area == remaining_area:
                 offcut.status = ReusableOffcut.Status.USED
-            offcut.save(update_fields=["status", "used_for_job", "updated_at"])
+            offcut.save(update_fields=["status", "updated_at"])
             return JsonResponse({
                 "ok": True, "id": offcut.pk, "status": offcut.status,
                 "used_area_sqft": str(area), "remaining_area_sqft": str(remaining_area - area),
