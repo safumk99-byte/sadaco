@@ -533,3 +533,20 @@ This remains a source-level review only. No Django test command, migration, Neon
 - Reconciliation now processes movements chronologically and treats CORRECTION / CLOSING rows as post-movement balance snapshots, resetting the running expected balance to balance_after. Wastage remains an annotation and does not decrement stock a second time.
 - Regression coverage now verifies that an approved negative physical-count adjustment reconciles to the approved balance, while still reporting the quantity as unbatched when no cost lot exists.
 - No stock rows were changed by this code fix; it only corrects the read-only reconciliation calculation.
+
+
+## 2026-11-16 production machine and direct-labour costing
+
+- Added an append-only ProductionCostEntry ledger with immutable unit-rate and total-cost snapshots. Machine / operation entries reference an active approved MachineRate; direct-labour entries reference an active staff member with a verified monthly StaffCompensation record.
+- The machine rate selector uses only existing seeded rates: Laser Cutting ₹20/minute, Laser Engraving ₹25/minute, and CNC Multy Wood 5mm/6mm/8mm at ₹50/₹50/₹60 per sq ft. Material-specific CNC entries must match the selected job Material Master line and thickness. No new rates are seeded.
+- Direct labour is calculated only for monthly-paid staff using the configured 26 working days and 8.25 productive hours/day (or that staff record's explicitly configured values). Work-based staff are excluded because no per-work rates are supplied. Staff without an active monthly compensation record cannot be costed.
+- Cost entries are manager-only, department-scoped through the job and staff checks, and have no edit/delete endpoint. The unit rate and amount are snapshotted so later rate or salary changes do not rewrite historic job costs.
+- Manager job cost summary now reports material cost, machine / operation cost, direct labour cost, total conversion cost, and total tracked job cost. This is not a complete margin calculation: revenue, overhead, consumables and any unprovided rates remain outside the total.
+- The production issue history now displays verified opening-stock lot references and their evidence reference; it no longer assumes every cost lot has a purchase receipt.
+- Regression suites for production costing and reusable offcut ledger were added to CI. CI remains the acceptance gate; no local tests, Neon validation, production writes, merge or deployment are claimed.
+
+## 2026-11-16 duplicate offcut endpoint correction
+
+- Removed obsolete duplicate definitions of the offcut create/action APIs that were shadowing the newer receipt-traceable, dimension-validated and cost-aware implementations. This restores the intended source-issue link, sheet-dimension checks, partial area usage, job material matching, cost snapshots and return/wastage safeguards.
+- Changed row locking to lock only the primary production material / issue rows when nullable related objects are selected, avoiding PostgreSQL's unsupported FOR UPDATE on the nullable side of an outer join.
+- Added the previously unexecuted reusable-offcut regression suite to the CI workflow so these paths are exercised on subsequent runs.
