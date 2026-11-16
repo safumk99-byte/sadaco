@@ -149,6 +149,12 @@ class FinalQualityChecklistValidationTests(TestCase):
             order=order, station=ProductionJob.Station.CUSTOM,
             status=ProductionJob.Status.ON_HOLD, stage=ProductionJob.Stage.QC_PENDING,
         )
+        from production.models import ProductionStageTask
+        for stage in ProductionStageTask.Stage.values:
+            if stage != ProductionStageTask.Stage.PACKING_INSTALLATION:
+                ProductionStageTask.objects.create(
+                    job=self.job, stage=stage, status=ProductionStageTask.Status.COMPLETED
+                )
         self.client.force_login(self.manager)
 
     def _payload(self, **overrides):
@@ -238,6 +244,11 @@ class FinalQCProductionStageGateTests(TestCase):
         customer = Customer.objects.create(name="QC Stage Gate Customer", phone="9000000066", department=department)
         order = SalesOrder.objects.create(customer=customer, item_description="QC Stage Gate Item", quantity=1, confirmed_price=1000)
         self.job = ProductionJob.objects.create(order=order, station=ProductionJob.Station.CUSTOM, status=ProductionJob.Status.IN_PROGRESS)
+        for stage in ProductionStageTask.Stage.values:
+            if stage not in (ProductionStageTask.Stage.CNC, ProductionStageTask.Stage.PACKING_INSTALLATION):
+                ProductionStageTask.objects.create(
+                    job=self.job, stage=stage, status=ProductionStageTask.Status.COMPLETED
+                )
         self.task = ProductionStageTask.objects.create(job=self.job, stage="cnc", status=ProductionStageTask.Status.IN_PROGRESS)
         self.client.force_login(self.manager)
 
