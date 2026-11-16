@@ -9,7 +9,7 @@ const categories = [
 const money = (value) => `₹${Number(value || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const blankLine = () => ({ category: "material", description: "", dimensions: "", quantity: "1", unit: "Nos", unit_price: "0" });
 const blankQuote = () => ({
-  customer: "", item_description: "", dimensions: "", quantity: "1",
+  customer: "", product: "", item_description: "", dimensions: "", quantity: "1",
   advance_required: "0", delivery_timeline: "", valid_until: "", terms: "", notes: "",
   discount_type: "percentage", discount_value: "0", line_items: [blankLine()],
 });
