@@ -164,6 +164,8 @@ def cost_opening_stock_api(request, movement_id):
             raise ValidationError("Verified unit cost exceeds the supported amount.")
         if not source_reference:
             raise ValidationError("A source reference (invoice, valuation sheet or approved cost record) is required.")
+        if len(source_reference) > 160:
+            raise ValidationError("The cost source reference cannot exceed 160 characters.")
         with transaction.atomic():
             movement = MaterialStockMovement.objects.select_for_update().select_related(
                 "balance__material", "balance__department"
