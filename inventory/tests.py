@@ -114,6 +114,19 @@ class MaterialLedgerWorkflowTests(TestCase):
         self.assertTrue(result["reconciled"])
         self.assertTrue(result["unbatched_warning"])
 
+    def test_stock_reconciliation_api_is_scoped_to_manager_department(self):
+        MaterialStockBalance.objects.create(
+            material=self.material, department=self.other_department,
+            location="Other Store", quantity=Decimal("5"),
+        )
+        self.client.force_login(self.manager)
+        response = self.client.get("/api/inventory/materials/reconciliation/")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()["count"], 1)
+        self.assertEqual(
+            response.json()["items"][0]["balance_id"], self.balance.pk,
+        )
+
     def test_issue_rejects_insufficient_stock(self):
         with self.assertRaises(ValidationError):
             issue_material(material_id=self.line.pk, quantity="11", lot_id=self.lot.pk, user=self.manager)
