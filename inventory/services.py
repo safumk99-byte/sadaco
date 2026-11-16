@@ -271,6 +271,75 @@ def record_issued_wastage(*, material_issue_id, quantity, user=None, reference="
     return movement
 
 
+def reconcile_material_stock_balance(balance):
+    """Read-only reconciliation of the stock movement ledger and receipt lots.
+
+    Wastage rows annotate material already deducted at issue time, so they do
+    not create a second stock decrement. Offcut area is tracked separately
+    and never changes sheet-unit stock.
+    """
+    from .models import MaterialStockMovement
+    from purchase.models import MaterialStockLot
+
+    positive = {
+        MaterialStockMovement.Type.OPENING,
+        MaterialStockMovement.Type.PURCHASE_RECEIPT,
+        MaterialStockMovement.Type.RETURN,
+        MaterialStockMovement.Type.OFFCUT_IN,
+    }
+    negative = {MaterialStockMovement.Type.JOB_ISSUE}
+    movements = list(balance.movements.all().order_by("created_at", "pk"))
+    movement_expected = Decimal("0")
+    unknown_types = []
+    for movement in movements:
+        if movement.movement_type in positive:
+            movement_expected += movement.quantity
+        elif movement.movement_type in negative:
+            movement_expected -= movement.quantity
+        elif movement.movement_type != MaterialStockMovement.Type.WASTAGE:
+            unknown_types.append(movement.movement_type)
+
+    lots = list(
+        MaterialStockLot.objects.filter(balance_id=balance.pk)
+        .prefetch_related("issues")
+        .order_by("created_at", "pk")
+    )
+    lot_remaining_total = Decimal("0")
+    lot_mismatches = []
+    for lot in lots:
+        issued = sum((issue.quantity for issue in lot.issues.all()), Decimal("0"))
+        returned = sum((issue.returned_quantity for issue in lot.issues.all()), Decimal("0"))
+        expected_remaining = lot.original_quantity - issued + returned
+        lot_remaining_total += lot.remaining_quantity
+        if expected_remaining != lot.remaining_quantity:
+            lot_mismatches.append({
+                "lot_id": lot.pk,
+                "expected_remaining": str(expected_remaining),
+                "recorded_remaining": str(lot.remaining_quantity),
+            })
+
+    movement_difference = balance.quantity - movement_expected
+    unbatched_quantity = balance.quantity - lot_remaining_total
+    return {
+        "balance_id": balance.pk,
+        "material_id": balance.material_id,
+        "department_id": balance.department_id,
+        "location": balance.location,
+        "recorded_balance": str(balance.quantity),
+        "movement_expected_balance": str(movement_expected),
+        "movement_difference": str(movement_difference),
+        "receipt_lot_remaining": str(lot_remaining_total),
+        "unbatched_quantity": str(unbatched_quantity),
+        "lot_count": len(lots),
+        "lot_mismatches": lot_mismatches,
+        "unknown_movement_types": sorted(set(unknown_types)),
+        "reconciled": (
+            movement_difference == 0 and not lot_mismatches and not unknown_types
+        ),
+        "unbatched_warning": unbatched_quantity != 0,
+    }
+
+
 @transaction.atomic
 def submit_material_stock_count(*, balance_id, counted_quantity, user=None, reason=""):
     from .models import MaterialStockCount
