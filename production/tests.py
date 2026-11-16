@@ -52,7 +52,13 @@ class ProductionDepartmentAccessTests(TestCase):
     def test_new_production_job_gets_all_stage_tasks_automatically(self):
         from production.models import ProductionStageTask
         from sales.models import PaymentRecord
-        order = self.creative_job.order
+        customer = Customer.objects.create(
+            name="New Stage Checklist Customer", phone="9000000044", department=self.creatives
+        )
+        order = SalesOrder.objects.create(
+            customer=customer, item_description="New stage checklist order",
+            quantity=1, confirmed_price=1000, status=SalesOrder.Status.CONFIRMED,
+        )
         quotation = Quotation.objects.create(
             customer=order.customer, item_description=order.item_description,
             quantity=order.quantity, quoted_price=order.confirmed_price,
