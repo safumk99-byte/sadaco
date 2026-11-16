@@ -84,7 +84,7 @@ class CustomerInteractionAdmin(admin.ModelAdmin):
 
 @admin.register(QuotationConfiguration)
 class QuotationConfigurationAdmin(admin.ModelAdmin):
-    list_display = ("company_name", "tax_rate", "manager_discount_limit_percent", "updated_at")
+    list_display = ("company_name", "tax_rate", "manager_discount_limit_type", "manager_discount_limit_value", "updated_at")
     readonly_fields = ("updated_at",)
 
 
