@@ -6,12 +6,18 @@ from django.db import models
 from core.models import Department
 
 
+def generate_customer_no():
+    return f"CUS-{uuid.uuid4().hex[:10].upper()}"
+
+
 class Customer(models.Model):
     class Status(models.TextChoices):
         ACTIVE = "active", "Active"
         INACTIVE = "inactive", "Inactive"
 
+    customer_no = models.CharField(max_length=24, unique=True, editable=False, default=generate_customer_no)
     name = models.CharField(max_length=180)
+    customer_type = models.CharField(max_length=50, blank=True)
     phone = models.CharField(max_length=30)
     alternate_phone = models.CharField(max_length=30, blank=True)
     email = models.EmailField(blank=True)
@@ -27,13 +33,19 @@ class Customer(models.Model):
         ordering = ["name"]
         indexes = [models.Index(fields=["phone"]), models.Index(fields=["status"]) ]
 
+    def save(self, *args, **kwargs):
+        if not self.customer_no:
+            self.customer_no = generate_customer_no()
+        super().save(*args, **kwargs)
+
     def __str__(self):
-        return self.name
+        return f"{self.customer_no} - {self.name}"
 
 
 class Enquiry(models.Model):
     class Channel(models.TextChoices):
         PHONE = "phone", "Phone"
+        DIRECT_VISIT = "direct_visit", "Direct Visit"
         WHATSAPP = "whatsapp", "WhatsApp"
         INSTAGRAM = "instagram", "Instagram"
         FACEBOOK = "facebook", "Facebook"
