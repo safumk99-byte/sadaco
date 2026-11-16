@@ -66,6 +66,7 @@ jobs:
           core.tests.CustomerRequestDepartmentAccessTests
           core.tests.ApprovalDepartmentAccessTests
           sales.tests.SalesModelTests
+          sales.tests.QuotationWorkflowApiTests
           sales.tests.SalesValidationTests
           sales.tests.SalesDepartmentAccessTests
           sales.tests.SalesOrderLifecyclePermissionTests
