@@ -35,7 +35,9 @@ def _delivery(d):
             'delivery_date': d.delivery_date.isoformat() if d.delivery_date else '', 'address': d.address,
             'transport': d.transport, 'responsible_person': d.responsible_person, 'installation_required': d.installation_required,
             'installation_date': d.installation_date.isoformat() if d.installation_date else '', 'status': d.status,
-            'status_label': d.get_status_display(), 'acknowledgement': d.acknowledgement, 'completion_notes': d.completion_notes}
+            'status_label': d.get_status_display(), 'acknowledgement': d.acknowledgement, 'completion_notes': d.completion_notes,
+            'order_status': d.order.status, 'closed_at': d.order.closed_at.isoformat() if d.order.closed_at else None,
+            'closed_by': (d.order.closed_by.get_full_name() or d.order.closed_by.username) if d.order.closed_by_id else None}
 
 @login_required
 @manager_required
@@ -73,6 +75,8 @@ def update(request, pk):
     except (TypeError, ValueError):
         return JsonResponse({'detail': 'Invalid JSON.'}, status=400)
     order = get_object_or_404(_visible_orders(request.user).select_for_update(of=("self",)), pk=pk)
+    if order.status == SalesOrder.Status.CLOSED:
+        return JsonResponse({'detail': 'Closed orders are locked. Reopen through an authorized correction workflow.'}, status=409)
     d = DeliveryRecord.objects.select_for_update().filter(order=order).first()
     current_status = d.status if d else DeliveryRecord.Status.PENDING
     if d is None:
@@ -162,7 +166,7 @@ def feedback(request, pk):
     except (TypeError, ValueError):
         return JsonResponse({'detail': 'Invalid JSON.'}, status=400)
     order=get_object_or_404(_visible_orders(request.user), pk=pk)
-    if order.status != SalesOrder.Status.DELIVERED:
+    if order.status not in (SalesOrder.Status.DELIVERED, SalesOrder.Status.CLOSED):
         return JsonResponse({'detail': 'Customer feedback can be recorded only after the order is delivered.'}, status=400)
     raw_rating=data.get('rating')
     try:
@@ -174,3 +178,54 @@ def feedback(request, pk):
     fb,_=CustomerFeedback.objects.get_or_create(order=order)
     fb.rating=rating; fb.comment=str(data.get('comment','') or '')[:5000]; fb.save()
     return JsonResponse({'rating':fb.rating,'comment':fb.comment})
+
+
+
+@login_required
+@manager_required
+@require_POST
+@transaction.atomic
+def close_order(request, pk):
+    order = get_object_or_404(
+        _visible_orders(request.user).select_for_update(of=("self",)), pk=pk
+    )
+    if order.status == SalesOrder.Status.CLOSED:
+        return JsonResponse({"detail": "This order is already closed."}, status=409)
+
+    delivery = DeliveryRecord.objects.select_for_update().filter(order=order).first()
+    if not delivery or delivery.status not in (
+        DeliveryRecord.Status.DELIVERED, DeliveryRecord.Status.INSTALLED
+    ):
+        return JsonResponse({
+            "detail": "The order must be delivered before it can be closed."
+        }, status=400)
+    if delivery.installation_required and delivery.status != DeliveryRecord.Status.INSTALLED:
+        return JsonResponse({
+            "detail": "Installation must be completed before this order can be closed."
+        }, status=400)
+
+    paid_total = order.payments.filter(
+        status__in=[PaymentRecord.Status.RECEIVED, PaymentRecord.Status.VERIFIED]
+    ).aggregate(total=Sum("amount"))["total"] or 0
+    if paid_total < order.confirmed_price and not order.credit_exception_approved_by_id:
+        return JsonResponse({
+            "detail": "Full payment or a Founder-approved credit exception is required to close this order.",
+            "order_total": str(order.confirmed_price),
+            "paid_total": str(paid_total),
+            "balance": str(order.confirmed_price - paid_total),
+        }, status=400)
+
+    from django.utils import timezone
+    order.status = SalesOrder.Status.CLOSED
+    order.closed_at = timezone.now()
+    order.closed_by = request.user
+    order.save(update_fields=["status", "closed_at", "closed_by", "updated_at"])
+    return JsonResponse({
+        "order_no": order.order_no,
+        "status": order.status,
+        "closed_at": order.closed_at.isoformat(),
+        "closed_by": request.user.get_full_name() or request.user.username,
+        "paid_total": str(paid_total),
+        "balance": str(max(order.confirmed_price - paid_total, 0)),
+        "credit_exception": bool(order.credit_exception_approved_by_id),
+    })
