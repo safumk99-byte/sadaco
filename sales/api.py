@@ -207,6 +207,7 @@ def enquiry_update(request,pk):
 @login_required
 def quotations(request):
     q=request.GET.get('q','').strip(); status=request.GET.get('status',''); qs=_quotation_qs(request.user).select_related('customer')
+    qs.filter(status=Quotation.Status.SENT, valid_until__lt=timezone.localdate()).update(status=Quotation.Status.EXPIRED, updated_at=timezone.now())
     if q: qs=qs.filter(Q(quotation_no__icontains=q)|Q(customer__name__icontains=q)|Q(item_description__icontains=q))
     if status: qs=qs.filter(status=status)
     return JsonResponse({'quotations':[_quotation(x) for x in qs[:250]],'can_manage':_manager(request.user),'statuses':[_choice(v,l) for v,l in Quotation.Status.choices]})
