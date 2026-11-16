@@ -12,7 +12,7 @@ from core.models import Department
 from products.models import Product, ProductCategory
 from staff.models import Designation, StaffProfile, WorkArea
 
-from .models import PaymentRecord, Customer, CustomerFeedback, CustomerNotification, DeliveryRecord, DesignApproval, Enquiry, OrderRequest, PaymentRecord, Quotation, QuotationApproval, QuotationConfiguration, QuotationLineItem, SalesOrder
+from .models import Customer, CustomerFeedback, CustomerNotification, DeliveryRecord, DesignApproval, Enquiry, OrderRequest, PaymentRecord, Quotation, QuotationApproval, QuotationConfiguration, QuotationLineItem, SalesOrder
 
 
 class SalesModelTests(TestCase):
