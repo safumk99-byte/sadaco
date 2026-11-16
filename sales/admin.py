@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Customer, CustomerFeedback, CustomerNotification, DeliveryRecord, DesignApproval, Enquiry, OrderRequest, PaymentRecord, Quotation, SalesOrder
+from .models import Customer, CustomerFeedback, CustomerInteraction, CustomerNotification, DeliveryRecord, DesignApproval, Enquiry, OrderRequest, PaymentRecord, Quotation, SalesOrder
 
 
 @admin.register(Customer)
@@ -72,3 +72,11 @@ class CustomerFeedbackAdmin(admin.ModelAdmin):
     list_display = ("order", "rating", "submitted_at")
     list_filter = ("rating",)
     search_fields = ("order__order_no", "comment")
+
+
+@admin.register(CustomerInteraction)
+class CustomerInteractionAdmin(admin.ModelAdmin):
+    list_display = ("customer", "interaction_type", "subject", "next_follow_up", "completed", "created_by", "created_at")
+    list_filter = ("interaction_type", "completed", "next_follow_up")
+    search_fields = ("customer__name", "customer__customer_no", "subject", "notes")
+    readonly_fields = ("created_at",)
