@@ -429,6 +429,27 @@ class ProductionCostingTests(TestCase):
         self.assertIn(self.laser_rate.pk, [item["id"] for item in response.json()["machine_rates"]])
         self.assertIn(self.worker.pk, [item["id"] for item in response.json()["labour_staff"]])
 
+    def test_non_positive_machine_rate_and_monthly_salary_are_rejected(self):
+        from decimal import Decimal
+        from products.models import MachineRate, StaffCompensation
+
+        zero_rate = MachineRate.objects.create(
+            operation=MachineRate.Operation.LASER_ENGRAVING,
+            rate=Decimal("0"), unit="minute",
+        )
+        machine_response = self._post_cost({
+            "cost_type": "machine", "machine_rate": zero_rate.pk, "quantity": "1",
+        })
+        self.assertEqual(machine_response.status_code, 400)
+        self.assertIn("positive verified amount", machine_response.json()["detail"])
+
+        StaffCompensation.objects.filter(staff=self.worker).update(monthly_salary=Decimal("0"))
+        labour_response = self._post_cost({
+            "cost_type": "labour", "staff": self.worker.pk, "quantity": "30",
+        })
+        self.assertEqual(labour_response.status_code, 400)
+        self.assertIn("valid salary", labour_response.json()["detail"])
+
     def test_non_manager_cannot_create_job_cost_entry(self):
         import json
         self.client.force_login(self.worker_user)
