@@ -174,63 +174,75 @@ def sync_reorder_alerts():
 
 
 @transaction.atomic
-def return_issued_material(*, material_id, quantity, balance_id, user=None, reference="", remarks="", employee=None):
-    """Return unused issued material to the exact department/location stock balance."""
+def return_issued_material(*, material_issue_id, quantity, user=None, reference="", remarks="", employee=None):
+    """Return unused material against one exact issue and restore its original receipt lot."""
     quantity = Decimal(str(quantity))
     if quantity <= 0:
         raise ValidationError("Return quantity must be greater than zero.")
-    material = ProductionMaterial.objects.select_for_update(of=("self",)).select_related(
-        "material_variant", "job__order__customer"
-    ).get(pk=material_id)
-    if not material.material_variant_id:
-        raise ValidationError("Returns through this workflow require a Material Master-linked job line.")
-    outstanding = material.issued_quantity - material.returned_quantity
-    if quantity > outstanding:
-        raise ValidationError(f"Return exceeds unreturned issued quantity: {outstanding} {material.unit}.")
-    department_id = material.job.order.customer.department_id
+    issue = MaterialIssue.objects.select_for_update().select_related(
+        "material", "stock_lot", "material__job__order__customer"
+    ).get(pk=material_issue_id, status=MaterialIssue.Status.ISSUED)
+    material = ProductionMaterial.objects.select_for_update(of=("self",)).get(pk=issue.material_id)
+    if not material.material_variant_id or not issue.stock_lot_id or issue.unit_rate is None:
+        raise ValidationError("Only receipt-batch-tracked issues can be returned through this workflow.")
+    available = issue.quantity - issue.returned_quantity - issue.wastage_quantity
+    if quantity > available:
+        raise ValidationError(f"Return exceeds this issue's remaining unaccounted quantity: {available} {material.unit}.")
+    lot = issue.stock_lot.__class__.objects.select_for_update().get(pk=issue.stock_lot_id)
     balance = MaterialStockBalance.objects.select_for_update().get(
-        pk=balance_id, material_id=material.material_variant_id, department_id=department_id
+        pk=lot.balance_id, material_id=material.material_variant_id,
+        department_id=material.job.order.customer.department_id,
     )
-    if employee and employee.department_id != department_id:
+    if employee and employee.department_id != balance.department_id:
         raise ValidationError("The selected employee does not belong to the job department.")
     movement = record_material_movement(
         balance_id=balance.pk, movement_type=MaterialStockMovement.Type.RETURN,
         quantity=quantity, user=user, job=material.job, order=material.job.order,
         employee=employee, reference=reference or material.job.job_no,
-        remarks=remarks or f"Unused material returned from {material.job.job_no}.",
+        remarks=remarks or f"Unused material returned against issue #{issue.pk}.",
     )
+    lot.remaining_quantity += quantity
+    lot.save(update_fields=["remaining_quantity"])
+    issue.returned_quantity += quantity
+    issue.save(update_fields=["returned_quantity"])
     material.returned_quantity += quantity
     material.save(update_fields=["returned_quantity"])
+    movement.source_issue = issue
+    movement.save(update_fields=["source_issue"])
     return movement
 
 
 @transaction.atomic
-def record_issued_wastage(*, material_id, quantity, balance_id, user=None, reference="", remarks="", employee=None):
-    """Record wastage from already-issued stock without deducting stock a second time."""
+def record_issued_wastage(*, material_issue_id, quantity, user=None, reference="", remarks="", employee=None):
+    """Attribute wastage to one issue; stock was deducted when that issue was created."""
     quantity = Decimal(str(quantity))
     if quantity <= 0:
         raise ValidationError("Wastage quantity must be greater than zero.")
-    material = ProductionMaterial.objects.select_for_update(of=("self",)).select_related(
-        "material_variant", "job__order__customer"
-    ).get(pk=material_id)
-    if not material.material_variant_id:
-        raise ValidationError("Wastage through this workflow requires a Material Master-linked job line.")
-    remaining_issued = material.issued_quantity - material.returned_quantity - material.wastage_quantity
-    if quantity > remaining_issued:
-        raise ValidationError(f"Wastage exceeds unreturned, unaccounted issued quantity: {remaining_issued} {material.unit}.")
-    department_id = material.job.order.customer.department_id
+    issue = MaterialIssue.objects.select_for_update().select_related(
+        "material", "stock_lot", "material__job__order__customer"
+    ).get(pk=material_issue_id, status=MaterialIssue.Status.ISSUED)
+    material = ProductionMaterial.objects.select_for_update(of=("self",)).get(pk=issue.material_id)
+    if not material.material_variant_id or not issue.stock_lot_id or issue.unit_rate is None:
+        raise ValidationError("Only receipt-batch-tracked issues can record wastage through this workflow.")
+    available = issue.quantity - issue.returned_quantity - issue.wastage_quantity
+    if quantity > available:
+        raise ValidationError(f"Wastage exceeds this issue's remaining unaccounted quantity: {available} {material.unit}.")
+    lot = issue.stock_lot.__class__.objects.select_for_update().get(pk=issue.stock_lot_id)
     balance = MaterialStockBalance.objects.select_for_update().get(
-        pk=balance_id, material_id=material.material_variant_id, department_id=department_id
+        pk=lot.balance_id, material_id=material.material_variant_id,
+        department_id=material.job.order.customer.department_id,
     )
-    if employee and employee.department_id != department_id:
+    if employee and employee.department_id != balance.department_id:
         raise ValidationError("The selected employee does not belong to the job department.")
     movement = MaterialStockMovement.objects.create(
-        balance=balance, movement_type=MaterialStockMovement.Type.WASTAGE,
+        balance=balance, source_issue=issue, movement_type=MaterialStockMovement.Type.WASTAGE,
         quantity=quantity, balance_after=balance.quantity, job=material.job,
         order=material.job.order, employee=employee, reference=reference or material.job.job_no,
-        remarks=remarks or f"Wastage recorded against {material.job.job_no}; issued stock was already deducted.",
+        remarks=remarks or f"Wastage recorded against issue #{issue.pk}; stock was already deducted.",
         created_by=user,
     )
+    issue.wastage_quantity += quantity
+    issue.save(update_fields=["wastage_quantity"])
     material.wastage_quantity += quantity
     material.save(update_fields=["wastage_quantity"])
     return movement
