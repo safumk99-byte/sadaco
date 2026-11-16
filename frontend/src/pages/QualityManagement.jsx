@@ -33,6 +33,13 @@ export default function QualityManagement() {
     finishing_ok: false,
     colour_ok: false,
     engraving_ok: false,
+    cutting_ok: false,
+    assembly_ok: false,
+    sticking_ok: false,
+    polishing_ok: false,
+    electrical_ok: false,
+    appearance_ok: false,
+    packing_ok: false,
     defects: "",
     rework_reason: "",
     corrective_action: "",
@@ -87,6 +94,13 @@ export default function QualityManagement() {
       finishing_ok: false,
       colour_ok: false,
       engraving_ok: false,
+      cutting_ok: false,
+      assembly_ok: false,
+      sticking_ok: false,
+      polishing_ok: false,
+      electrical_ok: false,
+      appearance_ok: false,
+      packing_ok: false,
       defects: "",
       rework_reason: "",
       corrective_action: "",
@@ -363,6 +377,14 @@ function CheckModal({ options, form, setForm, close, save }) {
             value={form.engraving_ok}
             set={(v) => setForm((x) => ({ ...x, engraving_ok: v }))}
           />
+          {[
+            ["Cutting", "cutting_ok"], ["Assembly", "assembly_ok"],
+            ["Sticking", "sticking_ok"], ["Polishing", "polishing_ok"],
+            ["Electrical / LED", "electrical_ok"], ["Appearance", "appearance_ok"],
+            ["Packing", "packing_ok"],
+          ].map(([name, key]) => (
+            <Check key={key} label={name} value={form[key]} set={(v) => setForm((x) => ({ ...x, [key]: v }))} />
+          ))}
         </div>
         <Text
           label="Defects"
@@ -504,6 +526,10 @@ function QualityDetail({ data, options, close, refresh }) {
                     ["Finishing", c.finishing_ok],
                     ["Colour", c.colour_ok],
                     ["Engraving", c.engraving_ok],
+                    ["Cutting", c.cutting_ok], ["Assembly", c.assembly_ok],
+                    ["Sticking", c.sticking_ok], ["Polishing", c.polishing_ok],
+                    ["Electrical / LED", c.electrical_ok], ["Appearance", c.appearance_ok],
+                    ["Packing", c.packing_ok],
                   ].map((x) => (
                     <div key={x[0]} className="rounded-lg bg-slate-50 p-2">
                       {x[0]} <b>{x[1] ? "✓" : "—"}</b>
