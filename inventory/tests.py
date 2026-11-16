@@ -378,6 +378,37 @@ class MaterialStockCountTests(TestCase):
             )
         self.assertFalse(MaterialStockCount.objects.exists())
 
+    def test_manager_cannot_submit_stock_count_for_another_department(self):
+        other_department = Department.objects.create(code="count-b", name="Count B")
+        foreign_balance = MaterialStockBalance.objects.create(
+            material=self.balance.material, department=other_department,
+            location="Foreign Store", quantity=Decimal("7"),
+        )
+        self.client.force_login(self.manager)
+        response = self.client.post(
+            "/api/inventory/materials/stock-counts/submit/",
+            data=json.dumps({"balance": foreign_balance.pk, "counted_quantity": "6"}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 404)
+        self.assertFalse(MaterialStockCount.objects.filter(balance=foreign_balance).exists())
+
+    def test_department_manager_cannot_review_stock_count_variance(self):
+        count = submit_material_stock_count(
+            balance_id=self.balance.pk, counted_quantity="10", user=self.manager
+        )
+        self.client.force_login(self.manager)
+        response = self.client.post(
+            f"/api/inventory/materials/stock-counts/{count.pk}/review/",
+            data=json.dumps({"approve": True}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 403)
+        self.balance.refresh_from_db()
+        count.refresh_from_db()
+        self.assertEqual(self.balance.quantity, Decimal("12"))
+        self.assertEqual(count.status, MaterialStockCount.Status.PENDING)
+
     def test_stale_count_cannot_be_approved(self):
         count = submit_material_stock_count(balance_id=self.balance.pk, counted_quantity="10", user=self.manager)
         self.balance.quantity = Decimal("11")
