@@ -178,7 +178,7 @@ export default function MaterialCosting() {
               <td className="px-4 py-4 font-semibold tabular-nums">{x.quantity}</td>
               <td className="px-4 py-4">{x.reference||"—"}</td>
               <td className="px-4 py-4"><input type="number" min="0" step="0.01" value={draft.unit_cost} onChange={e=>setOpeningDrafts(old=>({...old,[x.movement_id]:{...draft,unit_cost:e.target.value}}))} placeholder="Enter actual rate" className="w-36 rounded-lg border border-slate-300 px-3 py-2"/></td>
-              <td className="px-4 py-4"><input value={draft.cost_source_reference} onChange={e=>setOpeningDrafts(old=>({...old,[x.movement_id]:{...draft,cost_source_reference:e.target.value}}))} placeholder="Invoice / valuation ref" className="w-56 rounded-lg border border-slate-300 px-3 py-2"/></td>
+              <td className="px-4 py-4"><input value={draft.cost_source_reference} maxLength={160} onChange={e=>setOpeningDrafts(old=>({...old,[x.movement_id]:{...draft,cost_source_reference:e.target.value}}))} placeholder="Invoice / valuation ref" className="w-56 rounded-lg border border-slate-300 px-3 py-2"/></td>
               <td className="px-4 py-4"><button disabled={busy||draft.unit_cost===""||!draft.cost_source_reference?.trim()} onClick={()=>assignOpeningCost(x.movement_id)} className="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40">Register Cost</button></td>
             </tr>;
           })}</tbody>
