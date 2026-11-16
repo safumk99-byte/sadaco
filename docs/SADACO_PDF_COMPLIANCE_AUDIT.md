@@ -243,3 +243,23 @@ The current CI run #108 for commit `4a1107ec683035f970835d77fbb7e868c0a7e389` co
 - Material variants and machine rates are currently global shared rate masters. Staff compensation is now department-scoped; do not assume material/machine rates should be duplicated per division without a business rule.
 - Inventory products and stock are also global in the current schema. True division-level inventory isolation requires an explicit ownership/stock-location data model and migration; filtering by creator would be incorrect for shared stock.
 - Verification limitation: GitHub commit status for the compensation-scope commit has not yet reported CI checks. No production database writes, merge to `main`, or Render deployment were performed.
+
+
+## 2026-11-16 — Phase 1 PDF seed-source audit (read-only)
+
+Reviewed the current feature-branch seed migrations against the verified PDF values in this tracker and the retained staff identities on the isolated pre-reset validation clone.
+
+- The `products.0010_material_master_and_costing_rates` seed defines 51 MaterialVariant rows by composition: 7 Astari 1.8 mm variants, 20 other Astari thickness/colour variants, 14 Otherbrand acrylic variants, 5 Indian Sheet variants, and 5 Mirror Sheet variants. The supplied purchase rates and sheet dimensions match the verified values above; retail rates remain blank where the PDF supplies none. Astari 6.5 mm and 7.5 mm are not seeded.
+- The same migration defines exactly 5 MachineRate rows: laser cutting ₹20/min, laser engraving ₹25/min, and CNC Multy Wood 5/6/8 mm at ₹50/₹50/₹60 per sq ft. These match the verified PDF values.
+- The existing retained staff identities on the isolated legacy clone are `abdulbasith` (Abdul Bsaith), `rabeeh`, `shibili`, `sakkeer`, and `abdulmuhaimin`. The current `0011_seed_staff_compensation` matching logic maps the Manager to ₹25,000/month, Muhaimin to ₹15,000/month, and Shibili/Sakkeer to work-based compensation without inventing rates. Rabeeh receives no compensation record from this seed. Junaid and Ashiq have no retained StaffProfile in this clone and are not fabricated; the full ₹61,000 salary plan is therefore not yet assignable.
+- The `core.0002_department` seed uses `get_or_create` keyed by stable department codes for the three named divisions.
+- No source-code changes, database writes, migration runs, or production operations were performed in this audit. This confirms the source definitions only; it does not prove the migrations execute successfully against the clone.
+
+**Remaining blockers:**
+
+1. The actual Django migration engine still must run `migrate --plan`, `migrate --noinput`, and `migrate --check` against `br-lucky-pond-azm200bm` using the exact feature-branch checkout. The Mobile Commander PC Bridge timed out during this session, so this could not be executed.
+2. Add automated migration/seed assertions for 51 material variants, 51 initial rate-history rows, 5 machine rates, the expected staff compensation mapping and the 3 department codes. Current inspection found no dedicated tests for these migration seed expectations in `products/tests.py`.
+3. Verify model/schema parity, indexes, constraints, foreign keys and row counts after the normal Django migration run. Do not substitute hand-written DDL or manual migration-record insertion.
+4. Do not run the broad PDF-baseline cleanup migration as if it reproduced the authorized operational reset. The checked-in `products.0012_remove_demo_operational_data` is catalogue-only and intentionally preserves multiple legacy business relations; the broader reset was a separate, explicitly authorized transaction already recorded above.
+
+Production, `main`, Render deployment and the disposable validation clone remain unchanged by this read-only audit.
