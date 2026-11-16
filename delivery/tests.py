@@ -48,6 +48,12 @@ class DeliveryLifecycleTests(TestCase):
             stage=ProductionJob.Stage.COMPLETED,
         )
         PackingRecord.objects.create(job=job, status=PackingRecord.Status.PACKED)
+        from production.models import ProductionStageTask
+        ProductionStageTask.objects.create(
+            job=job,
+            stage=ProductionStageTask.Stage.PACKING_INSTALLATION,
+            status=ProductionStageTask.Status.COMPLETED,
+        )
         return job
 
     def test_cannot_dispatch_order_before_final_qc_ready(self):
