@@ -530,7 +530,7 @@ class CustomerInteractionApiTests(TestCase):
         record = response.json()["interactions"][0]
         self.assertEqual(record["subject"], "Discussed quotation")
         self.assertFalse(record["completed"])
-        self.assertFalse(record["overdue"])
+        self.assertFalse(record["overdue"])\n        interaction_id = record["id"]\n        complete_request = self.factory.post(f"/api/sales/customers/{self.customer.pk}/interactions/{interaction_id}/complete/")\n        complete_request.user = self.manager\n        completed = customer_interaction_complete(complete_request, self.customer.pk, interaction_id)\n        self.assertEqual(completed.status_code, 200)\n        self.assertTrue(completed.json()["completed"])
 
     def test_manager_cannot_access_another_department_customer_history(self):
         from .api import customer_interactions
