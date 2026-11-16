@@ -9,7 +9,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST
 
 from accounts.models import UserProfile
-from sales.models import SalesOrder, DesignApproval
+from sales.models import SalesOrder, DesignApproval, PaymentRecord
 from staff.models import StaffProfile
 from products.models import Product, MaterialVariant, MachineRate, StaffCompensation
 from .forms import ProductionJobForm, ProductionProgressForm, ProductionMaterialForm, ProductionIssueForm
@@ -300,6 +300,19 @@ def create(request):
     order = get_object_or_404(order_qs, pk=order_id)
     if order.status not in (SalesOrder.Status.PRODUCTION_PENDING, SalesOrder.Status.CONFIRMED):
         return JsonResponse({'detail': 'This order is not ready for production planning.'}, status=400)
+    advance_target = (order.confirmed_price * Decimal("0.50")).quantize(Decimal("0.01"))
+    advance_received = order.payments.filter(
+        payment_type=PaymentRecord.PaymentType.ADVANCE,
+        status__in=[PaymentRecord.Status.RECEIVED, PaymentRecord.Status.VERIFIED],
+    ).aggregate(total=__import__("django.db.models", fromlist=["Sum"]).Sum("amount"))["total"] or Decimal("0.00")
+    if advance_received < advance_target and not order.advance_exception_approved_by_id:
+        remaining = advance_target - advance_received
+        return JsonResponse({
+            "detail": "Production requires at least 50% advance payment unless a Founder-approved exception is recorded.",
+            "advance_required": str(advance_target),
+            "advance_received": str(advance_received),
+            "advance_remaining": str(remaining),
+        }, status=400)
     latest_design = order.quotation.designs.filter(status=DesignApproval.Status.APPROVED).first() if order.quotation_id else None
     if not latest_design:
         return JsonResponse({'detail': 'Production can start only after customer design approval.'}, status=400)
