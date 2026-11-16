@@ -312,6 +312,13 @@ class MaterialStockCountTests(TestCase):
         self.assertEqual(reviewed.status, MaterialStockCount.Status.APPROVED)
         self.assertEqual(reviewed.correction_movement.movement_type, MaterialStockMovement.Type.CORRECTION)
         self.assertEqual(reviewed.correction_movement.quantity, Decimal("2"))
+        from inventory.services import reconcile_material_stock_balance
+        reconciliation = reconcile_material_stock_balance(self.balance)
+        self.assertEqual(reconciliation["movement_expected_balance"], "10")
+        self.assertEqual(reconciliation["movement_difference"], "0")
+        self.assertEqual(reconciliation["unknown_movement_types"], [])
+        self.assertTrue(reconciliation["reconciled"])
+        self.assertTrue(reconciliation["unbatched_warning"])
 
     def test_reject_does_not_change_stock(self):
         count = submit_material_stock_count(balance_id=self.balance.pk, counted_quantity="15", user=self.manager)
