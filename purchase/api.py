@@ -1,4 +1,5 @@
 import json
+from decimal import Decimal, InvalidOperation
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
@@ -167,17 +168,56 @@ def receive(request, pk):
     data = _data(request)
     location = str(data.get("location", "")).strip()
     pending_items = list(po.items.select_related("material_variant", "product").all())
-    if any(item.pending_quantity > 0 and not (item.material_variant_id or item.product_id) for item in pending_items):
-        return JsonResponse({"detail": "Every pending purchase item must be linked to a stock item before receiving."}, status=400)
-    if any(item.material_variant_id and item.pending_quantity > 0 for item in pending_items) and not location:
+    items_by_id = {item.pk: item for item in pending_items}
+
+    # Backward compatibility: old clients that do not send per-line quantities
+    # continue to receive every pending item. New clients send an explicit list.
+    raw_lines = data.get("items")
+    receive_quantities = {}
+    if raw_lines is None:
+        receive_quantities = {
+            item.pk: item.pending_quantity for item in pending_items if item.pending_quantity > 0
+        }
+    else:
+        if not isinstance(raw_lines, list) or not raw_lines:
+            return JsonResponse({"detail": "Provide at least one purchase item quantity to receive."}, status=400)
+        for line in raw_lines:
+            if not isinstance(line, dict):
+                return JsonResponse({"detail": "Each receipt item must be an object."}, status=400)
+            try:
+                item_id = int(line.get("purchase_item_id"))
+                qty = Decimal(str(line.get("received_quantity")))
+            except (TypeError, ValueError, InvalidOperation):
+                return JsonResponse({"detail": "Each receipt item needs a valid purchase item ID and quantity."}, status=400)
+            if item_id in receive_quantities:
+                return JsonResponse({"detail": "A purchase item can appear only once in a receipt."}, status=400)
+            item = items_by_id.get(item_id)
+            if item is None:
+                return JsonResponse({"detail": "A receipt item does not belong to this purchase order."}, status=400)
+            if not qty.is_finite() or qty < 0:
+                return JsonResponse({"detail": "Received quantities must be zero or greater."}, status=400)
+            if qty > item.pending_quantity:
+                return JsonResponse({
+                    "detail": f"Received quantity for item {item.pk} exceeds its pending quantity ({item.pending_quantity})."
+                }, status=400)
+            receive_quantities[item_id] = qty
+
+    selected_items = [
+        item for item in pending_items if receive_quantities.get(item.pk, Decimal("0")) > 0
+    ]
+    if not selected_items:
+        return JsonResponse({"detail": "Enter a quantity greater than zero for at least one item."}, status=400)
+    if any(not (item.material_variant_id or item.product_id) for item in selected_items):
+        return JsonResponse({"detail": "Every received purchase item must be linked to a stock item."}, status=400)
+    if any(item.material_variant_id for item in selected_items) and not location:
         return JsonResponse({"detail": "A stock location is required to receive material master items."}, status=400)
+
     receipt=form.save(commit=False); receipt.purchase_order=po; receipt.received_by=request.user; receipt.save()
     from inventory.models import MaterialStockBalance, MaterialStockMovement
     from inventory.services import record_material_movement
     from products.models import MaterialVariant
-    for item in pending_items:
-        qty=item.pending_quantity
-        if qty <= 0: continue
+    for item in selected_items:
+        qty = receive_quantities[item.pk]
         if item.material_variant_id:
             balance, _ = MaterialStockBalance.objects.get_or_create(
                 material_id=item.material_variant_id, department_id=po.department_id, location=location,
