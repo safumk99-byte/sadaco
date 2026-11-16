@@ -232,3 +232,169 @@ class ProductionMaterialFormSafetyTests(TestCase):
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 400)
+
+class ProductionCostingTests(TestCase):
+    def setUp(self):
+        from decimal import Decimal
+        from products.models import MachineRate, StaffCompensation, MaterialVariant
+        from .models import ProductionMaterial
+
+        self.department = Department.objects.get_or_create(
+            code="costing-test", defaults={"name": "Costing Test"}
+        )[0]
+        self.other_department = Department.objects.get_or_create(
+            code="costing-other", defaults={"name": "Costing Other"}
+        )[0]
+        self.manager = User.objects.create_user(username="costing_mgr", password="StrongPass123!")
+        UserProfile.objects.create(
+            user=self.manager, role=UserProfile.Role.MANAGER, department=self.department
+        )
+        self.worker_user = User.objects.create_user(username="costing_worker", password="StrongPass123!")
+        UserProfile.objects.create(
+            user=self.worker_user, role=UserProfile.Role.STAFF, department=self.department
+        )
+        self.worker = StaffProfile.objects.create(
+            user=self.worker_user, staff_id="COST-001", department=self.department
+        )
+        StaffCompensation.objects.create(
+            staff=self.worker, payment_type=StaffCompensation.PaymentType.MONTHLY,
+            monthly_salary=Decimal("25000"), working_days_per_month=26,
+            productive_hours_per_day=Decimal("8.25"),
+        )
+        customer = Customer.objects.create(
+            name="Costing Customer", phone="9000000101", department=self.department
+        )
+        order = SalesOrder.objects.create(
+            customer=customer, item_description="Costing job", quantity=1,
+            confirmed_price=Decimal("1000"),
+        )
+        self.job = ProductionJob.objects.create(order=order, station=ProductionJob.Station.LASER)
+        self.laser_rate = MachineRate.objects.create(
+            operation=MachineRate.Operation.LASER_CUTTING, rate=Decimal("20"), unit="minute",
+        )
+        self.cnc_rate = MachineRate.objects.create(
+            operation=MachineRate.Operation.CNC_CUTTING, material_name="Multy Wood",
+            thickness_mm=Decimal("5"), rate=Decimal("50"), unit="sqft",
+        )
+        self.multywood = MaterialVariant.objects.create(
+            material_name="Multy Wood", thickness_mm=Decimal("5"), unit="Sheet",
+        )
+        self.material_line = ProductionMaterial.objects.create(
+            job=self.job, material_variant=self.multywood, material_name="Multy Wood",
+            quantity_required=Decimal("2"), unit="Sheet",
+        )
+        self.other_user = User.objects.create_user(username="costing_other_worker", password="StrongPass123!")
+        self.other_staff = StaffProfile.objects.create(
+            user=self.other_user, staff_id="COST-OTHER", department=self.other_department,
+        )
+
+    def _post_cost(self, payload):
+        import json
+        self.client.force_login(self.manager)
+        return self.client.post(
+            f"/api/production/jobs/{self.job.pk}/cost-entries/",
+            data=json.dumps(payload), content_type="application/json",
+        )
+
+    def test_machine_cost_uses_approved_rate_and_snapshots_amount(self):
+        from decimal import Decimal
+        from .models import ProductionCostEntry
+        response = self._post_cost({
+            "cost_type": "machine", "machine_rate": self.laser_rate.pk, "quantity": "12",
+        })
+        self.assertEqual(response.status_code, 201, response.content)
+        entry = ProductionCostEntry.objects.get(pk=response.json()["id"])
+        self.assertEqual(entry.unit, "minute")
+        self.assertEqual(entry.unit_rate, Decimal("20.000000"))
+        self.assertEqual(entry.total_cost, Decimal("240.00"))
+        self.laser_rate.rate = Decimal("22")
+        self.laser_rate.save(update_fields=["rate", "updated_at"])
+        entry.refresh_from_db()
+        self.assertEqual(entry.unit_rate, Decimal("20.000000"))
+        self.assertEqual(entry.total_cost, Decimal("240.00"))
+
+    def test_material_specific_cnc_rate_requires_matching_job_material(self):
+        response = self._post_cost({
+            "cost_type": "machine", "machine_rate": self.cnc_rate.pk,
+            "material_line": self.material_line.pk, "quantity": "4.5",
+        })
+        self.assertEqual(response.status_code, 201, response.content)
+        self.assertEqual(response.json()["unit"], "sqft")
+        self.assertEqual(response.json()["total_cost"], "225.00")
+
+    def test_cnc_rate_rejects_material_mismatch(self):
+        from decimal import Decimal
+        from products.models import MaterialVariant
+        from .models import ProductionMaterial
+        wrong = MaterialVariant.objects.create(
+            material_name="Multy Wood", thickness_mm=Decimal("6"), unit="Sheet",
+        )
+        line = ProductionMaterial.objects.create(
+            job=self.job, material_variant=wrong, material_name="Multy Wood",
+            quantity_required=Decimal("1"), unit="Sheet",
+        )
+        response = self._post_cost({
+            "cost_type": "machine", "machine_rate": self.cnc_rate.pk,
+            "material_line": line.pk, "quantity": "1",
+        })
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("does not match", response.json()["detail"])
+
+    def test_monthly_labour_cost_uses_productive_hours_plan(self):
+        from decimal import Decimal
+        from .models import ProductionCostEntry
+        response = self._post_cost({
+            "cost_type": "labour", "staff": self.worker.pk, "quantity": "60",
+        })
+        self.assertEqual(response.status_code, 201, response.content)
+        entry = ProductionCostEntry.objects.get(pk=response.json()["id"])
+        expected_rate = (Decimal("25000") / Decimal("214.5") / Decimal("60")).quantize(Decimal("0.000001"))
+        self.assertEqual(entry.unit, "minute")
+        self.assertEqual(entry.unit_rate, expected_rate)
+        self.assertEqual(entry.total_cost, Decimal("116.55"))
+        self.assertEqual(entry.staff_name_snapshot, str(self.worker))
+
+    def test_work_based_or_unconfigured_staff_rate_is_not_invented(self):
+        from products.models import StaffCompensation
+        StaffCompensation.objects.filter(staff=self.worker).update(
+            payment_type=StaffCompensation.PaymentType.PER_WORK, monthly_salary=None,
+        )
+        response = self._post_cost({
+            "cost_type": "labour", "staff": self.worker.pk, "quantity": "30",
+        })
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Work-based rates are not configured", response.json()["detail"])
+
+    def test_labour_staff_must_belong_to_job_department(self):
+        response = self._post_cost({
+            "cost_type": "labour", "staff": self.other_staff.pk, "quantity": "30",
+        })
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("job's department", response.json()["detail"])
+
+    def test_cost_entries_are_included_in_manager_job_cost_summary(self):
+        self._post_cost({
+            "cost_type": "machine", "machine_rate": self.laser_rate.pk, "quantity": "2",
+        })
+        self._post_cost({
+            "cost_type": "labour", "staff": self.worker.pk, "quantity": "30",
+        })
+        self.client.force_login(self.manager)
+        response = self.client.get(f"/api/production/jobs/{self.job.pk}/")
+        self.assertEqual(response.status_code, 200, response.content)
+        costs = response.json()["material_costs"]
+        self.assertEqual(costs["machine_operation_cost"], "40.00")
+        self.assertEqual(costs["direct_labour_cost"], "58.28")
+        self.assertEqual(costs["total_conversion_cost"], "98.28")
+        self.assertEqual(costs["total_tracked_job_cost"], "98.28")
+        self.assertEqual(len(response.json()["cost_entries"]), 2)
+
+    def test_non_manager_cannot_create_job_cost_entry(self):
+        import json
+        self.client.force_login(self.worker_user)
+        response = self.client.post(
+            f"/api/production/jobs/{self.job.pk}/cost-entries/",
+            data=json.dumps({"cost_type": "machine", "machine_rate": self.laser_rate.pk, "quantity": "1"}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 403)
