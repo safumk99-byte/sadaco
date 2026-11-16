@@ -435,10 +435,19 @@ function JobDetail({ data, close, refresh }) {
   const [usageForm, setUsageForm] = useState({ material_issue: "", action: "return", quantity: "1" });
   const [usageError, setUsageError] = useState("");
   const [usageBusy, setUsageBusy] = useState(false);
+  const [offcuts, setOffcuts] = useState([]);
+  const [offcutError, setOffcutError] = useState("");
+  const [offcutForm, setOffcutForm] = useState({ source_issue: "", location: "", length_mm: "", width_mm: "", usable_area_sqft: "" });
+  const [offcutUsageForm, setOffcutUsageForm] = useState({ offcut: "", material_line: "", used_area_sqft: "" });
   useEffect(() => {
     api.get("/inventory/materials/stock/")
       .then((r) => setStockBalances(r.data.items || []))
       .catch((e) => setIssueError(e.response?.data?.detail || "Unable to load material stock."));
+  }, []);
+  useEffect(() => {
+    api.get("/inventory/materials/offcuts/")
+      .then((r) => setOffcuts(r.data.items || []))
+      .catch((e) => setOffcutError(e.response?.data?.detail || "Unable to load reusable offcuts."));
   }, []);
   useEffect(() => {
     if (!issueForm.balance) { setStockLots([]); return; }
@@ -481,6 +490,47 @@ function JobDetail({ data, close, refresh }) {
       setUsageError(e.response?.data?.detail || "Unable to record material usage.");
     } finally {
       setUsageBusy(false);
+    }
+  };
+  const selectedOffcut = offcuts.find((x) => String(x.id) === String(offcutUsageForm.offcut));
+  const matchingOffcutLines = data.materials.filter((m) => m.material_variant_id === selectedOffcut?.material_id);
+  const createOffcut = async () => {
+    setOffcutError("");
+    const source = (data.material_issues || []).find((x) => String(x.id) === String(offcutForm.source_issue));
+    if (!source?.material_variant_id) {
+      setOffcutError("Select a receipt-costed issue linked to a material master.");
+      return;
+    }
+    try {
+      await api.post("/inventory/materials/offcuts/create/", {
+        material: source.material_variant_id,
+        source_issue: source.id,
+        location: offcutForm.location,
+        length_mm: offcutForm.length_mm,
+        width_mm: offcutForm.width_mm,
+        usable_area_sqft: offcutForm.usable_area_sqft,
+      });
+      const response = await api.get("/inventory/materials/offcuts/");
+      setOffcuts(response.data.items || []);
+      setOffcutForm({ source_issue: "", location: "", length_mm: "", width_mm: "", usable_area_sqft: "" });
+    } catch (e) {
+      setOffcutError(e.response?.data?.detail || "Unable to register reusable offcut.");
+    }
+  };
+  const useOffcut = async () => {
+    setOffcutError("");
+    try {
+      await api.post(`/inventory/materials/offcuts/${offcutUsageForm.offcut}/action/`, {
+        action: "used",
+        job: j.id,
+        material_line: offcutUsageForm.material_line,
+        used_area_sqft: offcutUsageForm.used_area_sqft,
+      });
+      const response = await api.get("/inventory/materials/offcuts/");
+      setOffcuts(response.data.items || []);
+      setOffcutUsageForm({ offcut: "", material_line: "", used_area_sqft: "" });
+    } catch (e) {
+      setOffcutError(e.response?.data?.detail || "Unable to allocate offcut to this job.");
     }
   };
   const saveProgress = async () => {
@@ -690,6 +740,38 @@ function JobDetail({ data, close, refresh }) {
               ))}
               {!(data.material_issues || []).length && <p className="text-xs text-slate-500">No material issue records for this job yet.</p>}
             </div>
+          </div>
+          <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50/50 p-4">
+            <h4 className="font-semibold text-slate-900">Reusable Offcuts</h4>
+            <p className="mt-1 text-xs text-slate-600">Register measured offcuts against the original receipt-costed issue. Reusable pieces are tracked in sq ft separately from sheet stock.</p>
+            <div className="mt-3 grid gap-2 md:grid-cols-5">
+              <select className={input} value={offcutForm.source_issue} onChange={(e) => setOffcutForm((x) => ({ ...x, source_issue: e.target.value }))}>
+                <option value="">Source material issue</option>
+                {(data.material_issues || []).filter((x) => x.trackable && x.material_variant_id).map((x) => <option key={x.id} value={x.id}>{x.material_name} · Issue #{x.id} · {x.receipt_no}</option>)}
+              </select>
+              <input className={input} placeholder="Storage location" value={offcutForm.location} onChange={(e) => setOffcutForm((x) => ({ ...x, location: e.target.value }))} />
+              <input className={input} type="number" min="0.01" step="0.01" placeholder="Length (mm)" value={offcutForm.length_mm} onChange={(e) => setOffcutForm((x) => ({ ...x, length_mm: e.target.value }))} />
+              <input className={input} type="number" min="0.01" step="0.01" placeholder="Width (mm)" value={offcutForm.width_mm} onChange={(e) => setOffcutForm((x) => ({ ...x, width_mm: e.target.value }))} />
+              <input className={input} type="number" min="0.0001" step="0.0001" placeholder="Usable area (sq ft)" value={offcutForm.usable_area_sqft} onChange={(e) => setOffcutForm((x) => ({ ...x, usable_area_sqft: e.target.value }))} />
+            </div>
+            <button onClick={createOffcut} disabled={!offcutForm.source_issue || !offcutForm.location || !offcutForm.length_mm || !offcutForm.width_mm || !offcutForm.usable_area_sqft} className="mt-3 rounded-xl bg-emerald-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40">Register Offcut</button>
+            <div className="mt-4 grid gap-2 md:grid-cols-3">
+              <select className={input} value={offcutUsageForm.offcut} onChange={(e) => setOffcutUsageForm({ offcut: e.target.value, material_line: "", used_area_sqft: "" })}>
+                <option value="">Available offcut</option>
+                {offcuts.filter((x) => x.status === "available" && Number(x.remaining_area_sqft) > 0).map((x) => <option key={x.id} value={x.id}>{x.material} · {x.remaining_area_sqft} sq ft · ₹{x.cost_per_sqft}/sq ft</option>)}
+              </select>
+              <select className={input} value={offcutUsageForm.material_line} onChange={(e) => setOffcutUsageForm((x) => ({ ...x, material_line: e.target.value }))} disabled={!offcutUsageForm.offcut}>
+                <option value="">Target material line</option>
+                {matchingOffcutLines.map((m) => <option key={m.id} value={m.id}>{m.material_name} · {m.pending_quantity} {m.unit} pending</option>)}
+              </select>
+              <input className={input} type="number" min="0.0001" step="0.0001" placeholder={selectedOffcut ? `Up to ${selectedOffcut.remaining_area_sqft} sq ft` : "Area used (sq ft)"} value={offcutUsageForm.used_area_sqft} onChange={(e) => setOffcutUsageForm((x) => ({ ...x, used_area_sqft: e.target.value }))} />
+            </div>
+            <button onClick={useOffcut} disabled={!offcutUsageForm.offcut || !offcutUsageForm.material_line || !offcutUsageForm.used_area_sqft} className="mt-3 rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40">Allocate Offcut to This Job</button>
+            <div className="mt-3 space-y-2">
+              {offcuts.slice(0, 8).map((x) => <div key={x.id} className="rounded-lg bg-white p-3 text-xs text-slate-700"><div className="font-semibold">{x.material} · {x.length_mm} × {x.width_mm} mm · {x.status}</div><div>{x.remaining_area_sqft} sq ft remaining of {x.usable_area_sqft} · ₹{x.cost_per_sqft ?? "—"}/sq ft · {x.source_receipt || "Legacy / uncosted"}</div></div>)}
+              {!offcuts.length && <p className="text-xs text-slate-500">No reusable offcuts registered yet.</p>}
+            </div>
+            {offcutError && <p className="mt-2 text-sm text-red-700">{offcutError}</p>}
           </div>
         </div>
         <div>
