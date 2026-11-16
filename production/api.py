@@ -272,7 +272,8 @@ def detail(request, pk):
         "issued_at": item.issued_at.isoformat(),
         "trackable": bool(item.stock_lot_id and item.unit_rate is not None),
     } for item in material_issues]
-    return JsonResponse({'job': _job(job), 'progress': [_progress(x) for x in job.progress_updates.all()],\n        'stage_tasks': [_stage_task(x) for x in job.stage_tasks.select_related('assigned_staff__user', 'updated_by').all()],
+    return JsonResponse({'job': _job(job), 'progress': [_progress(x) for x in job.progress_updates.all()],
+        'stage_tasks': [_stage_task(x) for x in job.stage_tasks.select_related('assigned_staff__user', 'updated_by').all()],
         'materials': [_material(x) for x in job.materials.all()], 'issues': [_issue(x) for x in job.issues.all()],
         'material_issues': issue_rows,
         'material_costs': _job_material_cost_summary(job) if _manager(request.user) else None,
