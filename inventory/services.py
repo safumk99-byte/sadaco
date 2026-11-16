@@ -55,7 +55,7 @@ def issue_material(*, material_id, quantity, user=None, reference="", remarks=""
 
     if quantity <= 0:
         raise ValidationError("Issue quantity must be greater than zero.")
-    pending = material.quantity_required - material.issued_quantity
+    pending = material.pending_quantity
     if quantity > pending:
         raise ValidationError(f"Cannot issue more than pending requirement: {pending} {material.unit}.")
 
@@ -110,7 +110,10 @@ def issue_material(*, material_id, quantity, user=None, reference="", remarks=""
             status=MaterialIssue.Status.ISSUED, reference=reference, remarks=remarks,
             issued_by=user, stock_lot=lot, unit_rate=lot.unit_cost, stock_movement=movement,
         )
-        all_ready = not material.job.materials.filter(issued_quantity__lt=F("quantity_required")).exists()
+        all_ready = all(
+            line.pending_quantity <= 0
+            for line in material.job.materials.select_related("material_variant").all()
+        )
         if all_ready and not material.job.material_ready:
             material.job.material_ready = True
             material.job.save(update_fields=["material_ready", "updated_at"])
