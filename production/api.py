@@ -152,8 +152,27 @@ def options(request):
 def detail(request, pk):
     job = get_object_or_404(_visible_jobs(request.user).prefetch_related('progress_updates__updated_by', 'materials__product', 'issues__staff'), pk=pk)
     if not _job_visible(request.user, job): raise PermissionDenied
+    from inventory.models import MaterialIssue
+    material_issues = MaterialIssue.objects.filter(job_id=job.pk).select_related(
+        "material", "stock_lot__receipt_line__receipt"
+    ).order_by("-issued_at", "-pk")
+    issue_rows = [{
+        "id": item.pk,
+        "material_line": item.material_id,
+        "material_name": item.material.material_name,
+        "quantity": str(item.quantity),
+        "returned_quantity": str(item.returned_quantity),
+        "wastage_quantity": str(item.wastage_quantity),
+        "remaining_quantity": str(item.quantity - item.returned_quantity - item.wastage_quantity),
+        "unit": item.material.unit,
+        "unit_rate": str(item.unit_rate) if item.unit_rate is not None else None,
+        "receipt_no": item.stock_lot.receipt_line.receipt.receipt_no if item.stock_lot_id else None,
+        "issued_at": item.issued_at.isoformat(),
+        "trackable": bool(item.stock_lot_id and item.unit_rate is not None),
+    } for item in material_issues]
     return JsonResponse({'job': _job(job), 'progress': [_progress(x) for x in job.progress_updates.all()],
-        'materials': [_material(x) for x in job.materials.all()], 'issues': [_issue(x) for x in job.issues.all()], 'can_manage': _manager(request.user)})
+        'materials': [_material(x) for x in job.materials.all()], 'issues': [_issue(x) for x in job.issues.all()],
+        'material_issues': issue_rows, 'can_manage': _manager(request.user)})
 
 def _data(request):
     try: return json.loads(request.body or '{}')
