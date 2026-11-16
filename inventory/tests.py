@@ -479,7 +479,7 @@ class ReusableOffcutAreaLedgerTests(TestCase):
             content_type="application/json",
         )
         self.assertEqual(first.status_code, 200, first.content)
-        self.assertEqual(first.json()["remaining_area_sqft"], "6")
+        self.assertEqual(first.json()["remaining_area_sqft"], "6.0000")
         self.assertEqual(first.json()["allocated_cost"], "12.50")
         from inventory.models import ReusableOffcut, OffcutUsage
         offcut = ReusableOffcut.objects.get(pk=offcut_id)
