@@ -4,6 +4,23 @@ from django.db import transaction
 from django.db.models import F, Sum
 from django.utils import timezone
 
+
+def _validated_stock_quantity(value, label="Stock quantity"):
+    try:
+        quantity = Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError):
+        raise ValidationError(f"{label} must be a valid decimal number.")
+    if not quantity.is_finite():
+        raise ValidationError(f"{label} must be finite.")
+    if quantity <= 0:
+        raise ValidationError(f"{label} must be greater than zero.")
+    if max(-quantity.as_tuple().exponent, 0) > 3:
+        raise ValidationError(f"{label} supports up to three decimal places.")
+    if quantity > Decimal("99999999999.999"):
+        raise ValidationError(f"{label} exceeds the supported stock quantity.")
+    return quantity
+
+
 from products.inventory import record_stock_transaction
 from production.models import ProductionMaterial
 from .models import MaterialIssue, StockCount, ReorderAlert, MaterialStockBalance, MaterialStockMovement
@@ -11,9 +28,7 @@ from .models import MaterialIssue, StockCount, ReorderAlert, MaterialStockBalanc
 
 @transaction.atomic
 def record_material_movement(*, balance_id, movement_type, quantity, user=None, job=None, order=None, employee=None, reference="", remarks=""):
-    quantity = Decimal(str(quantity))
-    if quantity <= 0:
-        raise ValidationError("Movement quantity must be greater than zero.")
+    quantity = _validated_stock_quantity(quantity, "Movement quantity")
     balance = MaterialStockBalance.objects.select_for_update().select_related("department", "material").get(pk=balance_id)
     incoming = {MaterialStockMovement.Type.OPENING, MaterialStockMovement.Type.PURCHASE_RECEIPT, MaterialStockMovement.Type.RETURN, MaterialStockMovement.Type.OFFCUT_IN}
     outgoing = {MaterialStockMovement.Type.JOB_ISSUE, MaterialStockMovement.Type.WASTAGE}
@@ -33,6 +48,8 @@ def record_material_movement(*, balance_id, movement_type, quantity, user=None, 
         order = order or job.order
         if order.customer.department_id != balance.department_id:
             raise ValidationError("The job/order and stock department do not match.")
+    if new_balance > Decimal("99999999999.999"):
+        raise ValidationError("Resulting stock balance exceeds the supported stock quantity.")
     balance.quantity = new_balance
     balance.save(update_fields=["quantity", "updated_at"])
     return MaterialStockMovement.objects.create(
@@ -48,13 +65,11 @@ def issue_material(*, material_id, quantity, user=None, reference="", remarks=""
     Legacy Product-based issue remains available only for old lines not yet linked
     to MaterialVariant, so existing historical workflows are not silently broken.
     """
-    quantity = Decimal(str(quantity))
+    quantity = _validated_stock_quantity(quantity, "Issue quantity")
     material = ProductionMaterial.objects.select_for_update(of=("self",)).select_related(
         "product", "material_variant", "job", "job__order__customer"
     ).get(pk=material_id)
 
-    if quantity <= 0:
-        raise ValidationError("Issue quantity must be greater than zero.")
     pending = material.pending_quantity
     if quantity > pending:
         raise ValidationError(f"Cannot issue more than pending requirement: {pending} {material.unit}.")
@@ -203,9 +218,7 @@ def _remaining_issue_quantity_after_offcuts(issue, material):
 @transaction.atomic
 def return_issued_material(*, material_issue_id, quantity, user=None, reference="", remarks="", employee=None):
     """Return unused material against one exact issue and restore its original receipt lot."""
-    quantity = Decimal(str(quantity))
-    if quantity <= 0:
-        raise ValidationError("Return quantity must be greater than zero.")
+    quantity = _validated_stock_quantity(quantity, "Return quantity")
     issue = MaterialIssue.objects.select_for_update(of=("self",)).select_related(
         "material", "stock_lot", "stock_movement", "material__job__order__customer"
     ).get(pk=material_issue_id, status=MaterialIssue.Status.ISSUED)
@@ -246,9 +259,7 @@ def return_issued_material(*, material_issue_id, quantity, user=None, reference=
 @transaction.atomic
 def record_issued_wastage(*, material_issue_id, quantity, user=None, reference="", remarks="", employee=None):
     """Attribute wastage to one issue; stock was deducted when that issue was created."""
-    quantity = Decimal(str(quantity))
-    if quantity <= 0:
-        raise ValidationError("Wastage quantity must be greater than zero.")
+    quantity = _validated_stock_quantity(quantity, "Wastage quantity")
     issue = MaterialIssue.objects.select_for_update(of=("self",)).select_related(
         "material", "stock_lot", "stock_movement", "material__job__order__customer"
     ).get(pk=material_issue_id, status=MaterialIssue.Status.ISSUED)
