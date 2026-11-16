@@ -289,7 +289,7 @@ def orders(request):
     q=request.GET.get('q','').strip(); status=request.GET.get('status',''); qs=_order_qs(request.user).select_related('customer','customer__department','quotation__product','responsible_staff__user')
     if q: qs=qs.filter(Q(order_no__icontains=q)|Q(customer__name__icontains=q)|Q(item_description__icontains=q))
     if status: qs=qs.filter(status=status)
-    return JsonResponse({'orders':[_order(x) for x in qs[:250]],'can_manage':_manager(request.user),'statuses':[_choice(v,l) for v,l in SalesOrder.Status.choices]})
+    return JsonResponse({'orders':[_order(x) for x in qs[:250]],'can_manage':_manager(request.user),'can_approve_payment_exceptions':_founder(request.user),'statuses':[_choice(v,l) for v,l in SalesOrder.Status.choices]})
 
 @require_http_methods(['POST'])
 @login_required
