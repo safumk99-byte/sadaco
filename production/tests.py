@@ -578,3 +578,30 @@ class ProductionStageTaskTests(TestCase):
         task = response.json()["stage_tasks"][0]
         self.assertTrue(task["is_overdue"])
         self.assertEqual(task["days_overdue"], 1)
+
+
+    def test_stage_cannot_start_or_complete_without_owner(self):
+        self.client.force_login(self.manager)
+        for status in ("in_progress", "completed"):
+            with self.subTest(status=status):
+                response = self.client.post(self.url, data={
+                    "stage": "laser", "status": status,
+                }, content_type="application/json")
+                self.assertEqual(response.status_code, 400)
+                self.assertIn("Assign an active staff member", response.json()["detail"])
+
+    def test_skipping_stage_requires_reason(self):
+        self.client.force_login(self.manager)
+        response = self.client.post(self.url, data={
+            "stage": "laser", "status": "skipped",
+        }, content_type="application/json")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("reason", response.json()["detail"].lower())
+
+    def test_manager_can_skip_stage_with_reason(self):
+        self.client.force_login(self.manager)
+        response = self.client.post(self.url, data={
+            "stage": "laser", "status": "skipped", "remarks": "Not applicable to this custom order",
+        }, content_type="application/json")
+        self.assertEqual(response.status_code, 201, response.content)
+        self.assertEqual(response.json()["stage_task"]["status"], "skipped")
