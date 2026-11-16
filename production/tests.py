@@ -213,8 +213,9 @@ class ProductionMaterialFormSafetyTests(TestCase):
 
     def test_material_line_rejects_both_product_and_material_master(self):
         from decimal import Decimal
-        from products.models import Product, MaterialVariant
-        product = Product.objects.create(name="Finished product", sku="PF-001", unit="Piece")
+        from products.models import Product, ProductCategory, MaterialVariant
+        category = ProductCategory.objects.create(name="Material Form Test Category")
+        product = Product.objects.create(name="Finished product", sku="PF-001", category=category, unit="Piece")
         material = MaterialVariant.objects.create(
             material_name="Acrylic Sheet", brand="Astari", thickness_mm=Decimal("3"), unit="Sheet",
         )
