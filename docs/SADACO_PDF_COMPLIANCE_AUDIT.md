@@ -361,3 +361,37 @@ ID/membership fingerprints for before/after comparison (not credentials or perso
 - User-to-group membership pairs: `e661300fb53419a755bb1bd700eceb41`
 
 These values are the validation clone's pre-migration comparison baseline. They are not evidence of a migration run; compare them only after a later approved test execution on this disposable branch.
+
+
+## 2026-11-16 — Phase 3 material/inventory source review (read-only; PC unavailable)
+
+Reviewed the current feature-branch model and service source for `products`, `purchase`, `inventory` and `production`. This was a source inspection only; no application code, migration, database or deployment was changed.
+
+### Confirmed source structure
+
+- `MaterialVariant` is the shared material/rate master. It still contains a legacy/global `stock_quantity` field.
+- The newer inventory ledger is department/location scoped through `MaterialStockBalance(material, department, location)`, with `MaterialStockMovement` rows recording balance-after snapshots.
+- `MaterialStockLot` ties a received purchase line to a department/location balance and retains original/remaining quantity plus unit cost.
+- `PurchaseItem` can reference either a legacy `Product` or a `MaterialVariant`; both foreign keys are nullable.
+- `GoodsReceiptLine` records received quantity and unit cost and has an optional one-to-one link to a stock movement. A receipt line can also have one cost lot.
+- `ProductionMaterial` supports both legacy Product and new MaterialVariant references. `MaterialIssue` can retain the selected receipt lot, unit rate and stock movement.
+- `ReusableOffcut` records material, department, location, dimensions, usable area, source job and status.
+- The material movement service uses a database transaction and row-locks the selected balance before changing its quantity. Material issue/return/wastage functions also use atomic transactions and validate department, location, selected receipt lot and per-issue accounting.
+
+### Integration risks requiring endpoint-level verification
+
+1. **Two stock representations:** `MaterialVariant.stock_quantity` remains alongside the authoritative-looking department/location balances. The reviewed `record_material_movement` updates `MaterialStockBalance.quantity` but does not update `MaterialVariant.stock_quantity`. Do not assume these values are synchronized or display the legacy field as current on-hand stock. Search all reads/writes and decide one canonical read model before changing behavior.
+2. **Purchase line integrity:** `PurchaseItem.product` and `PurchaseItem.material_variant` are both nullable and no model constraint in the reviewed file enforces exactly one reference. Verify create/update APIs reject both-empty and both-populated lines, and that quantity/rate snapshots use the correct material type.
+3. **Receipt posting integrity:** verify the receipt workflow atomically validates that cumulative received quantity cannot exceed the ordered quantity, creates exactly one receipt line per purchase item per receipt, updates the correct department/location balance, creates one matching cost lot, and records one movement. The model has a uniqueness constraint on (receipt, purchase_item) and one-to-one receipt-line links, but those alone do not prove the full posting workflow.
+4. **Issue/lot reconciliation:** verify all issue, return and wastage endpoints enforce that lot remaining quantity, balance quantity, issue returned/wastage totals and ProductionMaterial issued/returned/wastage totals reconcile after concurrent requests and retries. The service layer contains row locks and atomic blocks, but endpoint coverage and concurrency tests were not established by this source review.
+5. **Offcut lifecycle:** the model records offcut status and dimensions, but the reviewed source does not establish that offcut creation/use/discard is linked to matching stock movements or prevents double use. Verify this before treating offcut area as available inventory or a costing credit.
+6. **Department ownership:** balances are department/location scoped and issue logic derives the department from the order customer's department. Verify order/customer department cannot be changed after material issue without a controlled transfer/reversal, and that purchase receipt department is explicitly authorized rather than inferred from the current user.
+
+### Next safe implementation order
+
+- First trace all API/view entry points for purchase order lines, goods receipt posting, material issue, return, wastage, offcut use/discard and stock-count approval.
+- Add focused service/API regression tests for the invariants above, including transaction rollback, duplicate submissions, over-receipt, over-issue, wrong-department stock and concurrent balance changes.
+- Only after the tests expose a specific defect should a narrowly scoped code change and migration be prepared. Do not add uniqueness or check constraints until existing data and intended business rules are verified.
+- Keep `MaterialVariant.stock_quantity` as a legacy field until all references are inventoried; do not bulk-sync or reset it speculatively.
+
+No test command or Django migration was run because the PC/local Django environment is unavailable. The isolated Neon validation clone, production database, `main` and Render remain unchanged.
