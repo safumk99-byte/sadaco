@@ -220,7 +220,8 @@ def detail(request, pk):
     } for item in material_issues]
     return JsonResponse({'job': _job(job), 'progress': [_progress(x) for x in job.progress_updates.all()],
         'materials': [_material(x) for x in job.materials.all()], 'issues': [_issue(x) for x in job.issues.all()],
-        'material_issues': issue_rows, 'material_costs': _job_material_cost_summary(job),
+        'material_issues': issue_rows,
+        'material_costs': _job_material_cost_summary(job) if _manager(request.user) else None,
         'can_manage': _manager(request.user)})
 
 def _data(request):
