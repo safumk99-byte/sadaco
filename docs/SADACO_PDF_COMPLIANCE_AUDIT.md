@@ -514,3 +514,14 @@ This remains a source-level review only. No Django test command, migration, Neon
 - Department managers cannot assign historical opening-stock costs. This is Founder/Admin-only because it changes historical inventory valuation.
 - No historic rows are automatically costed, no stock quantities are changed by the costing registration itself, and no production/finance database was written.
 - Regression coverage added for verified reference enforcement, manager authorization, and issuing against a verified opening batch. CI validation is pending.
+
+## 2026-11-16 — Production Material Master linkage and issued-quantity guard
+
+- Production material requirements can now select a shared Material Master item. The form copies the material name and stock unit from the selected MaterialVariant rather than trusting user-entered labels.
+- A production requirement cannot link both a finished Product and a MaterialVariant.
+- Removed `issued_quantity` from the ProductionMaterial form. A caller-supplied `issued_quantity` is ignored; issued quantity can only be incremented by the inventory issue service, which creates the stock movement, decrements the selected cost lot and records the receipt/opening-batch unit cost.
+- Production options now expose active Material Master choices; the React Production Management form lets a manager select one when creating a material requirement.
+- Regression tests cover Material Master linkage, authoritative master name/unit, ignoring a forged issued quantity, and rejecting simultaneous Product and MaterialVariant references.
+- This closes a path that could previously mark material as issued without stock movement or issue-cost attribution.
+- CI run #274 was triggered for commit `1dc451d5cb9947ae5fba1527dc2647fabb9bdd8e`; final status must be checked before treating the change as CI-verified.
+- No Neon, Production DB, `main`, merge, or deployment was changed.
