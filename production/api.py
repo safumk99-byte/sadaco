@@ -13,7 +13,7 @@ from sales.models import SalesOrder, DesignApproval, PaymentRecord
 from staff.models import StaffProfile
 from products.models import Product, MaterialVariant, MachineRate, StaffCompensation
 from .forms import ProductionJobForm, ProductionProgressForm, ProductionMaterialForm, ProductionIssueForm
-from .models import ProductionJob, ProductionProgress, ProductionMaterial, ProductionIssue, ProductionCostEntry
+from .models import ProductionJob, ProductionProgress, ProductionMaterial, ProductionIssue, ProductionCostEntry, ProductionStageTask
 
 MANAGER_ROLES = {UserProfile.Role.SUPER_ADMIN, UserProfile.Role.INSTITUTION_ADMIN, UserProfile.Role.MANAGER}
 
@@ -51,7 +51,7 @@ def _visible_jobs(user):
         return qs
     if getattr(getattr(user, "profile", None), "role", None) == UserProfile.Role.MANAGER:
         return _department_jobs(qs, _manager_department_id(user))
-    return qs.filter(assigned_staff__user=user)
+    return qs.filter(Q(assigned_staff__user=user) | Q(stage_tasks__assigned_staff__user=user)).distinct()
 
 
 def _job_visible(user, job):
@@ -60,7 +60,7 @@ def _job_visible(user, job):
     if getattr(getattr(user, "profile", None), "role", None) == UserProfile.Role.MANAGER:
         department_id = _manager_department_id(user)
         return bool(department_id and job.order.customer.department_id == department_id)
-    return job.assigned_staff_id == getattr(getattr(user, 'staff_profile', None), 'id', None)
+    staff_id = getattr(getattr(user, 'staff_profile', None), 'id', None)\n    return bool(staff_id and (job.assigned_staff_id == staff_id or job.stage_tasks.filter(assigned_staff_id=staff_id).exists()))
 
 
 def _staff_in_manager_department(user, staff):
@@ -271,7 +271,7 @@ def detail(request, pk):
         "issued_at": item.issued_at.isoformat(),
         "trackable": bool(item.stock_lot_id and item.unit_rate is not None),
     } for item in material_issues]
-    return JsonResponse({'job': _job(job), 'progress': [_progress(x) for x in job.progress_updates.all()],
+    return JsonResponse({'job': _job(job), 'progress': [_progress(x) for x in job.progress_updates.all()],\n        'stage_tasks': [_stage_task(x) for x in job.stage_tasks.select_related('assigned_staff__user', 'updated_by').all()],
         'materials': [_material(x) for x in job.materials.all()], 'issues': [_issue(x) for x in job.issues.all()],
         'material_issues': issue_rows,
         'material_costs': _job_material_cost_summary(job) if _manager(request.user) else None,
@@ -283,6 +283,91 @@ def detail(request, pk):
             "total_cost": str(entry.total_cost), "created_at": entry.created_at.isoformat(),
         } for entry in ProductionCostEntry.objects.filter(job_id=job.pk).order_by("-created_at", "-pk")] if _manager(request.user) else [],
         'can_manage': _manager(request.user)})
+
+
+def _stage_task(task):
+    return {
+        "id": task.pk, "stage": task.stage, "stage_label": task.get_stage_display(),
+        "assigned_staff": {"id": task.assigned_staff_id, "name": str(task.assigned_staff)} if task.assigned_staff_id else None,
+        "planned_start": task.planned_start.isoformat() if task.planned_start else None,
+        "expected_completion": task.expected_completion.isoformat() if task.expected_completion else None,
+        "actual_start": task.actual_start.isoformat() if task.actual_start else None,
+        "actual_completion": task.actual_completion.isoformat() if task.actual_completion else None,
+        "status": task.status, "status_label": task.get_status_display(),
+        "remarks": task.remarks, "updated_by": task.updated_by.get_full_name() if task.updated_by else None,
+        "updated_at": task.updated_at.isoformat(),
+    }
+
+
+@require_POST
+@login_required
+def upsert_stage_task(request, pk):
+    from datetime import date
+    from django.utils.dateparse import parse_datetime
+    from django.db import transaction
+    job = get_object_or_404(_visible_jobs(request.user), pk=pk)
+    if not _job_visible(request.user, job):
+        raise PermissionDenied
+    data = _data(request)
+    stage = data.get("stage")
+    if stage not in ProductionStageTask.Stage.values:
+        return JsonResponse({"detail": "Select a valid production stage."}, status=400)
+    with transaction.atomic():
+        task = ProductionStageTask.objects.select_for_update().filter(job=job, stage=stage).first()
+        manager = _manager(request.user)
+        staff_id = getattr(getattr(request.user, "staff_profile", None), "id", None)
+        if task is None and not manager:
+            return JsonResponse({"detail": "Only a manager can create and assign production stage tasks."}, status=403)
+        if task is not None and not manager and task.assigned_staff_id != staff_id:
+            raise PermissionDenied
+        if task is None:
+            task = ProductionStageTask(job=job, stage=stage)
+        if manager:
+            raw_staff = data.get("assigned_staff")
+            if raw_staff in (None, ""):
+                task.assigned_staff = None
+            else:
+                try:
+                    staff = StaffProfile.objects.get(pk=int(raw_staff), status=StaffProfile.Status.ACTIVE)
+                except (TypeError, ValueError, StaffProfile.DoesNotExist):
+                    return JsonResponse({"detail": "Select an active staff member."}, status=400)
+                if not _staff_in_manager_department(request.user, staff):
+                    return JsonResponse({"detail": "You can only assign stage tasks to staff in your own department."}, status=403)
+                task.assigned_staff = staff
+            for field in ("planned_start", "expected_completion"):
+                raw = data.get(field)
+                if raw in (None, ""):
+                    setattr(task, field, None)
+                else:
+                    try:
+                        parsed = date.fromisoformat(str(raw))
+                    except ValueError:
+                        return JsonResponse({"detail": f"{field} must be a valid date."}, status=400)
+                    setattr(task, field, parsed)
+            if task.planned_start and task.expected_completion and task.expected_completion < task.planned_start:
+                return JsonResponse({"detail": "Expected completion cannot be before planned start."}, status=400)
+        status = data.get("status", task.status)
+        if status not in ProductionStageTask.Status.values:
+            return JsonResponse({"detail": "Select a valid stage task status."}, status=400)
+        if not manager and status not in (ProductionStageTask.Status.IN_PROGRESS, ProductionStageTask.Status.ON_HOLD, ProductionStageTask.Status.COMPLETED):
+            return JsonResponse({"detail": "Assigned staff can report In Progress, On Hold or Completed only."}, status=403)
+        now = timezone.now()
+        if status == ProductionStageTask.Status.IN_PROGRESS and not task.actual_start:
+            task.actual_start = now
+        if status == ProductionStageTask.Status.COMPLETED:
+            if not task.actual_start:
+                task.actual_start = now
+            if not task.actual_completion:
+                task.actual_completion = now
+        elif task.status == ProductionStageTask.Status.COMPLETED:
+            return JsonResponse({"detail": "Completed stage tasks cannot be reopened. Create a new controlled revision instead."}, status=409)
+        task.status = status
+        if "remarks" in data:
+            task.remarks = str(data.get("remarks") or "").strip()
+        task.updated_by = request.user
+        task.save()
+    return JsonResponse({"stage_task": _stage_task(task)}, status=200 if task.pk else 201)
+
 
 def _data(request):
     try: return json.loads(request.body or '{}')
