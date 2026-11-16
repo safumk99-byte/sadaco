@@ -254,3 +254,46 @@ class SalesOrderClosureTests(TestCase):
         response = self._update({"status": DeliveryRecord.Status.OUT})
         self.assertEqual(response.status_code, 400)
         self.assertIn("Packing must be completed", response.json()["detail"])
+
+
+class RequiredInstallationDispatchLockTests(TestCase):
+    def setUp(self):
+        self.department = Department.objects.create(code="delivery-install-lock", name="Delivery Install Lock")
+        self.manager = User.objects.create_user(username="delivery_install_manager", password="StrongPass123!")
+        UserProfile.objects.create(
+            user=self.manager, role=UserProfile.Role.MANAGER, department=self.department
+        )
+        customer = Customer.objects.create(
+            name="Installation Lock Customer", phone="9000000044", department=self.department
+        )
+        self.order = SalesOrder.objects.create(
+            customer=customer, item_description="Installation Lock Item",
+            quantity=1, confirmed_price=1000, status=SalesOrder.Status.DELIVERED,
+        )
+        self.delivery = DeliveryRecord.objects.create(
+            order=self.order, status=DeliveryRecord.Status.OUT, installation_required=True,
+        )
+        self.client.force_login(self.manager)
+
+    def test_required_installation_cannot_be_removed_after_dispatch(self):
+        response = self.client.post(
+            f"/api/delivery/orders/{self.order.pk}/update/",
+            data=json.dumps({"installation_required": False}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Installation cannot be removed", response.json()["detail"])
+        self.delivery.refresh_from_db()
+        self.assertTrue(self.delivery.installation_required)
+
+    def test_required_installation_still_blocks_closure_after_delivery(self):
+        self.delivery.status = DeliveryRecord.Status.DELIVERED
+        self.delivery.save(update_fields=["status"])
+        response = self.client.post(
+            f"/api/delivery/orders/{self.order.pk}/close/",
+            data="{}",
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Installation must be completed", response.json()["detail"])
+
