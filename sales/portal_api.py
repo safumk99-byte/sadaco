@@ -8,6 +8,7 @@ from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 from .models import Customer, CustomerNotification, CustomerFeedback, DesignApproval, DeliveryRecord, OrderRequest, Quotation, SalesOrder
+from .quotation_services import quotation_pdf_response
 from products.models import Product
 
 
@@ -31,7 +32,7 @@ def _request(o):
 
 def _quotation(q):
     designs = [{"id": d.id, "version": d.version, "status": d.status, "notes": d.notes, "customer_notes": d.customer_notes, "file": d.file.url if d.file else None} for d in q.designs.all()]
-    return {"id": q.id, "quotation_no": q.quotation_no, "item_description": q.item_description, "quantity": str(q.quantity), "quoted_price": str(q.quoted_price), "advance_required": str(q.advance_required), "delivery_timeline": q.delivery_timeline, "valid_until": q.valid_until.isoformat() if q.valid_until else None, "status": q.status, "notes": q.notes, "designs": designs}
+    return {"id": q.id, "quotation_no": q.quotation_no, "item_description": q.item_description, "dimensions": q.dimensions, "quantity": str(q.quantity), "subtotal": str(q.subtotal), "discount_percent": str(q.discount_percent), "discount_amount": str(q.discount_amount), "tax_rate": str(q.tax_rate) if q.tax_rate is not None else None, "tax_amount": str(q.tax_amount), "quoted_price": str(q.quoted_price), "advance_required": str(q.advance_required), "delivery_timeline": q.delivery_timeline, "valid_until": q.valid_until.isoformat() if q.valid_until else None, "status": q.status, "notes": q.notes, "designs": designs}
 
 def _order(o):
     received = sum((p.amount for p in o.payments.all() if p.status in ("received", "verified")), Decimal("0"))
@@ -134,8 +135,18 @@ def portal_quotation_response(request, pk):
     c=_guard_customer(request)
     if not c: return JsonResponse({"detail":"Customer account required."}, status=403)
     q=get_object_or_404(Quotation,pk=pk,customer=c); data=json.loads(request.body or "{}"); decision=data.get("decision")
-    if decision not in (Quotation.Status.APPROVED, Quotation.Status.REJECTED): return JsonResponse({"detail":"Invalid quotation response."}, status=400)
-    q.status=decision; q.save(update_fields=["status","updated_at"]); return JsonResponse({"quotation":_quotation(q)})
+    if decision not in ("accepted", "approved", Quotation.Status.REJECTED): return JsonResponse({"detail":"Invalid quotation response."}, status=400)
+    if q.status != Quotation.Status.SENT: return JsonResponse({"detail":"Only a sent quotation can be accepted or rejected."}, status=409)
+    if q.valid_until and q.valid_until < timezone.localdate(): return JsonResponse({"detail":"This quotation has expired."}, status=409)
+    if decision in ("accepted", "approved"):
+        q.status=Quotation.Status.ACCEPTED
+        q.accepted_at=timezone.now()
+        q.save(update_fields=["status","accepted_at","updated_at"])
+    else:
+        q.status=Quotation.Status.REJECTED
+        q.rejected_at=timezone.now()
+        q.save(update_fields=["status","rejected_at","updated_at"])
+    return JsonResponse({"quotation":_quotation(q)})
 
 @login_required
 @require_http_methods(["POST"])
@@ -166,3 +177,18 @@ def portal_feedback(request, pk):
     o=get_object_or_404(SalesOrder,pk=pk,customer=c,status=SalesOrder.Status.DELIVERED); data=json.loads(request.body or "{}"); rating=int(data.get("rating") or 0)
     if rating < 1 or rating > 5: return JsonResponse({"detail":"Rating must be between 1 and 5."}, status=400)
     fb,_=CustomerFeedback.objects.update_or_create(order=o,defaults={"rating":rating,"comment":str(data.get("comment","")).strip()}); return JsonResponse({"ok":True,"rating":fb.rating})
+
+
+
+@login_required
+def portal_quotation_pdf(request, pk):
+    customer = _guard_customer(request)
+    if not customer:
+        return JsonResponse({"detail": "Customer account required."}, status=403)
+    quotation = get_object_or_404(
+        Quotation.objects.prefetch_related("line_items"),
+        pk=pk, customer=customer,
+    )
+    if quotation.status not in (Quotation.Status.SENT, Quotation.Status.ACCEPTED, Quotation.Status.APPROVED):
+        return JsonResponse({"detail": "This quotation is not available yet."}, status=409)
+    return quotation_pdf_response(quotation)
