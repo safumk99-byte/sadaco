@@ -163,7 +163,7 @@ class OffcutUsage(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
-        indexes = [models.Index(fields=["target_job", "created_at"])]
+        indexes = [models.Index(fields=["target_job", "created_at"], name="inv_offcut_job_created_idx")]
 
     def __str__(self):
         return f"Offcut {self.offcut_id} → {self.target_job.job_no} · {self.used_area_sqft} sq ft"
