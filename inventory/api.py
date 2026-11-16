@@ -349,7 +349,7 @@ def offcut_create_api(request):
         gross_area_sqft = (length_mm * width_mm) / Decimal("92903.04")
         if usable_area > gross_area_sqft:
             return JsonResponse({"detail": f"Usable area cannot exceed the measured rectangle area ({gross_area_sqft.quantize(Decimal('0.0001'))} sq ft)."}, status=400)
-        issue = MaterialIssue.objects.select_for_update().select_related(
+        issue = MaterialIssue.objects.select_for_update(of=("self",)).select_related(
             "job__order__customer", "material__material_variant", "stock_lot__balance"
         ).get(pk=data.get("source_issue"), status=MaterialIssue.Status.ISSUED)
         if issue.material.material_variant_id != material.pk or not issue.stock_lot_id:
@@ -421,7 +421,7 @@ def offcut_action_api(request, pk):
         if action == "used":
             from production.models import ProductionMaterial
             job = ProductionJob.objects.select_related("order__customer").get(pk=data.get("job"))
-            line = ProductionMaterial.objects.select_for_update().select_related("material_variant").get(
+            line = ProductionMaterial.objects.select_for_update(of=("self",)).select_related("material_variant").get(
                 pk=data.get("material_line"), job=job
             )
             if job.order.customer.department_id != offcut.department_id:
@@ -578,70 +578,6 @@ def production_material_return_api(request):
 def production_material_wastage_api(request):
     return _material_usage_adjustment(request, "wastage")
 
-
-
-@require_POST
-@login_required
-def offcut_create_api(request):
-    try:
-        data = json.loads(request.body or "{}")
-        scope = _manager_department(request.user)
-        if scope is False:
-            return JsonResponse({"detail": "You do not have permission to manage offcuts."}, status=403)
-        department_id = scope if scope is not None else data.get("department")
-        department = Department.objects.get(pk=department_id, is_active=True)
-        material = MaterialVariant.objects.get(pk=data.get("material"), is_active=True)
-        location = str(data.get("location", "")).strip()
-        if not location:
-            return JsonResponse({"detail": "Location is required."}, status=400)
-        source_job = None
-        if data.get("source_job"):
-            source_job = ProductionJob.objects.select_related("order__customer").get(pk=data["source_job"])
-            if source_job.order.customer.department_id != department.pk:
-                return JsonResponse({"detail": "Source job belongs to another department."}, status=400)
-        offcut = ReusableOffcut.objects.create(
-            material=material, department=department, location=location,
-            thickness_mm=data.get("thickness_mm") or material.thickness_mm,
-            length_mm=data.get("length_mm"), width_mm=data.get("width_mm"),
-            usable_area_sqft=data.get("usable_area_sqft"), source_job=source_job,
-            notes=str(data.get("notes", "")).strip(), created_by=request.user,
-        )
-        return JsonResponse({"ok": True, "id": offcut.pk, "status": offcut.status}, status=201)
-    except (ValueError, TypeError, InvalidOperation, Department.DoesNotExist,
-            MaterialVariant.DoesNotExist, ProductionJob.DoesNotExist) as exc:
-        return JsonResponse({"detail": str(exc)}, status=400)
-
-
-@require_POST
-@login_required
-@transaction.atomic
-def offcut_action_api(request, pk):
-    try:
-        data = json.loads(request.body or "{}")
-        scope = _manager_department(request.user)
-        qs = ReusableOffcut.objects.select_for_update()
-        if scope is not None:
-            if not scope:
-                return JsonResponse({"detail": "You do not have permission to manage offcuts."}, status=403)
-            qs = qs.filter(department_id=scope)
-        offcut = qs.get(pk=pk)
-        if offcut.status != ReusableOffcut.Status.AVAILABLE:
-            return JsonResponse({"detail": "Only available offcuts can be used or discarded."}, status=400)
-        action = data.get("action")
-        if action == "used":
-            job = ProductionJob.objects.select_related("order__customer").get(pk=data.get("job"))
-            if job.order.customer.department_id != offcut.department_id:
-                return JsonResponse({"detail": "Target job belongs to another department."}, status=400)
-            offcut.status = ReusableOffcut.Status.USED
-            offcut.used_for_job = job
-        elif action == "discarded":
-            offcut.status = ReusableOffcut.Status.DISCARDED
-        else:
-            return JsonResponse({"detail": "Action must be 'used' or 'discarded'."}, status=400)
-        offcut.save(update_fields=["status", "used_for_job", "updated_at"])
-        return JsonResponse({"ok": True, "id": offcut.pk, "status": offcut.status})
-    except (ValueError, TypeError, ReusableOffcut.DoesNotExist, ProductionJob.DoesNotExist) as exc:
-        return JsonResponse({"detail": str(exc)}, status=400)
 
 
 @require_GET
