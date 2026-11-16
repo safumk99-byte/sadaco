@@ -80,3 +80,24 @@ class CustomerInteractionAdmin(admin.ModelAdmin):
     list_filter = ("interaction_type", "completed", "next_follow_up")
     search_fields = ("customer__name", "customer__customer_no", "subject", "notes")
     readonly_fields = ("created_at",)
+
+
+@admin.register(QuotationConfiguration)
+class QuotationConfigurationAdmin(admin.ModelAdmin):
+    list_display = ("company_name", "tax_rate", "manager_discount_limit_percent", "updated_at")
+    readonly_fields = ("updated_at",)
+
+
+@admin.register(QuotationLineItem)
+class QuotationLineItemAdmin(admin.ModelAdmin):
+    list_display = ("quotation", "category", "description", "quantity", "unit_price", "line_total")
+    list_filter = ("category",)
+    search_fields = ("quotation__quotation_no", "description")
+
+
+@admin.register(QuotationApproval)
+class QuotationApprovalAdmin(admin.ModelAdmin):
+    list_display = ("quotation", "action", "discount_percent", "discount_amount", "performed_by", "created_at")
+    list_filter = ("action",)
+    search_fields = ("quotation__quotation_no", "performed_by__username")
+    readonly_fields = ("quotation", "action", "discount_percent", "discount_amount", "performed_by", "notes", "created_at")
