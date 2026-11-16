@@ -446,6 +446,18 @@ def update_packing(request, pk):
     ) if job.order.customer.department_id else StaffProfile.objects.none()
     if not form.is_valid():
         return JsonResponse({"detail": "Validation failed.", "errors": form.errors.get_json_data()}, status=400)
+    if form.cleaned_data.get("status") == PackingRecord.Status.PACKED:
+        from production.models import ProductionStageTask
+        packing_task = job.stage_tasks.filter(
+            stage=ProductionStageTask.Stage.PACKING_INSTALLATION
+        ).first()
+        if not packing_task or packing_task.status not in (
+            ProductionStageTask.Status.COMPLETED,
+            ProductionStageTask.Status.SKIPPED,
+        ):
+            return JsonResponse({
+                "detail": "Packing cannot be marked complete until the Packing / Installation stage task is completed or formally skipped."
+            }, status=400)
     packing = form.save()
     if packing.status == PackingRecord.Status.PACKED:
         from sales.models import SalesOrder
