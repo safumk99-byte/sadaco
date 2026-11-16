@@ -107,3 +107,17 @@ class SupplierPayment(models.Model):
         if not self.payment_no:
             self.payment_no = f"SP-{uuid.uuid4().hex[:10].upper()}"
         super().save(*args, **kwargs)
+
+
+class ApprovalThreshold(models.Model):
+    """Founder-managed limits; NULL means the limit has not been configured."""
+    purchase_amount = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True, validators=[MinValueValidator(0)])
+    expense_amount = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True, validators=[MinValueValidator(0)])
+    updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="updated_approval_thresholds")
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Approval threshold configuration"
+
+    def __str__(self):
+        return "Founder approval thresholds"
