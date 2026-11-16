@@ -103,6 +103,16 @@ def _sync_job(job):
         PackingRecord.objects.get_or_create(job=job); return
     job.stage=ProductionJob.Stage.QC_PENDING; job.save(update_fields=["stage","updated_at"])
 
+def _incomplete_production_stages(job):
+    from production.models import ProductionStageTask
+    return list(
+        job.stage_tasks.exclude(status__in=[
+            ProductionStageTask.Status.COMPLETED,
+            ProductionStageTask.Status.SKIPPED,
+        ]).values_list("stage", flat=True)
+    )
+
+
 def _data(request):
     try:
         return json.loads(request.body or "{}")
@@ -290,6 +300,10 @@ def create_check(request):
     job = get_object_or_404(_visible_jobs(request.user), pk=data.get("job"))
     if not _visible_job(request.user, job):
         raise PermissionDenied
+    if data.get("check_type") == QualityCheck.CheckType.FINAL and data.get("result") == QualityCheck.Result.PASS:
+        incomplete = _incomplete_production_stages(job)
+        if incomplete:
+            return JsonResponse({"detail": "Final QC cannot pass until all scheduled production stages are completed or formally skipped.", "incomplete_stages": incomplete}, status=400)
     form = QualityCheckForm(data)
     form.fields["inspector"].queryset = StaffProfile.objects.filter(
         department_id=job.order.customer.department_id
@@ -324,7 +338,12 @@ def update_check(request, pk):
     check = get_object_or_404(QualityCheck.objects.select_related("job"), pk=pk)
     if not _visible_job(request.user, check.job):
         raise PermissionDenied
-    form = QualityCheckForm(_data(request), instance=check)
+    data = _data(request)
+    if data.get("check_type", check.check_type) == QualityCheck.CheckType.FINAL and data.get("result", check.result) == QualityCheck.Result.PASS:
+        incomplete = _incomplete_production_stages(check.job)
+        if incomplete:
+            return JsonResponse({"detail": "Final QC cannot pass until all scheduled production stages are completed or formally skipped.", "incomplete_stages": incomplete}, status=400)
+    form = QualityCheckForm(data, instance=check)
     form.fields["inspector"].queryset = StaffProfile.objects.filter(
         department_id=check.job.order.customer.department_id
     ) if check.job.order.customer.department_id else StaffProfile.objects.none()
