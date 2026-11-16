@@ -93,7 +93,7 @@ def record_production_cost(*, job_id, cost_type, quantity, user, machine_rate_id
         if not department_id or staff.department_id != department_id:
             raise ValidationError("The selected staff member must belong to the job's department.")
         try:
-            compensation = StaffCompensation.objects.get(staff=staff, is_active=True)
+            compensation = StaffCompensation.objects.select_for_update().get(staff=staff, is_active=True)
         except StaffCompensation.DoesNotExist:
             raise ValidationError("No active verified compensation record exists for this staff member.")
         if (
@@ -120,6 +120,8 @@ def record_production_cost(*, job_id, cost_type, quantity, user, machine_rate_id
         raise ValidationError("Cost type must be machine or labour.")
 
     total_cost = (quantity * unit_rate).quantize(CENT, rounding=ROUND_HALF_UP)
+    if total_cost > Decimal("99999999999999.99"):
+        raise ValidationError("Calculated production cost exceeds the supported amount.")
     return ProductionCostEntry.objects.create(
         job=job,
         cost_type=cost_type,
