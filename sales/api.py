@@ -33,6 +33,14 @@ def _global_admin(user):
     )
 
 
+
+def _founder(user):
+    profile = getattr(user, "profile", None)
+    return user.is_superuser or bool(
+        profile and profile.is_active and profile.role == UserProfile.Role.SUPER_ADMIN
+    )
+
+
 def _department_id(user):
     profile = getattr(user, "profile", None)
     return profile.department_id if profile and profile.role == UserProfile.Role.MANAGER else None
