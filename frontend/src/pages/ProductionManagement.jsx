@@ -608,7 +608,7 @@ function JobDetail({ data, close, refresh }) {
               ))}
             </div>
             <div className="mt-2 text-xs text-slate-500">
-              Offcut area: {jobCostSummary.offcut_registered_area_sqft} sq ft registered · {jobCostSummary.offcut_consumed_area_sqft} sq ft transferred to other jobs · {jobCostSummary.offcut_discarded_area_sqft} sq ft discarded
+              Offcuts generated here: {jobCostSummary.offcut_registered_area_sqft} sq ft · {jobCostSummary.generated_offcut_transferred_area_sqft} sq ft transferred out · {jobCostSummary.offcut_discarded_area_sqft} sq ft discarded · {jobCostSummary.offcut_consumed_here_area_sqft} sq ft received from other jobs
               {Number(jobCostSummary.unpriced_issue_count) > 0 && <span className="ml-2 text-amber-700">· {jobCostSummary.unpriced_issue_count} legacy issue(s) have no recorded cost</span>}
             </div>
           </div>
