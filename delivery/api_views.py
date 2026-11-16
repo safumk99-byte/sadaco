@@ -118,6 +118,18 @@ def update(request, pk):
             return JsonResponse({'detail': 'This delivery status transition is not allowed.'}, status=400)
         if requested in (DeliveryRecord.Status.READY, DeliveryRecord.Status.OUT, DeliveryRecord.Status.DELIVERED, DeliveryRecord.Status.INSTALLED) and order.status not in (SalesOrder.Status.READY, SalesOrder.Status.DELIVERED):
             return JsonResponse({'detail': 'The Sales Order must pass Final QC and be marked Ready before delivery can proceed.'}, status=400)
+        if requested in (DeliveryRecord.Status.READY, DeliveryRecord.Status.OUT, DeliveryRecord.Status.DELIVERED, DeliveryRecord.Status.INSTALLED):
+            from production.models import ProductionJob
+            from quality.models import PackingRecord
+            packed_job_exists = ProductionJob.objects.filter(
+                order=order,
+                status=ProductionJob.Status.COMPLETED,
+                packing__status=PackingRecord.Status.PACKED,
+            ).exists()
+            if not packed_job_exists:
+                return JsonResponse({
+                    'detail': 'Packing must be completed and recorded before delivery can proceed.'
+                }, status=400)
         if requested in (DeliveryRecord.Status.OUT, DeliveryRecord.Status.DELIVERED, DeliveryRecord.Status.INSTALLED):
             paid_total = order.payments.filter(
                 status__in=[PaymentRecord.Status.RECEIVED, PaymentRecord.Status.VERIFIED]
