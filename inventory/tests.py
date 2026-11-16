@@ -210,6 +210,36 @@ class MaterialLedgerWorkflowTests(TestCase):
         self.balance.refresh_from_db()
         self.assertEqual(self.balance.quantity, Decimal("10"))
 
+    def test_opening_stock_issue_appears_in_production_history_with_its_source(self):
+        from inventory.services import record_material_movement
+
+        admin = User.objects.create_superuser(
+            username="opening-detail-admin", email="opening-detail@example.com", password="StrongPass123!",
+        )
+        movement = record_material_movement(
+            balance_id=self.balance.pk, movement_type=MaterialStockMovement.Type.OPENING,
+            quantity="2", user=admin, reference="OPENING-DETAIL",
+        )
+        self.client.force_login(admin)
+        cost_response = self.client.post(
+            f"/api/inventory/materials/opening-batches/{movement.pk}/cost/",
+            data=json.dumps({
+                "unit_cost": "85.50",
+                "cost_source_reference": "Approved opening valuation OV-2026-01",
+            }),
+            content_type="application/json",
+        )
+        self.assertEqual(cost_response.status_code, 201, cost_response.content)
+        opening_lot = MaterialStockLot.objects.get(opening_movement=movement)
+        issue, _ = issue_material(
+            material_id=self.line.pk, quantity="1", lot_id=opening_lot.pk, user=admin,
+        )
+        response = self.client.get(f"/api/production/jobs/{self.job.pk}/")
+        self.assertEqual(response.status_code, 200, response.content)
+        issue_row = next(row for row in response.json()["material_issues"] if row["id"] == issue.pk)
+        self.assertEqual(issue_row["receipt_no"], f"Opening #{movement.pk}")
+        self.assertEqual(issue_row["cost_source_reference"], "Approved opening valuation OV-2026-01")
+
     def test_issue_requires_location_when_material_has_multiple_balances(self):
         MaterialStockBalance.objects.create(
             material=self.material, department=self.department, location="Secondary", quantity=Decimal("5")
