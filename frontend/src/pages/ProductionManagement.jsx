@@ -329,7 +329,7 @@ export default function ProductionManagement() {
         </Modal>
       )}
       {detail && (
-        <JobDetail data={detail} close={() => setDetail(null)} refresh={load} />
+        <JobDetail data={detail} materials={options.materials || []} close={() => setDetail(null)} refresh={load} />
       )}
     </div>
   );
@@ -405,7 +405,7 @@ function JobTable({ jobs, onOpen }) {
     </div>
   );
 }
-function JobDetail({ data, close, refresh }) {
+function JobDetail({ data, materials, close, refresh }) {
   const j = data.job;
   const [progress, setProgress] = useState({
     stage: j.stage,
@@ -421,10 +421,10 @@ function JobDetail({ data, close, refresh }) {
   });
   const [material, setMaterial] = useState({
     product: "",
+    material_variant: "",
     material_name: "",
     quantity_required: "1",
     unit: "Piece",
-    issued_quantity: "0",
     notes: "",
   });
   const [busy, setBusy] = useState(false);
@@ -669,42 +669,44 @@ function JobDetail({ data, close, refresh }) {
         </div>
         <div>
           <h3 className="mb-2 font-bold">Materials</h3>
-          <div className="grid gap-2 md:grid-cols-5">
+          <div className="grid gap-2 md:grid-cols-4">
+            <select
+              className={input}
+              value={material.material_variant}
+              onChange={(e) => {
+                const selected = materials.find((item) => String(item.id) === e.target.value);
+                setMaterial((x) => ({
+                  ...x,
+                  material_variant: e.target.value,
+                  material_name: selected?.name || x.material_name,
+                  unit: selected?.unit || x.unit,
+                }));
+              }}
+            >
+              <option value="">Choose Material Master (optional)</option>
+              {materials.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name} · {item.brand}{item.thickness_mm ? ` · ${item.thickness_mm} mm` : ""}
+                </option>
+              ))}
+            </select>
             <input
               className={input}
               placeholder="Material name"
               value={material.material_name}
               onChange={(e) =>
-                setMaterial((x) => ({ ...x, material_name: e.target.value }))
+                setMaterial((x) => ({ ...x, material_name: e.target.value, material_variant: "" }))
               }
             />
             <input
               className={input}
               type="number"
-              placeholder="Required"
+              min="0.01"
+              step="0.01"
+              placeholder="Required quantity"
               value={material.quantity_required}
               onChange={(e) =>
-                setMaterial((x) => ({
-                  ...x,
-                  quantity_required: e.target.value,
-                }))
-              }
-            />
-            <input
-              className={input}
-              placeholder="Unit"
-              value={material.unit}
-              onChange={(e) =>
-                setMaterial((x) => ({ ...x, unit: e.target.value }))
-              }
-            />
-            <input
-              className={input}
-              type="number"
-              placeholder="Issued"
-              value={material.issued_quantity}
-              onChange={(e) =>
-                setMaterial((x) => ({ ...x, issued_quantity: e.target.value }))
+                setMaterial((x) => ({ ...x, quantity_required: e.target.value }))
               }
             />
             <button
@@ -714,6 +716,9 @@ function JobDetail({ data, close, refresh }) {
               Add
             </button>
           </div>
+          <p className="mt-1 text-xs text-slate-500">
+            Issued quantity is updated only through the stock issue workflow; it cannot be entered manually.
+          </p>
           <div className="mt-3 space-y-2">
             {data.materials.map((m) => (
               <div
