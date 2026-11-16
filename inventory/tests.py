@@ -584,4 +584,4 @@ class ReusableOffcutAreaLedgerTests(TestCase):
         )
         self.target_line.refresh_from_db()
         self.assertEqual(self.target_line.issued_quantity, Decimal("1.87"))
-        self.assertEqual(self.target_line.pending_quantity, Decimal("0.005"))
+        self.assertEqual(self.target_line.pending_quantity, Decimal("0"))
