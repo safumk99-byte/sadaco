@@ -29,6 +29,7 @@ export default function SalesManagement() {
   const [error, setError] = useState("");
   const [form, setForm] = useState(null);
   const [historyCustomer, setHistoryCustomer] = useState(null);
+  const [paymentOrder, setPaymentOrder] = useState(null);
   const load = async () => {
     setLoading(true);
     setError("");
@@ -198,6 +199,7 @@ export default function SalesManagement() {
                 tab={tab}
                 rows={list}
                 onHistory={tab === "customers" ? setHistoryCustomer : undefined}
+                onPayments={tab === "orders" ? setPaymentOrder : undefined}
                 onEdit={(x) =>
                   setForm({
                     type:
@@ -215,6 +217,9 @@ export default function SalesManagement() {
             )}
           </div>
         </>
+      )}
+      {paymentOrder && (
+        <OrderPayments order={paymentOrder} onClose={() => setPaymentOrder(null)} onSaved={() => { setPaymentOrder(null); load(); }} />
       )}
       {historyCustomer && (
         <CustomerHistory customer={historyCustomer} canManage={data.can_manage} onClose={() => setHistoryCustomer(null)} />
@@ -314,7 +319,7 @@ function Empty() {
     </div>
   );
 }
-function SalesTable({ tab, rows, onEdit, onHistory }) {
+function SalesTable({ tab, rows, onEdit, onHistory, onPayments }) {
   if (!rows.length) return <Empty />;
   return (
     <div className="overflow-x-auto">
@@ -435,6 +440,65 @@ function Badge({ value }) {
     <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">
       {value}
     </span>
+  );
+}
+
+
+function OrderPayments({ order, onClose, onSaved }) {
+  const [amount, setAmount] = useState("");
+  const [paymentType, setPaymentType] = useState("advance");
+  const [method, setMethod] = useState("cash");
+  const [paidOn, setPaidOn] = useState(new Date().toISOString().slice(0, 10));
+  const [reference, setReference] = useState("");
+  const [notes, setNotes] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const submit = async (event) => {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    try {
+      await api.post(`/sales/orders/${order.id}/payments/`, {
+        amount, payment_type: paymentType, payment_method: method,
+        paid_on: paidOn, reference, notes,
+      });
+      onSaved();
+    } catch (e) {
+      setError(e.response?.data?.detail || "Unable to record payment.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Modal title={`Payments · ${order.order_no}`} onClose={onClose}>
+      <div className="mb-4 grid grid-cols-3 gap-2">
+        <Stat label="Order Value" value={money(order.confirmed_price)} />
+        <Stat label="Advance Received" value={money(order.advance_paid)} />
+        <Stat label="Balance" value={money(order.balance)} />
+      </div>
+      <div className="mb-5 space-y-2">
+        <h3 className="font-semibold text-slate-900">Payment History</h3>
+        {order.payments?.length ? order.payments.map((p) => (
+          <div key={p.id} className="flex flex-wrap justify-between gap-2 rounded-xl bg-slate-50 p-3 text-sm">
+            <div><div className="font-semibold">{p.receipt_no} · {p.payment_type}</div><div className="text-xs text-slate-500">{p.paid_on || "Date not set"} · {p.payment_method} · {p.status}</div></div>
+            <div className="font-semibold">{money(p.amount)}</div>
+          </div>
+        )) : <Empty />}
+      </div>
+      <form onSubmit={submit} className="grid gap-3 md:grid-cols-2">
+        <Field label="Amount" value={amount} set={setAmount} required />
+        <Field label="Payment Type" value={paymentType} set={setPaymentType} select options={["advance", "final", "other"]} />
+        <Field label="Payment Method" value={method} set={setMethod} select options={["cash", "upi", "bank", "card", "other"]} />
+        <Field label="Paid On" value={paidOn} set={setPaidOn} type="date" />
+        <Field label="Reference" value={reference} set={setReference} />
+        <Field label="Notes" value={notes} set={setNotes} />
+        {error && <div className="md:col-span-2 rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+        <div className="md:col-span-2 flex justify-end gap-2">
+          <button type="button" onClick={onClose} className="rounded-xl border px-4 py-2 text-sm">Close</button>
+          <button disabled={busy} className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{busy ? "Saving..." : "Record Payment"}</button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 
