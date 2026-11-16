@@ -444,6 +444,13 @@ function JobDetail({ data, materials, options, close, refresh }) {
   const [costForm, setCostForm] = useState({ cost_type: "machine", machine_rate: "", staff: "", material_line: "", quantity: "" });
   const [costError, setCostError] = useState("");
   const [costBusy, setCostBusy] = useState(false);
+  const [stageTasks, setStageTasks] = useState(data.stage_tasks || []);
+  const [stageTaskForm, setStageTaskForm] = useState({
+    stage: "design", assigned_staff: "", planned_start: "", expected_completion: "",
+    status: "pending", remarks: "",
+  });
+  const [stageTaskError, setStageTaskError] = useState("");
+  const [stageTaskBusy, setStageTaskBusy] = useState(false);
   const selectedMachineRate = (options.machine_rates || []).find((x) => String(x.id) === String(costForm.machine_rate));
   const reloadOffcutData = async () => {
     const [offcutResponse, jobResponse] = await Promise.all([
@@ -571,6 +578,24 @@ function JobDetail({ data, materials, options, close, refresh }) {
       await reloadOffcutData();
     } catch (e) {
       setOffcutError(e.response?.data?.detail || "Unable to discard offcut.");
+    }
+  };
+  const saveStageTask = async () => {
+    setStageTaskBusy(true);
+    setStageTaskError("");
+    try {
+      const response = await api.post(`/production/jobs/${j.id}/stage-tasks/`, stageTaskForm);
+      setStageTasks((current) => {
+        const exists = current.some((item) => item.id === response.data.stage_task.id);
+        return exists
+          ? current.map((item) => item.id === response.data.stage_task.id ? response.data.stage_task : item)
+          : [...current, response.data.stage_task];
+      });
+      setStageTaskForm((current) => ({ ...current, status: "pending", remarks: "" }));
+    } catch (e) {
+      setStageTaskError(e.response?.data?.detail || "Unable to save production stage task.");
+    } finally {
+      setStageTaskBusy(false);
     }
   };
   const saveProgress = async () => {
@@ -712,6 +737,59 @@ function JobDetail({ data, materials, options, close, refresh }) {
             )}
           </section>
         )}
+        <section className="rounded-xl border border-indigo-200 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h3 className="font-bold">Production Stage Tasks</h3>
+              <p className="text-xs text-slate-500">Assign owners and track planned versus actual stage completion.</p>
+            </div>
+            <span className="text-xs text-slate-500">{stageTasks.length} tracked stages</span>
+          </div>
+          <div className="mt-3 space-y-2">
+            {stageTasks.map((task) => (
+              <div key={task.id} className="rounded-lg bg-slate-50 p-3 text-sm">
+                <div className="flex flex-wrap justify-between gap-2">
+                  <strong>{task.stage_label}</strong>
+                  <span className="rounded-full bg-white px-2 py-1 text-xs">{task.status_label}</span>
+                </div>
+                <div className="mt-1 text-xs text-slate-600">
+                  Owner: {task.assigned_staff?.name || "Unassigned"} · Planned: {task.planned_start || "—"} to {task.expected_completion || "—"}
+                </div>
+                <div className="text-xs text-slate-600">
+                  Actual: {task.actual_start ? new Date(task.actual_start).toLocaleString() : "Not started"} · {task.actual_completion ? new Date(task.actual_completion).toLocaleString() : "Not completed"}
+                </div>
+                {task.remarks && <p className="mt-1 text-xs text-slate-700">{task.remarks}</p>}
+              </div>
+            ))}
+            {!stageTasks.length && <p className="text-xs text-slate-500">No stage tasks have been scheduled yet.</p>}
+          </div>
+          <div className="mt-4 grid gap-2 md:grid-cols-3">
+            <select className={input} value={stageTaskForm.stage} onChange={(e) => setStageTaskForm((x) => ({ ...x, stage: e.target.value }))}>
+              {[
+                ["design", "Design"], ["laser", "Acrylic Laser Cutting"], ["cnc", "Wood CNC Cutting"],
+                ["assembly_sticking", "Assembly / Sticking"], ["polishing_painting", "Polishing / Painting"],
+                ["electrical_led", "Electrical / LED"], ["final_assembly", "Final Assembly"],
+                ["packing_installation", "Packing / Installation"],
+              ].map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+            {data.can_manage && (
+              <select className={input} value={stageTaskForm.assigned_staff} onChange={(e) => setStageTaskForm((x) => ({ ...x, assigned_staff: e.target.value }))}>
+                <option value="">Unassigned</option>
+                {(options.staff || []).map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}
+              </select>
+            )}
+            {data.can_manage && <input className={input} type="date" aria-label="Planned start" value={stageTaskForm.planned_start} onChange={(e) => setStageTaskForm((x) => ({ ...x, planned_start: e.target.value }))} />}
+            {data.can_manage && <input className={input} type="date" aria-label="Expected completion" value={stageTaskForm.expected_completion} onChange={(e) => setStageTaskForm((x) => ({ ...x, expected_completion: e.target.value }))} />}
+            <select className={input} value={stageTaskForm.status} onChange={(e) => setStageTaskForm((x) => ({ ...x, status: e.target.value }))}>
+              {(data.can_manage ? ["pending", "assigned", "in_progress", "on_hold", "completed", "skipped"] : ["in_progress", "on_hold", "completed"]).map((value) => <option key={value} value={value}>{value.replaceAll("_", " ")}</option>)}
+            </select>
+            <input className={input} placeholder="Stage remarks" value={stageTaskForm.remarks} onChange={(e) => setStageTaskForm((x) => ({ ...x, remarks: e.target.value }))} />
+          </div>
+          {stageTaskError && <p className="mt-2 text-sm text-red-700">{stageTaskError}</p>}
+          <button onClick={saveStageTask} disabled={stageTaskBusy} className="mt-3 rounded-xl bg-indigo-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
+            {stageTaskBusy ? "Saving..." : "Save Stage Task"}
+          </button>
+        </section>
         <div>
           <h3 className="mb-2 font-bold">Update Progress</h3>
           <div className="grid gap-3 md:grid-cols-3">
