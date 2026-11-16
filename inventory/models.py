@@ -130,6 +130,10 @@ class ReusableOffcut(models.Model):
     length_mm = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(0.01)])
     width_mm = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(0.01)])
     usable_area_sqft = models.DecimalField(max_digits=12, decimal_places=4, validators=[MinValueValidator(0.0001)])
+    # Source snapshots make each reusable piece traceable to its issued sheet and purchase batch.
+    source_issue = models.ForeignKey("inventory.MaterialIssue", on_delete=models.PROTECT, null=True, blank=True, related_name="generated_offcuts")
+    source_lot = models.ForeignKey("purchase.MaterialStockLot", on_delete=models.PROTECT, null=True, blank=True, related_name="generated_offcuts")
+    cost_per_sqft = models.DecimalField(max_digits=14, decimal_places=6, null=True, blank=True, validators=[MinValueValidator(0)])
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.AVAILABLE)
     source_job = models.ForeignKey("production.ProductionJob", on_delete=models.PROTECT, null=True, blank=True, related_name="generated_offcuts")
     used_for_job = models.ForeignKey("production.ProductionJob", on_delete=models.PROTECT, null=True, blank=True, related_name="used_offcuts")
@@ -144,6 +148,25 @@ class ReusableOffcut(models.Model):
 
     def __str__(self):
         return f"{self.material} · {self.length_mm}×{self.width_mm} mm"
+
+
+class OffcutUsage(models.Model):
+    """Area-based, cost-snapshotted consumption of one reusable offcut by a job."""
+    offcut = models.ForeignKey(ReusableOffcut, on_delete=models.PROTECT, related_name="usages")
+    target_job = models.ForeignKey("production.ProductionJob", on_delete=models.PROTECT, related_name="offcut_usages")
+    target_material = models.ForeignKey("production.ProductionMaterial", on_delete=models.PROTECT, related_name="offcut_usages")
+    used_area_sqft = models.DecimalField(max_digits=12, decimal_places=4, validators=[MinValueValidator(0.0001)])
+    cost_per_sqft = models.DecimalField(max_digits=14, decimal_places=6, validators=[MinValueValidator(0)])
+    total_cost = models.DecimalField(max_digits=14, decimal_places=2, validators=[MinValueValidator(0)])
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["target_job", "created_at"])]
+
+    def __str__(self):
+        return f"Offcut {self.offcut_id} → {self.target_job.job_no} · {self.used_area_sqft} sq ft"
 
 
 class MaterialStockCount(models.Model):
