@@ -206,6 +206,7 @@ def offcuts_api(request):
 
 @require_POST
 @login_required
+@transaction.atomic
 def offcut_create_api(request):
     try:
         data = json.loads(request.body or "{}")
