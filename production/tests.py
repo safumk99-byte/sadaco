@@ -399,6 +399,36 @@ class ProductionCostingTests(TestCase):
         self.assertEqual(costs["total_tracked_job_cost"], "98.28")
         self.assertEqual(len(response.json()["cost_entries"]), 2)
 
+    def test_costing_options_hide_non_positive_rates_and_invalid_monthly_compensation(self):
+        from decimal import Decimal
+        from products.models import MachineRate, StaffCompensation
+
+        zero_rate = MachineRate.objects.create(
+            operation=MachineRate.Operation.LASER_ENGRAVING,
+            rate=Decimal("0"), unit="minute",
+        )
+        zero_salary_user = User.objects.create_user(
+            username="costing_zero_salary", password="StrongPass123!"
+        )
+        UserProfile.objects.create(
+            user=zero_salary_user, role=UserProfile.Role.STAFF, department=self.department
+        )
+        zero_salary_staff = StaffProfile.objects.create(
+            user=zero_salary_user, staff_id="COST-ZERO", department=self.department
+        )
+        StaffCompensation.objects.create(
+            staff=zero_salary_staff, payment_type=StaffCompensation.PaymentType.MONTHLY,
+            monthly_salary=Decimal("0"), working_days_per_month=26,
+            productive_hours_per_day=Decimal("8.25"),
+        )
+        self.client.force_login(self.manager)
+        response = self.client.get("/api/production/options/")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertNotIn(zero_rate.pk, [item["id"] for item in response.json()["machine_rates"]])
+        self.assertNotIn(zero_salary_staff.pk, [item["id"] for item in response.json()["labour_staff"]])
+        self.assertIn(self.laser_rate.pk, [item["id"] for item in response.json()["machine_rates"]])
+        self.assertIn(self.worker.pk, [item["id"] for item in response.json()["labour_staff"]])
+
     def test_non_manager_cannot_create_job_cost_entry(self):
         import json
         self.client.force_login(self.worker_user)
