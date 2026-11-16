@@ -71,6 +71,7 @@ export default function ApprovalCenter() {
               <th>Action</th>
               <th>Reference</th>
               <th>Amount</th>
+              <th>Reason</th>
               <th>Status</th>
               <th>Action</th>
             </tr>
@@ -78,7 +79,7 @@ export default function ApprovalCenter() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan="6" className="text-center py-10">
+                <td colSpan="7" className="text-center py-10">
                   Loading approvals...
                 </td>
               </tr>
@@ -95,9 +96,10 @@ export default function ApprovalCenter() {
                   <td>{x.action}</td>
                   <td>{x.reference || "—"}</td>
                   <td>{x.amount ?? "—"}</td>
+                  <td className="max-w-xs whitespace-normal">{x.reason || "—"}</td>
                   <td>{x.status_label || x.status}</td>
                   <td>
-                    {x.status === "pending" ? (
+                    {x.status === "pending" && x.can_review ? (
                       <span className="flex gap-2">
                         <button
                           className="btn-primary"
@@ -114,6 +116,8 @@ export default function ApprovalCenter() {
                           Reject
                         </button>
                       </span>
+                    ) : x.status === "pending" ? (
+                      <span className="text-slate-500">Founder review required</span>
                     ) : (
                       <span className="text-slate-500">—</span>
                     )}
