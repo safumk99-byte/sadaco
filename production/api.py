@@ -99,7 +99,10 @@ def _progress(p):
 def _material(m):
     return {'id': m.id, 'product': {'id': m.product_id, 'name': m.product.name} if m.product else None,
             'material_name': m.material_name, 'material_variant_id': m.material_variant_id, 'quantity_required': str(m.quantity_required), 'unit': m.unit,
-            'issued_quantity': str(m.issued_quantity), 'pending_quantity': str(m.pending_quantity), 'notes': m.notes}
+            'issued_quantity': str(m.issued_quantity), 'offcut_consumed_area_sqft': str(m.offcut_consumed_area_sqft),
+            'offcut_equivalent_quantity': str(m.offcut_equivalent_quantity),
+            'effective_fulfilled_quantity': str(m.effective_fulfilled_quantity),
+            'pending_quantity': str(m.pending_quantity), 'notes': m.notes}
 
 def _issue(i):
     return {'id': i.id, 'issue_type': i.issue_type, 'issue_type_label': i.get_issue_type_display(), 'stage': i.stage,
