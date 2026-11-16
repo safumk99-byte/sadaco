@@ -605,3 +605,24 @@ class ProductionStageTaskTests(TestCase):
         }, content_type="application/json")
         self.assertEqual(response.status_code, 201, response.content)
         self.assertEqual(response.json()["stage_task"]["status"], "skipped")
+
+
+    def test_stage_tasks_are_locked_after_final_qc_pass(self):
+        from quality.models import QualityCheck
+        from .models import ProductionStageTask
+        task = ProductionStageTask.objects.create(
+            job=self.job, stage="laser", assigned_staff=self.worker,
+            status=ProductionStageTask.Status.ASSIGNED,
+        )
+        QualityCheck.objects.create(
+            job=self.job, check_type=QualityCheck.CheckType.FINAL,
+            result=QualityCheck.Result.PASS,
+        )
+        self.client.force_login(self.manager)
+        response = self.client.post(self.url, data={
+            "stage": "laser", "assigned_staff": self.worker.pk,
+            "status": "completed", "remarks": "Late edit attempt",
+        }, content_type="application/json")
+        self.assertEqual(response.status_code, 409)
+        task.refresh_from_db()
+        self.assertEqual(task.status, ProductionStageTask.Status.ASSIGNED)
