@@ -129,6 +129,8 @@ def update(request, pk):
                 order=order,
                 status=ProductionJob.Status.COMPLETED,
                 packing__status=PackingRecord.Status.PACKED,
+                stage_tasks__stage="packing_installation",
+                stage_tasks__status__in=["completed", "skipped"],
             ).exists()
             if not packed_job_exists:
                 return JsonResponse({
