@@ -407,7 +407,7 @@ def offcut_action_api(request, pk):
     try:
         data = json.loads(request.body or "{}")
         scope = _manager_department(request.user)
-        qs = ReusableOffcut.objects.select_for_update().select_related("material", "source_lot")
+        qs = ReusableOffcut.objects.select_for_update(of=("self",)).select_related("material", "source_lot")
         if scope is not None:
             if not scope:
                 return JsonResponse({"detail": "You do not have permission to manage offcuts."}, status=403)
