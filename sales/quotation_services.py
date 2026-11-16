@@ -84,9 +84,14 @@ def quotation_pdf_response(quotation):
         ("BOTTOMPADDING", (0,0), (-1,-1), 5),
     ]))
     story.extend([Spacer(1, 5 * mm), table, Spacer(1, 4 * mm)])
+    discount_label = (
+        f"Discount (₹{quotation.discount_amount:,.2f} fixed)"
+        if quotation.discount_type == "amount"
+        else f"Discount ({quotation.discount_percent}%)"
+    )
     totals = [
         ["Subtotal", f"₹{quotation.subtotal:,.2f}"],
-        [f"Discount ({quotation.discount_percent}%)", f"- ₹{quotation.discount_amount:,.2f}"],
+        [discount_label, f"- ₹{quotation.discount_amount:,.2f}"],
     ]
     if quotation.tax_rate is not None:
         tax_label = snapshot.get("tax_label") or "Tax"
