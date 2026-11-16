@@ -9,7 +9,7 @@ from django.urls import reverse
 
 from accounts.models import UserProfile
 from core.models import Department
-from products.models import ProductCategory
+from products.models import Product, ProductCategory
 from staff.models import Designation, StaffProfile, WorkArea
 
 from .models import Customer, CustomerFeedback, CustomerNotification, DeliveryRecord, DesignApproval, Enquiry, OrderRequest, PaymentRecord, Quotation, QuotationApproval, QuotationConfiguration, QuotationLineItem, SalesOrder
@@ -582,12 +582,13 @@ class QuotationWorkflowApiTests(TestCase):
             default_terms="Payment terms as agreed.",
         )
 
-    def _create_quotation(self, discount="15", discount_type="percentage"):
+    def _create_quotation(self, discount="15", discount_type="percentage", product=None):
         self.client.login(username="quote_manager", password="StrongPass123!")
         response = self.client.post(
             "/api/sales/quotations/create-workflow/",
             data=json.dumps({
                 "customer": self.customer.pk,
+                "product": product,
                 "item_description": "Custom Acrylic Award",
                 "dimensions": "12 x 8 inch",
                 "quantity": "1",
@@ -607,6 +608,18 @@ class QuotationWorkflowApiTests(TestCase):
         )
         self.assertEqual(response.status_code, 201, response.content)
         return response.json()["quotation"]
+
+    def test_standard_catalogue_product_can_be_linked_to_quotation(self):
+        section = ProductCategory.objects.create(name="Catalogue", is_section=True)
+        category = ProductCategory.objects.create(name="Awards", parent=section)
+        product = Product.objects.create(
+            name="Crystal Award", sku="QUO-CRYSTAL-01", category=category,
+            customer_visible=True, actual_price=Decimal("2500.00"),
+        )
+        quotation_data = self._create_quotation("0", product=product.pk)
+        quotation = Quotation.objects.get(pk=quotation_data["id"])
+        self.assertEqual(quotation.product_id, product.pk)
+        self.assertEqual(quotation.item_description, "Crystal Award")
 
     def test_discount_above_manager_limit_requires_founder_approval(self):
         quotation_data = self._create_quotation("15")
