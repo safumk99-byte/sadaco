@@ -344,8 +344,16 @@ def offcut_create_api(request):
         length_mm = Decimal(str(data.get("length_mm")))
         width_mm = Decimal(str(data.get("width_mm")))
         usable_area = Decimal(str(data.get("usable_area_sqft")))
+        if not all(value.is_finite() for value in (length_mm, width_mm, usable_area)):
+            return JsonResponse({"detail": "Dimensions and usable area must be finite numbers."}, status=400)
         if length_mm <= 0 or width_mm <= 0 or usable_area <= 0:
             return JsonResponse({"detail": "Dimensions and usable area must be greater than zero."}, status=400)
+        if max(-length_mm.as_tuple().exponent, 0) > 2 or max(-width_mm.as_tuple().exponent, 0) > 2:
+            return JsonResponse({"detail": "Offcut dimensions support up to 2 decimal places."}, status=400)
+        if max(-usable_area.as_tuple().exponent, 0) > 4:
+            return JsonResponse({"detail": "Usable area supports up to 4 decimal places."}, status=400)
+        if length_mm > Decimal("99999999.99") or width_mm > Decimal("99999999.99") or usable_area > Decimal("99999999.9999"):
+            return JsonResponse({"detail": "Offcut dimensions or area exceed the supported limits."}, status=400)
         gross_area_sqft = (length_mm * width_mm) / Decimal("92903.04")
         if usable_area > gross_area_sqft:
             return JsonResponse({"detail": f"Usable area cannot exceed the measured rectangle area ({gross_area_sqft.quantize(Decimal('0.0001'))} sq ft)."}, status=400)
