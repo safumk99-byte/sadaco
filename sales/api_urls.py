@@ -7,6 +7,7 @@ urlpatterns = [
     path("enquiries/", enquiries), path("enquiries/create/", enquiry_create), path("enquiries/<int:pk>/update/", enquiry_update),
     path("quotations/", quotations), path("quotations/create/", quotation_create), path("quotations/<int:pk>/update/", quotation_update),
     path("quotations/configuration/", quotation_configuration),
+    path("quotations/products/", quotation_products),
     path("quotations/create-workflow/", quotation_workflow_create),
     path("quotations/<int:pk>/detail/", quotation_workflow_detail),
     path("quotations/<int:pk>/update-workflow/", quotation_workflow_update),
