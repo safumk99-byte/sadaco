@@ -781,6 +781,86 @@ class ReusableOffcutAreaLedgerTests(TestCase):
         self.assertEqual(self.target_line.pending_quantity, Decimal("0"))
 
 
+    def test_end_to_end_receipt_issue_return_wastage_and_offcut_cost_transfer(self):
+        from inventory.models import ReusableOffcut
+        from inventory.services import reconcile_material_stock_balance, return_issued_material, record_issued_wastage
+        from production.api import _job_material_cost_summary
+
+        # Receive 10 sheets at ₹100/sheet, then issue one sheet to the source job.
+        response = self._create_offcut(usable_area="8")
+        self.assertEqual(response.status_code, 201, response.content)
+        offcut = ReusableOffcut.objects.get(pk=response.json()["id"])
+
+        # The 8 sq ft offcut is 0.25 sheet (32 sq ft per source sheet).
+        # Return 0.50 sheet and attribute the remaining 0.25 sheet as wastage.
+        return_issued_material(
+            material_issue_id=self.issue.pk, quantity="0.50", user=self.manager,
+        )
+        record_issued_wastage(
+            material_issue_id=self.issue.pk, quantity="0.25", user=self.manager,
+        )
+
+        self.issue.refresh_from_db()
+        self.balance.refresh_from_db()
+        self.lot.refresh_from_db()
+        self.assertEqual(self.issue.returned_quantity, Decimal("0.50"))
+        self.assertEqual(self.issue.wastage_quantity, Decimal("0.25"))
+        self.assertEqual(self.balance.quantity, Decimal("9.50"))
+        self.assertEqual(self.lot.remaining_quantity, Decimal("9.50"))
+
+        reconciliation = reconcile_material_stock_balance(self.balance)
+        self.assertEqual(reconciliation["movement_expected_balance"], "9.500")
+        self.assertEqual(reconciliation["receipt_lot_remaining"], "9.500")
+        self.assertEqual(reconciliation["movement_difference"], "0.000")
+        self.assertTrue(reconciliation["reconciled"])
+
+        source_before_transfer = _job_material_cost_summary(self.source_job)
+        self.assertEqual(source_before_transfer["issued_material_cost"], "100.00")
+        self.assertEqual(source_before_transfer["returned_material_credit"], "50.00")
+        self.assertEqual(source_before_transfer["offcut_salvage_credit"], "25.00")
+        self.assertEqual(source_before_transfer["net_material_cost"], "25.00")
+        self.assertEqual(source_before_transfer["offcut_inventory_value"], "25.00")
+
+        # Consume half of the offcut in the target job, then write off the remainder.
+        use_response = self.client.post(
+            f"/api/inventory/materials/offcuts/{offcut.pk}/action/",
+            data=json.dumps({
+                "action": "used", "job": self.target_job.pk,
+                "material_line": self.target_line.pk, "used_area_sqft": "4",
+            }),
+            content_type="application/json",
+        )
+        self.assertEqual(use_response.status_code, 200, use_response.content)
+        self.assertEqual(use_response.json()["allocated_cost"], "12.50")
+
+        target_summary = _job_material_cost_summary(self.target_job)
+        self.assertEqual(target_summary["offcut_consumed_cost"], "12.50")
+        self.assertEqual(target_summary["net_material_cost"], "12.50")
+        self.assertEqual(_job_material_cost_summary(self.source_job)["offcut_inventory_value"], "12.50")
+
+        discard_response = self.client.post(
+            f"/api/inventory/materials/offcuts/{offcut.pk}/action/",
+            data=json.dumps({"action": "discarded"}),
+            content_type="application/json",
+        )
+        self.assertEqual(discard_response.status_code, 200, discard_response.content)
+        offcut.refresh_from_db()
+        self.assertEqual(offcut.discarded_area_sqft, Decimal("4"))
+        self.assertEqual(offcut.discarded_cost, Decimal("12.50"))
+
+        source_final = _job_material_cost_summary(self.source_job)
+        target_final = _job_material_cost_summary(self.target_job)
+        self.assertEqual(source_final["offcut_discard_writeoff"], "12.50")
+        self.assertEqual(source_final["offcut_inventory_value"], "0.00")
+        self.assertEqual(source_final["net_material_cost"], "37.50")
+        self.assertEqual(target_final["net_material_cost"], "12.50")
+        # ₹50 returned + ₹37.50 source cost + ₹12.50 target cost = ₹100 receipt issue value.
+        self.assertEqual(
+            Decimal(source_final["net_material_cost"]) + Decimal(target_final["net_material_cost"]),
+            Decimal("50.00"),
+        )
+
+
 class MaterialIssueEmployeeDepartmentAPITests(TestCase):
     def setUp(self):
         from staff.models import StaffProfile
