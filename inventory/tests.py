@@ -357,6 +357,27 @@ class MaterialStockCountTests(TestCase):
         self.assertEqual(self.balance.quantity, Decimal("12"))
         self.assertEqual(reviewed.status, MaterialStockCount.Status.REJECTED)
 
+    def test_count_submission_rejects_non_finite_quantity(self):
+        for value in ("NaN", "Infinity", "-Infinity"):
+            with self.subTest(value=value), self.assertRaises(ValidationError):
+                submit_material_stock_count(
+                    balance_id=self.balance.pk, counted_quantity=value, user=self.manager
+                )
+
+    def test_count_submission_rejects_more_than_three_decimal_places(self):
+        with self.assertRaisesMessage(ValidationError, "three decimal places"):
+            submit_material_stock_count(
+                balance_id=self.balance.pk, counted_quantity="10.0001", user=self.manager
+            )
+        self.assertFalse(MaterialStockCount.objects.exists())
+
+    def test_count_submission_rejects_quantity_above_decimal_field_capacity(self):
+        with self.assertRaisesMessage(ValidationError, "supported stock quantity"):
+            submit_material_stock_count(
+                balance_id=self.balance.pk, counted_quantity="100000000000", user=self.manager
+            )
+        self.assertFalse(MaterialStockCount.objects.exists())
+
     def test_stale_count_cannot_be_approved(self):
         count = submit_material_stock_count(balance_id=self.balance.pk, counted_quantity="10", user=self.manager)
         self.balance.quantity = Decimal("11")
