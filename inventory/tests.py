@@ -79,36 +79,60 @@ class MaterialLedgerWorkflowTests(TestCase):
             issue_material(material_id=self.line.pk, quantity="1", lot_id=self.lot.pk, user=self.manager)
 
     def test_return_restores_stock_and_updates_returned_quantity(self):
-        issue_material(material_id=self.line.pk, quantity="3", lot_id=self.lot.pk, user=self.manager)
-        movement = return_issued_material(material_id=self.line.pk, quantity="1", balance_id=self.balance.pk, user=self.manager)
+        issue, _ = issue_material(material_id=self.line.pk, quantity="3", lot_id=self.lot.pk, user=self.manager)
+        movement = return_issued_material(material_issue_id=issue.pk, quantity="1", user=self.manager)
         self.balance.refresh_from_db()
         self.line.refresh_from_db()
         self.assertEqual(self.balance.quantity, Decimal("8"))
         self.assertEqual(self.line.returned_quantity, Decimal("1"))
+        self.lot.refresh_from_db()
+        self.assertEqual(self.lot.remaining_quantity, Decimal("8"))
+        self.assertEqual(movement.source_issue_id, issue.pk)
         self.assertEqual(movement.movement_type, MaterialStockMovement.Type.RETURN)
 
     def test_wastage_does_not_deduct_issued_stock_twice(self):
-        issue_material(material_id=self.line.pk, quantity="3", lot_id=self.lot.pk, user=self.manager)
-        movement = record_issued_wastage(material_id=self.line.pk, quantity="1", balance_id=self.balance.pk, user=self.manager)
+        issue, _ = issue_material(material_id=self.line.pk, quantity="3", lot_id=self.lot.pk, user=self.manager)
+        movement = record_issued_wastage(material_issue_id=issue.pk, quantity="1", user=self.manager)
         self.balance.refresh_from_db()
         self.line.refresh_from_db()
         self.assertEqual(self.balance.quantity, Decimal("7"))
         self.assertEqual(self.line.wastage_quantity, Decimal("1"))
         self.assertEqual(movement.balance_after, Decimal("7"))
         self.assertEqual(self.line.actual_consumption, Decimal("3"))
+        self.assertEqual(movement.source_issue_id, issue.pk)
+        self.lot.refresh_from_db()
+        self.assertEqual(self.lot.remaining_quantity, Decimal("7"))
 
     def test_return_cannot_exceed_unreturned_issue(self):
-        issue_material(material_id=self.line.pk, quantity="2", lot_id=self.lot.pk, user=self.manager)
+        issue, _ = issue_material(material_id=self.line.pk, quantity="2", lot_id=self.lot.pk, user=self.manager)
         with self.assertRaises(ValidationError):
-            return_issued_material(material_id=self.line.pk, quantity="3", balance_id=self.balance.pk, user=self.manager)
+            return_issued_material(material_issue_id=issue.pk, quantity="3", user=self.manager)
 
-    def test_foreign_department_balance_cannot_receive_return(self):
-        issue_material(material_id=self.line.pk, quantity="2", lot_id=self.lot.pk, user=self.manager)
-        foreign = MaterialStockBalance.objects.create(
-            material=self.material, department=self.other_department, location="Other Store", quantity=0
+    def test_return_restores_only_the_original_issue_lot(self):
+        issue, _ = issue_material(material_id=self.line.pk, quantity="2", lot_id=self.lot.pk, user=self.manager)
+        from purchase.models import MaterialStockLot
+        other_balance = MaterialStockBalance.objects.create(
+            material=self.material, department=self.department, location="Other Store", quantity=0
         )
+        other_lot = MaterialStockLot.objects.create(
+            receipt_line=issue.stock_lot.receipt_line, balance=other_balance,
+            original_quantity=Decimal("2"), remaining_quantity=Decimal("2"), unit_cost=Decimal("100")
+        )
+        # A tampered issue-to-lot relationship must fail the job-department/location consistency check.
+        issue.stock_lot = other_lot
+        issue.save(update_fields=["stock_lot"])
         with self.assertRaises(MaterialStockBalance.DoesNotExist):
-            return_issued_material(material_id=self.line.pk, quantity="1", balance_id=foreign.pk, user=self.manager)
+            return_issued_material(material_issue_id=issue.pk, quantity="1", user=self.manager)
+
+    def test_return_and_wastage_cannot_exceed_the_same_issue(self):
+        issue, _ = issue_material(material_id=self.line.pk, quantity="3", lot_id=self.lot.pk, user=self.manager)
+        return_issued_material(material_issue_id=issue.pk, quantity="1", user=self.manager)
+        record_issued_wastage(material_issue_id=issue.pk, quantity="2", user=self.manager)
+        with self.assertRaises(ValidationError):
+            record_issued_wastage(material_issue_id=issue.pk, quantity="0.01", user=self.manager)
+        self.lot.refresh_from_db()
+        self.assertEqual(self.lot.remaining_quantity, Decimal("8"))
+
 
 
 from inventory.models import MaterialStockCount
