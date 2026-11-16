@@ -92,6 +92,28 @@ class MaterialLedgerWorkflowTests(TestCase):
         self.assertTrue(result["reconciled"])
         self.assertFalse(result["unbatched_warning"])
 
+    def test_stock_reconciliation_flags_unbatched_opening_stock_without_false_mismatch(self):
+        from inventory.services import reconcile_material_stock_balance
+
+        self.balance.quantity = Decimal("12")
+        self.balance.save(update_fields=["quantity", "updated_at"])
+        MaterialStockMovement.objects.create(
+            balance=self.balance, movement_type=MaterialStockMovement.Type.OPENING,
+            quantity=Decimal("2"), balance_after=Decimal("2"), reference="OPENING-TEST",
+        )
+        MaterialStockMovement.objects.create(
+            balance=self.balance, movement_type=MaterialStockMovement.Type.PURCHASE_RECEIPT,
+            quantity=Decimal("10"), balance_after=Decimal("12"), reference="GRN-TEST",
+        )
+
+        result = reconcile_material_stock_balance(self.balance)
+
+        self.assertEqual(result["movement_expected_balance"], "12")
+        self.assertEqual(result["receipt_lot_remaining"], "10")
+        self.assertEqual(result["unbatched_quantity"], "2")
+        self.assertTrue(result["reconciled"])
+        self.assertTrue(result["unbatched_warning"])
+
     def test_issue_rejects_insufficient_stock(self):
         with self.assertRaises(ValidationError):
             issue_material(material_id=self.line.pk, quantity="11", lot_id=self.lot.pk, user=self.manager)
