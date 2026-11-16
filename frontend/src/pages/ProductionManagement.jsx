@@ -614,7 +614,7 @@ function JobDetail({ data, materials, options, close, refresh }) {
         {jobCostSummary && (
           <div className="rounded-xl border border-slate-200 p-4">
             <h3 className="font-bold">Material Cost Summary</h3>
-            <p className="mt-1 text-xs text-slate-500">Receipt-backed material costs, reusable offcut value transfers and discard write-offs. Unpriced legacy issues are excluded.</p>
+            <p className="mt-1 text-xs text-slate-500">Tracked material, machine-operation and direct-labour costs. Overheads, consumables and unconfigured work-based rates are excluded.</p>
             <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
               {[
                 ["Issued material", jobCostSummary.issued_material_cost],
@@ -624,6 +624,7 @@ function JobDetail({ data, materials, options, close, refresh }) {
                 ["Offcut consumed here", jobCostSummary.offcut_consumed_cost],
                 ["Reusable offcut stock value", jobCostSummary.offcut_inventory_value],
                 ["Net material cost", jobCostSummary.net_material_cost],
+                ["Total tracked job cost", jobCostSummary.total_tracked_job_cost],
               ].map(([label, value]) => (
                 <div key={label} className="rounded-lg bg-slate-50 p-3">
                   <div className="text-xs text-slate-500">{label}</div>
