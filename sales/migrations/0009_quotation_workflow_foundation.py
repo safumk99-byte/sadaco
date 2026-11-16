@@ -83,7 +83,6 @@ class Migration(migrations.Migration):
             ],
             options={"ordering": ["sort_order", "id"]},
         ),
-        migrations.AddIndex(model_name="quotationlineitem", index=models.Index(fields=["quotation", "sort_order"], name="sales_quotat_quotati_2a23d5_idx")),
         migrations.CreateModel(
             name="QuotationApproval",
             fields=[
@@ -98,5 +97,4 @@ class Migration(migrations.Migration):
             ],
             options={"ordering": ["created_at", "id"]},
         ),
-        migrations.AddIndex(model_name="quotationapproval", index=models.Index(fields=["quotation", "created_at"], name="sales_quotat_quotati_4e9a31_idx")),
     ]
