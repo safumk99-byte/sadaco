@@ -1,5 +1,5 @@
 import json
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 from django.core.exceptions import PermissionDenied
@@ -248,8 +248,8 @@ def quotation_workflow_create(request):
         advance = _decimal(data.get("advance_required", 0), "advance_required", Decimal("0"))
         if advance < 0:
             raise ValueError("Advance cannot be negative.")
-        valid_until = date.fromisoformat(data["valid_until"]) if data.get("valid_until") else None
         config = QuotationConfiguration.get_solo()
+        valid_until = date.fromisoformat(data["valid_until"]) if data.get("valid_until") else (timezone.localdate() + timedelta(days=config.default_validity_days) if config.default_validity_days else None)
         with transaction.atomic():
             quotation = Quotation.objects.create(
                 customer=customer, product=product, item_description=(product.name if product else item_description),
