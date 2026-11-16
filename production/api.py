@@ -312,6 +312,12 @@ def upsert_stage_task(request, pk):
     if not _job_visible(request.user, job):
         raise PermissionDenied
     data = _data(request)
+    if job.quality_checks.filter(
+        check_type="final", result="pass"
+    ).exists():
+        return JsonResponse({
+            "detail": "Production stage tasks are locked after Final QC passes. Use the authorized correction workflow for any required change."
+        }, status=409)
     stage = data.get("stage")
     if stage not in ProductionStageTask.Stage.values:
         return JsonResponse({"detail": "Select a valid production stage."}, status=400)
