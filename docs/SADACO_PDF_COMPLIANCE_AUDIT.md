@@ -395,3 +395,33 @@ Reviewed the current feature-branch model and service source for `products`, `pu
 - Keep `MaterialVariant.stock_quantity` as a legacy field until all references are inventoried; do not bulk-sync or reset it speculatively.
 
 No test command or Django migration was run because the PC/local Django environment is unavailable. The isolated Neon validation clone, production database, `main` and Render remain unchanged.
+
+
+## 2026-11-16 — Purchase/Inventory/Production API trace (read-only)
+
+Inspected `purchase/api.py`, `purchase/forms.py`, `inventory/api.py`, `inventory/services.py`, `production/api.py`, their API route maps, and the existing purchase/inventory/production test modules on the feature branch. No application code or database was changed.
+
+### Positive controls confirmed in source/tests
+
+- PurchaseItem form validation rejects both-empty and both-selected Product/MaterialVariant references. This addresses the exact-one-reference gap at the API form layer, although the database schema itself does not enforce it.
+- Purchase receipt runs inside `transaction.atomic`, locks the PurchaseOrder row with `select_for_update`, and rejects Draft, Cancelled and already-Received orders.
+- Material receipt writes a department/location balance movement, GoodsReceiptLine and MaterialStockLot; it snapshots the receipt unit cost in the line and lot.
+- Material issue/return/wastage services use atomic transactions and row locks for the balance, lot, issue and production line. Tests cover insufficient stock, multiple locations, returns to the original lot, and return/wastage not exceeding one issue.
+- Physical stock count submission is non-mutating; approval applies a correction movement, rejects stale counts, and is covered by tests.
+- Offcut action locks the offcut row and only permits transition from Available, preventing repeated use/discard through that endpoint.
+- Production API restricts manager job visibility by customer department, staff visibility by assignment, and prevents normal Production completion without passing Final QC.
+
+### Concrete workflow limitations / unresolved rules
+
+1. **Goods receipt is all-pending, not quantity-based:** `receive()` loops through each PurchaseItem and receives its entire `pending_quantity`. The API payload does not accept per-line received quantities. Therefore the PurchaseOrder model's Partial status is not practically achieved by a partial quantity receipt in this endpoint; it only remains Partial if a line is left pending for another reason. Confirm whether SADACO needs partial deliveries. If yes, add explicit per-line quantities, validate each against pending quantity, and preserve atomic receipt posting.
+2. **Offcut is not stock-integrated:** `offcut_create_api` creates a ReusableOffcut row but no stock movement or reduction from a source job's issued material. `offcut_action_api` marks an offcut Used/Discarded but creates no movement, usage record, or cost allocation. The row lock prevents duplicate status transition, but offcut quantities are not currently part of the stock ledger. Do not count offcut area as available stock or costing credit until the intended material accounting rule is defined and implemented.
+3. **Offcut dimensions/area are caller-supplied independently:** the endpoint accepts length, width and usable_area_sqft as separate values; source does not calculate/validate area from dimensions. Validate unit conversion, usable-area ceiling and material/thickness match before treating area as reliable.
+4. **Shared purchase-rate field is department-agnostic:** receipt posting overwrites the global `MaterialVariant.purchase_rate` with the latest received item cost, while department/location cost lots retain the actual receipt-specific rate. This can make the master rate represent whichever department last received stock. Decide whether it is an informational latest rate, weighted average, or department-specific rate; costing must use a clearly specified basis. Existing lot-based issue cost is the safer historical source.
+5. **Legacy Product inventory remains separate:** receipt and issue paths for legacy Product items update `Product.stock_quantity`; MaterialVariant items update department/location balances. Reports must not aggregate these as if they were one ledger.
+6. **Purchase receipt regression coverage is narrower than the workflow:** existing tests prove a full receipt creates one material movement/line/lot and that a second receipt after completion is rejected. They do not establish partial quantity delivery, multiple receipt batches for one line, rollback after a failure mid-loop, or concurrent receive attempts. Add tests after deciding the partial-delivery requirement.
+
+### Next action
+
+Before modifying code, settle the business rule for partial deliveries and offcut accounting. The source review has isolated those two product decisions; inventing them would risk changing stock and costing semantics. Once confirmed, implement only the selected behavior with API-level regression tests and transaction rollback/concurrency coverage.
+
+This remains a source-level review only. No Django test command, migration, Neon write, production change, merge, or deployment was performed.
