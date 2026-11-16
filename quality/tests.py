@@ -282,3 +282,63 @@ class FinalQCProductionStageGateTests(TestCase):
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 201, response.content)
+
+
+class PackingStageCompletionGateTests(TestCase):
+    def setUp(self):
+        from core.models import Department
+        from sales.models import Customer, SalesOrder
+        from production.models import ProductionJob, ProductionStageTask
+
+        department = Department.objects.create(code="packing-stage-gate", name="Packing Stage Gate")
+        self.manager = User.objects.create_user(username="packing_gate_manager", password="StrongPass123!")
+        UserProfile.objects.create(
+            user=self.manager, role=UserProfile.Role.MANAGER, department=department
+        )
+        customer = Customer.objects.create(
+            name="Packing Gate Customer", phone="9000000055", department=department
+        )
+        order = SalesOrder.objects.create(
+            customer=customer, item_description="Packing Gate Item",
+            quantity=1, confirmed_price=1000,
+        )
+        self.job = ProductionJob.objects.create(
+            order=order, station=ProductionJob.Station.CUSTOM,
+            status=ProductionJob.Status.COMPLETED,
+            stage=ProductionJob.Stage.COMPLETED,
+        )
+        self.task = ProductionStageTask.objects.create(
+            job=self.job,
+            stage=ProductionStageTask.Stage.PACKING_INSTALLATION,
+            status=ProductionStageTask.Status.PENDING,
+        )
+        self.client.force_login(self.manager)
+
+    def _pack(self):
+        return self.client.post(
+            f"/api/quality/jobs/{self.job.pk}/packing/",
+            data=json.dumps({
+                "packing_material": "Protective carton",
+                "fragile_protection": True,
+                "customer_label": True,
+                "status": "packed",
+                "packed_by": "",
+                "notes": "Packed for dispatch",
+            }),
+            content_type="application/json",
+        )
+
+    def test_packing_cannot_be_marked_packed_before_stage_task_completion(self):
+        response = self._pack()
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Packing / Installation", response.json()["detail"])
+        from quality.models import PackingRecord
+        self.assertFalse(PackingRecord.objects.filter(job=self.job).exists())
+
+    def test_packing_can_be_marked_packed_after_stage_task_completion(self):
+        self.task.status = "completed"
+        self.task.save(update_fields=["status"])
+        response = self._pack()
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()["packing"]["status"], "packed")
+
