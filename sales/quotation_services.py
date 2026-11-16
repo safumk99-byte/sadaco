@@ -57,6 +57,12 @@ def quotation_pdf_response(quotation):
     customer_lines = [customer.name, customer.phone, customer.email, customer.address]
     story.extend([Spacer(1, 4 * mm), Paragraph("<b>Customer Details</b>", styles["Heading2"])])
     story.append(Paragraph("<br/>".join(escape(str(x)) for x in customer_lines if x), styles["Normal"]))
+    if quotation.product_id and quotation.product.image:
+        try:
+            with quotation.product.image.open("rb") as image_file:
+                story.append(Image(BytesIO(image_file.read()), width=38 * mm, height=38 * mm, kind="proportional"))
+        except Exception:
+            pass
     if quotation.item_description:
         story.extend([Spacer(1, 3 * mm), Paragraph(f"<b>Product / Service:</b> {escape(quotation.item_description)}", styles["Normal"])])
     if quotation.dimensions:
