@@ -510,7 +510,7 @@ class CustomerInteractionApiTests(TestCase):
         self.customer = Customer.objects.create(name="CRM Customer", phone="9000001234", department=self.department)
 
     def test_manager_can_create_and_view_customer_interaction(self):
-        from .api import customer_interactions
+        from .api import customer_interactions, customer_interaction_complete
         payload = {
             "interaction_type": "call", "subject": "Discussed quotation",
             "notes": "Customer requested a revised estimate.",
@@ -530,7 +530,13 @@ class CustomerInteractionApiTests(TestCase):
         record = response.json()["interactions"][0]
         self.assertEqual(record["subject"], "Discussed quotation")
         self.assertFalse(record["completed"])
-        self.assertFalse(record["overdue"])\n        interaction_id = record["id"]\n        complete_request = self.factory.post(f"/api/sales/customers/{self.customer.pk}/interactions/{interaction_id}/complete/")\n        complete_request.user = self.manager\n        completed = customer_interaction_complete(complete_request, self.customer.pk, interaction_id)\n        self.assertEqual(completed.status_code, 200)\n        self.assertTrue(completed.json()["completed"])
+        self.assertFalse(record["overdue"])
+        interaction_id = record["id"]
+        complete_request = self.factory.post(f"/api/sales/customers/{self.customer.pk}/interactions/{interaction_id}/complete/")
+        complete_request.user = self.manager
+        completed = customer_interaction_complete(complete_request, self.customer.pk, interaction_id)
+        self.assertEqual(completed.status_code, 200)
+        self.assertTrue(completed.json()["completed"])
 
     def test_manager_cannot_access_another_department_customer_history(self):
         from .api import customer_interactions
