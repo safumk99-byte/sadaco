@@ -13,7 +13,7 @@ from core.models import Department
 from products.models import MaterialVariant
 from staff.models import StaffProfile
 from production.models import ProductionJob
-from .models import MaterialStockBalance, MaterialStockMovement, MaterialStockCount, ReusableOffcut, MaterialIssue
+from .models import MaterialStockBalance, MaterialStockMovement, MaterialStockCount, ReusableOffcut, MaterialIssue, OffcutUsage
 from purchase.models import MaterialStockLot
 from .services import record_material_movement
 
@@ -178,17 +178,149 @@ def material_balance_create_api(request):
 @require_GET
 @login_required
 def offcuts_api(request):
-    qs = ReusableOffcut.objects.select_related("material", "department", "source_job", "used_for_job")
+    qs = ReusableOffcut.objects.select_related(
+        "material", "department", "source_job", "used_for_job", "source_issue",
+        "source_lot__receipt_line__receipt",
+    ).prefetch_related("usages")
     scope = _manager_department(request.user)
     if scope is not None:
         qs = qs.filter(department_id=scope) if scope else qs.none()
-    return JsonResponse({"items": [{
-        "id": x.id, "material": x.material.material_name, "brand": x.material.brand,
-        "department": x.department.name, "location": x.location, "thickness_mm": str(x.thickness_mm) if x.thickness_mm is not None else None,
-        "length_mm": str(x.length_mm), "width_mm": str(x.width_mm), "usable_area_sqft": str(x.usable_area_sqft),
-        "status": x.status, "source_job": x.source_job.job_no if x.source_job_id else None,
-        "used_for_job": x.used_for_job.job_no if x.used_for_job_id else None, "notes": x.notes,
-    } for x in qs[:500]]})
+    items = []
+    for x in qs[:500]:
+        used_area = sum((u.used_area_sqft for u in x.usages.all()), Decimal("0"))
+        items.append({
+            "id": x.id, "material": x.material.material_name, "brand": x.material.brand,
+            "material_id": x.material_id, "department": x.department.name, "department_id": x.department_id,
+            "location": x.location, "thickness_mm": str(x.thickness_mm) if x.thickness_mm is not None else None,
+            "length_mm": str(x.length_mm), "width_mm": str(x.width_mm),
+            "usable_area_sqft": str(x.usable_area_sqft), "used_area_sqft": str(used_area),
+            "remaining_area_sqft": str(max(x.usable_area_sqft - used_area, Decimal("0"))),
+            "cost_per_sqft": str(x.cost_per_sqft) if x.cost_per_sqft is not None else None,
+            "source_issue_id": x.source_issue_id,
+            "source_receipt": x.source_lot.receipt_line.receipt.receipt_no if x.source_lot_id else None,
+            "status": x.status, "source_job": x.source_job.job_no if x.source_job_id else None,
+            "used_for_job": x.used_for_job.job_no if x.used_for_job_id else None, "notes": x.notes,
+        })
+    return JsonResponse({"items": items})
+
+
+@require_POST
+@login_required
+def offcut_create_api(request):
+    try:
+        data = json.loads(request.body or "{}")
+        scope = _manager_department(request.user)
+        if scope is False:
+            return JsonResponse({"detail": "You do not have permission to manage offcuts."}, status=403)
+        department_id = scope if scope is not None else data.get("department")
+        department = Department.objects.get(pk=department_id, is_active=True)
+        material = MaterialVariant.objects.get(pk=data.get("material"), is_active=True)
+        location = str(data.get("location", "")).strip()
+        if not location:
+            return JsonResponse({"detail": "Location is required."}, status=400)
+        if material.unit.strip().lower() not in {"sheet", "sheets"}:
+            return JsonResponse({"detail": "Area-based offcuts can only be registered against sheet-based materials."}, status=400)
+        length_mm = Decimal(str(data.get("length_mm")))
+        width_mm = Decimal(str(data.get("width_mm")))
+        usable_area = Decimal(str(data.get("usable_area_sqft")))
+        if length_mm <= 0 or width_mm <= 0 or usable_area <= 0:
+            return JsonResponse({"detail": "Dimensions and usable area must be greater than zero."}, status=400)
+        gross_area_sqft = (length_mm * width_mm) / Decimal("92903.04")
+        if usable_area > gross_area_sqft:
+            return JsonResponse({"detail": f"Usable area cannot exceed the measured rectangle area ({gross_area_sqft.quantize(Decimal('0.0001'))} sq ft)."}, status=400)
+        issue = MaterialIssue.objects.select_for_update().select_related(
+            "job__order__customer", "material__material_variant", "stock_lot__balance"
+        ).get(pk=data.get("source_issue"), status=MaterialIssue.Status.ISSUED)
+        if issue.material.material_variant_id != material.pk or not issue.stock_lot_id:
+            return JsonResponse({"detail": "The source issue must belong to this material and have a receipt-costed stock batch."}, status=400)
+        if issue.stock_lot.balance.material_id != material.pk or issue.stock_lot.balance.department_id != department.pk:
+            return JsonResponse({"detail": "The source receipt batch must belong to this material and department."}, status=400)
+        if issue.job.order.customer.department_id != department.pk:
+            return JsonResponse({"detail": "Source job belongs to another department."}, status=400)
+        if data.get("source_job") and int(data["source_job"]) != issue.job_id:
+            return JsonResponse({"detail": "Source job must match the selected material issue."}, status=400)
+        sheet_area = material.sheet_area_sqft
+        if sheet_area <= 0:
+            return JsonResponse({"detail": "The material master must have valid sheet dimensions."}, status=400)
+        already_registered = ReusableOffcut.objects.filter(source_issue=issue).aggregate(total=Sum("usable_area_sqft"))["total"] or Decimal("0")
+        issue_area_available = max(issue.quantity - issue.returned_quantity - issue.wastage_quantity, Decimal("0")) * sheet_area
+        if already_registered + usable_area > issue_area_available:
+            return JsonResponse({"detail": f"Registered offcut area would exceed the source issue's available sheet area ({max(issue_area_available - already_registered, Decimal('0'))} sq ft remaining)."}, status=400)
+        cost_per_sqft = issue.stock_lot.unit_cost / sheet_area
+        offcut = ReusableOffcut.objects.create(
+            material=material, department=department, location=location,
+            thickness_mm=data.get("thickness_mm") or material.thickness_mm,
+            length_mm=length_mm, width_mm=width_mm, usable_area_sqft=usable_area,
+            source_issue=issue, source_lot=issue.stock_lot, cost_per_sqft=cost_per_sqft,
+            source_job=issue.job, notes=str(data.get("notes", "")).strip(), created_by=request.user,
+        )
+        return JsonResponse({
+            "ok": True, "id": offcut.pk, "status": offcut.status,
+            "usable_area_sqft": str(offcut.usable_area_sqft),
+            "cost_per_sqft": str(offcut.cost_per_sqft),
+        }, status=201)
+    except (ValueError, TypeError, InvalidOperation, Department.DoesNotExist,
+            MaterialVariant.DoesNotExist, MaterialIssue.DoesNotExist, ValidationError) as exc:
+        return JsonResponse({"detail": str(exc)}, status=400)
+
+
+@require_POST
+@login_required
+@transaction.atomic
+def offcut_action_api(request, pk):
+    try:
+        data = json.loads(request.body or "{}")
+        scope = _manager_department(request.user)
+        qs = ReusableOffcut.objects.select_for_update().select_related("material", "source_lot")
+        if scope is not None:
+            if not scope:
+                return JsonResponse({"detail": "You do not have permission to manage offcuts."}, status=403)
+            qs = qs.filter(department_id=scope)
+        offcut = qs.get(pk=pk)
+        if offcut.status != ReusableOffcut.Status.AVAILABLE:
+            return JsonResponse({"detail": "Only available offcuts can be used or discarded."}, status=400)
+        used_area = OffcutUsage.objects.filter(offcut=offcut).aggregate(total=Sum("used_area_sqft"))["total"] or Decimal("0")
+        remaining_area = max(offcut.usable_area_sqft - used_area, Decimal("0"))
+        action = data.get("action")
+        if action == "used":
+            from production.models import ProductionMaterial
+            job = ProductionJob.objects.select_related("order__customer").get(pk=data.get("job"))
+            line = ProductionMaterial.objects.select_for_update().select_related("material_variant").get(
+                pk=data.get("material_line"), job=job
+            )
+            if job.order.customer.department_id != offcut.department_id:
+                return JsonResponse({"detail": "Target job belongs to another department."}, status=400)
+            if line.material_variant_id != offcut.material_id:
+                return JsonResponse({"detail": "Target production material must match the offcut material."}, status=400)
+            area = Decimal(str(data.get("used_area_sqft", remaining_area)))
+            if area <= 0 or area > remaining_area:
+                return JsonResponse({"detail": f"Usage must be greater than zero and no more than {remaining_area} sq ft."}, status=400)
+            if offcut.cost_per_sqft is None:
+                return JsonResponse({"detail": "This offcut has no source-batch cost snapshot and cannot be costed for production."}, status=400)
+            total_cost = (area * offcut.cost_per_sqft).quantize(Decimal("0.01"))
+            OffcutUsage.objects.create(
+                offcut=offcut, target_job=job, target_material=line,
+                used_area_sqft=area, cost_per_sqft=offcut.cost_per_sqft,
+                total_cost=total_cost, created_by=request.user,
+            )
+            offcut.used_for_job = job
+            if area == remaining_area:
+                offcut.status = ReusableOffcut.Status.USED
+            offcut.save(update_fields=["status", "used_for_job", "updated_at"])
+            return JsonResponse({
+                "ok": True, "id": offcut.pk, "status": offcut.status,
+                "used_area_sqft": str(area), "remaining_area_sqft": str(remaining_area - area),
+                "cost_per_sqft": str(offcut.cost_per_sqft), "allocated_cost": str(total_cost),
+            })
+        if action == "discarded":
+            offcut.status = ReusableOffcut.Status.DISCARDED
+        else:
+            return JsonResponse({"detail": "Action must be 'used' or 'discarded'."}, status=400)
+        offcut.save(update_fields=["status", "used_for_job", "updated_at"])
+        return JsonResponse({"ok": True, "id": offcut.pk, "status": offcut.status})
+    except (ValueError, TypeError, InvalidOperation, ReusableOffcut.DoesNotExist,
+            ProductionJob.DoesNotExist, ValidationError) as exc:
+        return JsonResponse({"detail": str(exc)}, status=400)
 
 
 @require_POST
