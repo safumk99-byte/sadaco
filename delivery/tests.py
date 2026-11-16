@@ -38,6 +38,18 @@ class DeliveryLifecycleTests(TestCase):
             content_type="application/json",
         )
 
+    def _complete_packing(self):
+        from production.models import ProductionJob
+        from quality.models import PackingRecord
+        job = ProductionJob.objects.create(
+            order=self.order,
+            station=ProductionJob.Station.CUSTOM,
+            status=ProductionJob.Status.COMPLETED,
+            stage=ProductionJob.Stage.COMPLETED,
+        )
+        PackingRecord.objects.create(job=job, status=PackingRecord.Status.PACKED)
+        return job
+
     def test_cannot_dispatch_order_before_final_qc_ready(self):
         response = self._update({"status": DeliveryRecord.Status.OUT})
         self.assertEqual(response.status_code, 400)
@@ -62,6 +74,7 @@ class DeliveryLifecycleTests(TestCase):
         )
         self.order.status = SalesOrder.Status.READY
         self.order.save(update_fields=["status", "updated_at"])
+        self._complete_packing()
         scheduled = self._update({"status": DeliveryRecord.Status.SCHEDULED})
         self.assertEqual(scheduled.status_code, 200)
         dispatched = self._update({"status": DeliveryRecord.Status.OUT})
@@ -89,6 +102,7 @@ class DeliveryLifecycleTests(TestCase):
         from django.utils import timezone
         self.order.credit_exception_approved_at = timezone.now()
         self.order.save()
+        self._complete_packing()
         DeliveryRecord.objects.create(order=self.order, status=DeliveryRecord.Status.SCHEDULED)
         response = self._update({"status": DeliveryRecord.Status.OUT})
         self.assertEqual(response.status_code, 200, response.content)
@@ -127,3 +141,12 @@ class DeliveryLifecycleTests(TestCase):
         self.assertEqual(response.status_code, 400)
         from sales.models import CustomerFeedback
         self.assertFalse(CustomerFeedback.objects.filter(order=self.order).exists())
+
+    def test_dispatch_is_blocked_until_packing_is_recorded(self):
+        self.order.status = SalesOrder.Status.READY
+        self.order.save(update_fields=["status", "updated_at"])
+        DeliveryRecord.objects.create(order=self.order, status=DeliveryRecord.Status.SCHEDULED)
+        response = self._update({"status": DeliveryRecord.Status.OUT})
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Packing must be completed", response.json()["detail"])
+        self.assertEqual(DeliveryRecord.objects.get(order=self.order).status, DeliveryRecord.Status.SCHEDULED)
