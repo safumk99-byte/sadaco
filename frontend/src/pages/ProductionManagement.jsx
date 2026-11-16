@@ -432,6 +432,9 @@ function JobDetail({ data, close, refresh }) {
   const [stockLots, setStockLots] = useState([]);
   const [issueForm, setIssueForm] = useState({ material_line: "", balance: "", lot: "", quantity: "1" });
   const [issueError, setIssueError] = useState("");
+  const [usageForm, setUsageForm] = useState({ material_issue: "", action: "return", quantity: "1" });
+  const [usageError, setUsageError] = useState("");
+  const [usageBusy, setUsageBusy] = useState(false);
   useEffect(() => {
     api.get("/inventory/materials/stock/")
       .then((r) => setStockBalances(r.data.items || []))
@@ -453,6 +456,31 @@ function JobDetail({ data, close, refresh }) {
       close();
     } catch (e) {
       setIssueError(e.response?.data?.detail || "Unable to issue material.");
+    }
+  };
+  const submitUsageAdjustment = async () => {
+    const selected = (data.material_issues || []).find((x) => String(x.id) === String(usageForm.material_issue));
+    if (!selected || !selected.trackable) {
+      setUsageError("Select a receipt-tracked material issue.");
+      return;
+    }
+    setUsageBusy(true);
+    setUsageError("");
+    try {
+      const endpoint = usageForm.action === "return"
+        ? "/inventory/materials/returns/create/"
+        : "/inventory/materials/wastage/create/";
+      await api.post(endpoint, {
+        material_issue: selected.id,
+        material_line: selected.material_line,
+        quantity: usageForm.quantity,
+      });
+      refresh();
+      close();
+    } catch (e) {
+      setUsageError(e.response?.data?.detail || "Unable to record material usage.");
+    } finally {
+      setUsageBusy(false);
     }
   };
   const saveProgress = async () => {
@@ -629,6 +657,39 @@ function JobDetail({ data, close, refresh }) {
             </div>
             {issueError && <p className="mt-2 text-sm text-red-700">{issueError}</p>}
             <button onClick={submitMaterialIssue} disabled={!issueForm.material_line || !issueForm.balance || !issueForm.lot || !issueForm.quantity} className="mt-3 rounded-xl bg-indigo-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40">Issue Selected Batch</button>
+          </div>
+          <div className="mt-4 rounded-xl border border-slate-200 p-4">
+            <h4 className="font-semibold text-slate-900">Issued Material Returns & Wastage</h4>
+            <p className="mt-1 text-xs text-slate-600">Choose the exact issue record. Returns restore stock to its original receipt batch; wastage is attributed to the issue without deducting stock twice.</p>
+            <div className="mt-3 grid gap-2 md:grid-cols-3">
+              <select className={input} value={usageForm.material_issue} onChange={(e) => setUsageForm((x) => ({ ...x, material_issue: e.target.value }))}>
+                <option value="">Select issued material</option>
+                {(data.material_issues || []).filter((x) => x.trackable && Number(x.remaining_quantity) > 0).map((x) => (
+                  <option key={x.id} value={x.id}>
+                    {x.material_name} · Issue #{x.id} · {x.remaining_quantity} {x.unit} remaining · {x.receipt_no || "Receipt batch"}
+                  </option>
+                ))}
+              </select>
+              <select className={input} value={usageForm.action} onChange={(e) => setUsageForm((x) => ({ ...x, action: e.target.value }))}>
+                <option value="return">Return unused material</option>
+                <option value="wastage">Record wastage</option>
+              </select>
+              <input className={input} type="number" min="0.001" step="0.001" value={usageForm.quantity} onChange={(e) => setUsageForm((x) => ({ ...x, quantity: e.target.value }))} placeholder="Quantity" />
+            </div>
+            {usageError && <p className="mt-2 text-sm text-red-700">{usageError}</p>}
+            <button onClick={submitUsageAdjustment} disabled={usageBusy || !usageForm.material_issue || !usageForm.quantity} className="mt-3 rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40">
+              {usageBusy ? "Saving..." : usageForm.action === "return" ? "Record Return" : "Record Wastage"}
+            </button>
+            <div className="mt-4 space-y-2">
+              {(data.material_issues || []).map((x) => (
+                <div key={x.id} className="rounded-lg bg-slate-50 p-3 text-xs text-slate-700">
+                  <div className="font-semibold">{x.material_name} · Issue #{x.id}</div>
+                  <div className="mt-1">Issued {x.quantity} {x.unit} · Returned {x.returned_quantity} · Wastage {x.wastage_quantity} · Remaining {x.remaining_quantity}</div>
+                  <div className="text-slate-500">{x.receipt_no || "Legacy / uncosted issue"}{x.unit_rate !== null ? ` · Unit rate ₹${x.unit_rate}` : ""}</div>
+                </div>
+              ))}
+              {!(data.material_issues || []).length && <p className="text-xs text-slate-500">No material issue records for this job yet.</p>}
+            </div>
           </div>
         </div>
         <div>
