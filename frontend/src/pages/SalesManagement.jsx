@@ -27,7 +27,7 @@ export default function SalesManagement() {
   const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [form, setForm] = useState(null);
+  const [form, setForm] = useState(null);\n  const [historyCustomer, setHistoryCustomer] = useState(null);
   const load = async () => {
     setLoading(true);
     setError("");
@@ -196,7 +196,7 @@ export default function SalesManagement() {
               <SalesTable
                 tab={tab}
                 rows={list}
-                onEdit={(x) =>
+                onHistory={tab === "customers" ? setHistoryCustomer : undefined}\n                onEdit={(x) =>
                   setForm({
                     type:
                       tab === "customers"
@@ -309,7 +309,7 @@ function Empty() {
     </div>
   );
 }
-function SalesTable({ tab, rows, onEdit }) {
+function SalesTable({ tab, rows, onEdit, onHistory }) {
   if (!rows.length) return <Empty />;
   return (
     <div className="overflow-x-auto">
