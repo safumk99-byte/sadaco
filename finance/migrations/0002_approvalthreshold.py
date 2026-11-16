@@ -6,7 +6,7 @@ import django.core.validators
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("finance", "0001_initial"),
+        ("finance", "0003_financetransaction_supplier_payment"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
