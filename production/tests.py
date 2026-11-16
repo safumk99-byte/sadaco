@@ -482,3 +482,74 @@ class ProductionCostingTests(TestCase):
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 403)
+
+
+
+class ProductionStageTaskTests(TestCase):
+    def setUp(self):
+        self.department = Department.objects.get_or_create(
+            code="stage-task-test", defaults={"name": "Stage Task Test"}
+        )[0]
+        self.manager = User.objects.create_user(username="stage_task_mgr", password="StrongPass123!")
+        UserProfile.objects.create(user=self.manager, role=UserProfile.Role.MANAGER, department=self.department)
+        worker = User.objects.create_user(username="stage_task_worker", password="StrongPass123!")
+        UserProfile.objects.create(user=worker, role=UserProfile.Role.STAFF, department=self.department)
+        self.worker = StaffProfile.objects.create(user=worker, staff_id="STAGE-001", department=self.department)
+        customer = Customer.objects.create(name="Stage Task Customer", phone="9000000088", department=self.department)
+        order = SalesOrder.objects.create(customer=customer, item_description="Stage task order", quantity=1, confirmed_price=1000)
+        self.job = ProductionJob.objects.create(order=order, station=ProductionJob.Station.CNC)
+        self.url = f"/api/production/jobs/{self.job.pk}/stage-tasks/"
+
+    def test_manager_can_assign_and_schedule_stage_task(self):
+        self.client.force_login(self.manager)
+        response = self.client.post(self.url, data={
+            "stage": "cnc", "assigned_staff": self.worker.pk,
+            "planned_start": "2026-11-17", "expected_completion": "2026-11-19",
+            "status": "assigned", "remarks": "Prepare CNC cutting",
+        }, content_type="application/json")
+        self.assertEqual(response.status_code, 201, response.content)
+        payload = response.json()["stage_task"]
+        self.assertEqual(payload["assigned_staff"]["id"], self.worker.pk)
+        self.assertEqual(payload["status"], "assigned")
+        self.assertEqual(payload["expected_completion"], "2026-11-19")
+
+    def test_expected_completion_cannot_precede_planned_start(self):
+        self.client.force_login(self.manager)
+        response = self.client.post(self.url, data={
+            "stage": "laser", "planned_start": "2026-11-20",
+            "expected_completion": "2026-11-19",
+        }, content_type="application/json")
+        self.assertEqual(response.status_code, 400)
+
+    def test_assigned_staff_can_report_stage_completion_and_actual_timestamps(self):
+        from .models import ProductionStageTask
+        task = ProductionStageTask.objects.create(job=self.job, stage="cnc", assigned_staff=self.worker, status="assigned")
+        self.client.force_login(self.worker.user)
+        response = self.client.post(self.url, data={
+            "stage": "cnc", "status": "completed", "remarks": "CNC cutting finished",
+        }, content_type="application/json")
+        self.assertEqual(response.status_code, 200, response.content)
+        task.refresh_from_db()
+        self.assertIsNotNone(task.actual_start)
+        self.assertIsNotNone(task.actual_completion)
+        self.assertEqual(task.updated_by, self.worker.user)
+
+    def test_staff_cannot_update_another_employees_stage_task(self):
+        from .models import ProductionStageTask
+        other_user = User.objects.create_user(username="other_stage_worker", password="StrongPass123!")
+        other = StaffProfile.objects.create(user=other_user, staff_id="STAGE-002", department=self.department)
+        ProductionStageTask.objects.create(job=self.job, stage="cnc", assigned_staff=other)
+        self.client.force_login(self.worker.user)
+        response = self.client.post(self.url, data={
+            "stage": "cnc", "status": "in_progress",
+        }, content_type="application/json")
+        self.assertEqual(response.status_code, 403)
+
+    def test_completed_stage_task_cannot_be_reopened(self):
+        from .models import ProductionStageTask
+        ProductionStageTask.objects.create(job=self.job, stage="cnc", assigned_staff=self.worker, status="completed")
+        self.client.force_login(self.manager)
+        response = self.client.post(self.url, data={
+            "stage": "cnc", "status": "in_progress",
+        }, content_type="application/json")
+        self.assertEqual(response.status_code, 409)
