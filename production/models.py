@@ -203,3 +203,57 @@ class ProductionCostEntry(models.Model):
     def __str__(self):
         return f"{self.job.job_no} · {self.get_cost_type_display()} · ₹{self.total_cost}"
 
+
+
+class ProductionStageTask(models.Model):
+    """Auditable owner, schedule and completion record for one production stage."""
+
+    class Stage(models.TextChoices):
+        DESIGN = "design", "Design"
+        LASER = "laser", "Acrylic Laser Cutting"
+        CNC = "cnc", "Wood CNC Cutting"
+        ASSEMBLY_STICKING = "assembly_sticking", "Assembly / Sticking"
+        POLISHING_PAINTING = "polishing_painting", "Polishing / Painting"
+        ELECTRICAL_LED = "electrical_led", "Electrical / LED"
+        FINAL_ASSEMBLY = "final_assembly", "Final Assembly"
+        PACKING_INSTALLATION = "packing_installation", "Packing / Installation"
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        ASSIGNED = "assigned", "Assigned"
+        IN_PROGRESS = "in_progress", "In Progress"
+        ON_HOLD = "on_hold", "On Hold"
+        COMPLETED = "completed", "Completed"
+        SKIPPED = "skipped", "Skipped"
+
+    job = models.ForeignKey(ProductionJob, on_delete=models.CASCADE, related_name="stage_tasks")
+    stage = models.CharField(max_length=30, choices=Stage.choices)
+    assigned_staff = models.ForeignKey(
+        "staff.StaffProfile", on_delete=models.PROTECT, null=True, blank=True,
+        related_name="production_stage_tasks",
+    )
+    planned_start = models.DateField(null=True, blank=True)
+    expected_completion = models.DateField(null=True, blank=True)
+    actual_start = models.DateTimeField(null=True, blank=True)
+    actual_completion = models.DateTimeField(null=True, blank=True)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
+    remarks = models.TextField(blank=True)
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="updated_production_stage_tasks",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["id"]
+        constraints = [
+            models.UniqueConstraint(fields=["job", "stage"], name="prod_job_stage_task_unique")
+        ]
+        indexes = [
+            models.Index(fields=["assigned_staff", "status"]),
+            models.Index(fields=["status", "expected_completion"]),
+        ]
+
+    def __str__(self):
+        return f"{self.job.job_no} · {self.get_stage_display()}"
