@@ -118,7 +118,44 @@ def _choice(value, label): return {'value': value, 'label': label}
 def _customer(c): return {'id': c.id, 'customer_no': c.customer_no, 'name': c.name, 'customer_type': c.customer_type, 'phone': c.phone, 'email': c.email, 'status': c.status, 'status_label': c.get_status_display(), 'department': {'id': c.department_id, 'name': c.department.name} if c.department_id else None}
 def _enquiry(e): return {'id': e.id, 'enquiry_no': e.enquiry_no, 'customer': _customer(e.customer), 'channel': e.channel, 'channel_label': e.get_channel_display(), 'product_type': e.product_type, 'quantity': str(e.quantity), 'status': e.status, 'status_label': e.get_status_display(), 'deadline': e.deadline.isoformat() if e.deadline else None, 'expected_delivery_date': e.expected_delivery_date.isoformat() if e.expected_delivery_date else None, 'assigned_to': e.assigned_to.get_full_name() or e.assigned_to.username if e.assigned_to else None}
 def _quotation(q): return {'id': q.id, 'quotation_no': q.quotation_no, 'customer': _customer(q.customer), 'item_description': q.item_description, 'dimensions': q.dimensions, 'quantity': str(q.quantity), 'cost_total': str(q.cost_total), 'subtotal': str(q.subtotal), 'discount_percent': str(q.discount_percent), 'discount_amount': str(q.discount_amount), 'tax_rate': str(q.tax_rate) if q.tax_rate is not None else None, 'tax_amount': str(q.tax_amount), 'quoted_price': str(q.quoted_price), 'advance_required': str(q.advance_required), 'valid_until': q.valid_until.isoformat() if q.valid_until else None, 'status': q.status, 'status_label': q.get_status_display()}
-def _order(o): return {'id': o.id, 'order_no': o.order_no, 'customer': _customer(o.customer), 'item_description': o.item_description, 'quantity': str(o.quantity), 'confirmed_price': str(o.confirmed_price), 'delivery_date': o.delivery_date.isoformat() if o.delivery_date else None, 'deadline': o.deadline.isoformat() if o.deadline else None, 'status': o.status, 'status_label': o.get_status_display(), 'responsible_staff': (o.responsible_staff.user.get_full_name() or o.responsible_staff.user.username) if o.responsible_staff else None}
+def _order(o):
+    from decimal import Decimal
+    from .models import DesignApproval, PaymentRecord
+
+    received_payments = o.payments.filter(
+        status__in=[PaymentRecord.Status.RECEIVED, PaymentRecord.Status.VERIFIED]
+    )
+    total_paid = received_payments.aggregate(total=Sum("amount"))["total"] or Decimal("0.00")
+    advance_paid = received_payments.filter(
+        payment_type=PaymentRecord.PaymentType.ADVANCE
+    ).aggregate(total=Sum("amount"))["total"] or Decimal("0.00")
+    advance_target = (o.confirmed_price * Decimal("0.50")).quantize(Decimal("0.01"))
+    approved_design = None
+    if o.quotation_id:
+        approved_design = o.quotation.designs.filter(
+            status=DesignApproval.Status.APPROVED
+        ).order_by("-version", "-created_at").first()
+    return {
+        "id": o.id,
+        "order_no": o.order_no,
+        "customer": _customer(o.customer),
+        "division": {"id": o.customer.department_id, "name": o.customer.department.name} if o.customer.department_id else None,
+        "product": {"id": o.quotation.product_id, "name": o.quotation.product.name, "sku": o.quotation.product.sku} if o.quotation_id and o.quotation.product_id else None,
+        "item_description": o.item_description,
+        "quantity": str(o.quantity),
+        "confirmed_price": str(o.confirmed_price),
+        "advance_target": str(advance_target),
+        "advance_paid": str(advance_paid),
+        "advance_remaining": str(max(advance_target - advance_paid, Decimal("0.00"))),
+        "total_paid": str(total_paid),
+        "balance": str(max(o.confirmed_price - total_paid, Decimal("0.00"))),
+        "approved_design": {"id": approved_design.pk, "version": approved_design.version, "file": approved_design.file.url if approved_design.file else None} if approved_design else None,
+        "delivery_date": o.delivery_date.isoformat() if o.delivery_date else None,
+        "deadline": o.deadline.isoformat() if o.deadline else None,
+        "status": o.status,
+        "status_label": o.get_status_display(),
+        "responsible_staff": (o.responsible_staff.user.get_full_name() or o.responsible_staff.user.username) if o.responsible_staff else None,
+    }
 
 @login_required
 def summary(request):
@@ -238,7 +275,7 @@ def quotation_update(request,pk):
 
 @login_required
 def orders(request):
-    q=request.GET.get('q','').strip(); status=request.GET.get('status',''); qs=_order_qs(request.user).select_related('customer','responsible_staff__user')
+    q=request.GET.get('q','').strip(); status=request.GET.get('status',''); qs=_order_qs(request.user).select_related('customer','customer__department','quotation__product','responsible_staff__user')
     if q: qs=qs.filter(Q(order_no__icontains=q)|Q(customer__name__icontains=q)|Q(item_description__icontains=q))
     if status: qs=qs.filter(status=status)
     return JsonResponse({'orders':[_order(x) for x in qs[:250]],'can_manage':_manager(request.user),'statuses':[_choice(v,l) for v,l in SalesOrder.Status.choices]})
