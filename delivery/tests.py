@@ -88,6 +88,7 @@ class DeliveryLifecycleTests(TestCase):
     def test_dispatch_is_blocked_until_full_payment_or_founder_credit_exception(self):
         self.order.status = SalesOrder.Status.READY
         self.order.save(update_fields=["status", "updated_at"])
+        self._complete_packing()
         DeliveryRecord.objects.create(order=self.order, status=DeliveryRecord.Status.SCHEDULED)
         response = self._update({"status": DeliveryRecord.Status.OUT})
         self.assertEqual(response.status_code, 400)
