@@ -4,7 +4,7 @@ from decimal import Decimal, InvalidOperation
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.db.models import Q, Sum
+from django.db.models import Q, Sum, Prefetch, prefetch_related_objects
 from django.http import JsonResponse
 from django.views.decorators.http import require_GET, require_POST
 
@@ -87,14 +87,24 @@ def material_stock_lots_api(request):
 @login_required
 def material_stock_reconciliation_api(request):
     from .services import reconcile_material_stock_balance
-    balances = _visible_balances(request.user).order_by(
+    visible = _visible_balances(request.user).order_by(
         "department__name", "location", "material__material_name", "pk"
     )
-    rows = [reconcile_material_stock_balance(balance) for balance in balances[:500]]
+    total = visible.count()
+    balances = list(visible[:500])
+    prefetch_related_objects(
+        balances,
+        Prefetch("movements", queryset=MaterialStockMovement.objects.order_by("created_at", "pk")),
+        Prefetch(
+            "cost_lots",
+            queryset=MaterialStockLot.objects.prefetch_related("issues").order_by("created_at", "pk"),
+        ),
+    )
+    rows = [reconcile_material_stock_balance(balance) for balance in balances]
     return JsonResponse({
         "items": rows,
         "count": len(rows),
-        "truncated": balances.count() > 500,
+        "truncated": total > 500,
         "reconciled_count": sum(1 for row in rows if row["reconciled"]),
         "mismatch_count": sum(1 for row in rows if not row["reconciled"]),
         "unbatched_count": sum(1 for row in rows if row["unbatched_warning"]),
