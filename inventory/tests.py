@@ -275,6 +275,19 @@ class ReusableOffcutAreaLedgerTests(TestCase):
         self.assertEqual(offcut.source_lot_id, self.issue.stock_lot_id)
         self.assertEqual(offcut.cost_per_sqft, Decimal("3.125000"))
 
+    def test_offcut_dimensions_cannot_exceed_one_source_sheet(self):
+        response = self.client.post(
+            "/api/inventory/materials/offcuts/create/",
+            data=json.dumps({
+                "material": self.material.pk, "location": "Offcut Rack",
+                "length_mm": "3000", "width_mm": "100",
+                "usable_area_sqft": "1", "source_issue": self.issue.pk,
+            }),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("cannot exceed one source sheet", response.json()["detail"])
+
     def test_offcut_area_cannot_exceed_measured_rectangle(self):
         from inventory.models import ReusableOffcut
         response = self._create_offcut(usable_area="11")
