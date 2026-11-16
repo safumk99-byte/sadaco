@@ -224,6 +224,7 @@ def production_material_issue_api(request):
             "ok": True, "issue_id": issue.pk, "movement_id": movement.pk,
             "issued_quantity": str(line.issued_quantity),
             "balance_after": str(movement.balance_after),
+            "source_issue_id": movement.source_issue_id,
         }, status=201)
     except (ValueError, TypeError, InvalidOperation, ValidationError) as exc:
         return JsonResponse({"detail": str(exc)}, status=400)
@@ -249,7 +250,7 @@ def _material_usage_adjustment(request, action):
             return JsonResponse({"detail": "Employee not found."}, status=404)
         operation = return_issued_material if action == "return" else record_issued_wastage
         movement = operation(
-            material_id=line.pk, quantity=data.get("quantity"), balance_id=data.get("balance"),
+            material_issue_id=data.get("material_issue"), quantity=data.get("quantity"),
             user=request.user, employee=employee, reference=str(data.get("reference", "")),
             remarks=str(data.get("remarks", "")),
         )
