@@ -47,7 +47,7 @@ def _visible_jobs(user):
         if not department_id:
             return qs.none()
         return qs.filter(order__customer__department_id=department_id)
-    return qs.filter(assigned_staff__user=user)
+    return qs.filter(Q(assigned_staff__user=user) | Q(stage_tasks__assigned_staff__user=user)).distinct()
 
 
 def _visible_job(user, job):
@@ -56,7 +56,8 @@ def _visible_job(user, job):
     if getattr(getattr(user, "profile", None), "role", None) == "manager":
         department_id = _manager_department_id(user)
         return bool(department_id and job.order.customer.department_id == department_id)
-    return hasattr(user, "staff_profile") and job.assigned_staff_id == user.staff_profile.id
+    staff_id = getattr(getattr(user, "staff_profile", None), "id", None)
+    return bool(staff_id and (job.assigned_staff_id == staff_id or job.stage_tasks.filter(assigned_staff_id=staff_id).exists()))
 
 def _notify(job, title, message, priority="normal"):
     from accounts.models import Notification, UserProfile
