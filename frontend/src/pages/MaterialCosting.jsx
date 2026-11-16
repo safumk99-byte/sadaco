@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import api from "../services/api";
 
-const tabs = [["materials","Material Master"],["machines","Machine Rates"],["staff","Staff Salary"]];
+const tabs = [["materials","Material Master"],["machines","Machine Rates"],["staff","Staff Salary"],["reconciliation","Stock Reconciliation"]];
 const money = (value) => value === "" || value == null ? "—" : `₹${Number(value).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})}`;
 
 export default function MaterialCosting() {
@@ -18,6 +18,8 @@ export default function MaterialCosting() {
   const [form,setForm] = useState({});
   const [machineForm,setMachineForm] = useState({operation:"laser_cutting",rate:"",unit:"minute"});
   const [machineEditing,setMachineEditing] = useState(null);
+  const [reconciliation,setReconciliation] = useState({items:[],count:0,reconciled_count:0,mismatch_count:0,unbatched_count:0});
+  const [reconLoading,setReconLoading] = useState(false);
 
   async function load() {
     setError("");
@@ -30,6 +32,16 @@ export default function MaterialCosting() {
     } catch(e) { setError(e.response?.data?.detail || "Unable to load costing master data."); }
   }
   useEffect(()=>{load();},[]);
+  useEffect(()=>{
+    if(tab!=="reconciliation") return;
+    let active=true;
+    setReconLoading(true);
+    api.get("/inventory/materials/reconciliation/")
+      .then(({data})=>{if(active)setReconciliation(data);})
+      .catch(e=>{if(active)setError(e.response?.data?.detail||"Unable to load stock reconciliation.");})
+      .finally(()=>{if(active)setReconLoading(false);});
+    return ()=>{active=false;};
+  },[tab]);
   const setField=(key,value)=>setForm(old=>({...old,[key]:value}));
   function startNew(){setEditing("new");setForm({material_name:"",brand:"",thickness_mm:"",variant:"",colour:"na",sheet_width_ft:"8",sheet_height_ft:"4",purchase_rate:"",retail_rate:"",unit:"Sheet",is_active:true});}
   function startEdit(item){setEditing(item.id);setForm({...item});}
@@ -95,6 +107,35 @@ export default function MaterialCosting() {
         <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="px-4 py-3">Operation</th><th className="px-4 py-3">Material</th><th className="px-4 py-3">Thickness</th><th className="px-4 py-3">Rate</th><th className="px-4 py-3">Unit</th><th className="px-4 py-3"></th></tr></thead>
         <tbody className="divide-y divide-slate-100">{rates.map(x=><tr key={x.id}><td className="px-4 py-3 font-semibold">{x.operation_label}</td><td className="px-4 py-3">{x.material_name||"All materials"}</td><td className="px-4 py-3">{x.thickness_mm?x.thickness_mm+" mm":"—"}</td><td className="px-4 py-3">{money(x.rate)}</td><td className="px-4 py-3">/{x.unit}</td><td className="px-4 py-3 text-right">{canManage&&<button onClick={()=>{setMachineEditing(x.id);setMachineForm({operation:x.operation,material_name:x.material_name,thickness_mm:x.thickness_mm,rate:x.rate,unit:x.unit});}} className="font-semibold text-indigo-600">Edit</button>}</td></tr>)}</tbody>
       </table></div>
+    </section>}
+    {tab==="reconciliation"&&<section className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div><h2 className="text-lg font-bold text-slate-900">Material Stock Reconciliation</h2>
+          <p className="mt-1 text-sm text-slate-500">Compare department stock balances with movement history and receipt-batch quantities. This report is read-only.</p></div>
+        <button onClick={()=>{setReconLoading(true);api.get("/inventory/materials/reconciliation/").then(({data})=>setReconciliation(data)).catch(e=>setError(e.response?.data?.detail||"Unable to refresh reconciliation.")).finally(()=>setReconLoading(false));}} disabled={reconLoading} className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 disabled:opacity-50">{reconLoading?"Checking…":"Refresh"}</button>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4"><p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Reconciled</p><p className="mt-1 text-2xl font-bold text-emerald-900">{reconciliation.reconciled_count||0}</p></div>
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-4"><p className="text-xs font-semibold uppercase tracking-wide text-red-700">Mismatches</p><p className="mt-1 text-2xl font-bold text-red-900">{reconciliation.mismatch_count||0}</p></div>
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4"><p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Unbatched Balances</p><p className="mt-1 text-2xl font-bold text-amber-900">{reconciliation.unbatched_count||0}</p></div>
+      </div>
+      <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
+        {reconLoading?<p className="p-8 text-center text-sm text-slate-500">Reconciling stock records…</p>:<table className="w-full min-w-[1050px] text-left text-sm">
+          <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>{["Department / Location","Material","Recorded Stock","Movement Expected","Difference","Receipt Lot Stock","Unbatched","Status"].map(x=><th key={x} className="px-4 py-3">{x}</th>)}</tr></thead>
+          <tbody className="divide-y divide-slate-100">{(reconciliation.items||[]).map(x=><tr key={x.balance_id} className="hover:bg-slate-50">
+            <td className="px-4 py-3"><div className="font-semibold">{x.department}</div><div className="text-xs text-slate-500">{x.location}</div></td>
+            <td className="px-4 py-3">{x.material}</td>
+            <td className="px-4 py-3 font-semibold tabular-nums">{x.recorded_balance}</td>
+            <td className="px-4 py-3 tabular-nums">{x.movement_expected_balance}</td>
+            <td className="px-4 py-3 tabular-nums">{x.movement_difference}</td>
+            <td className="px-4 py-3 tabular-nums">{x.receipt_lot_remaining}</td>
+            <td className="px-4 py-3 tabular-nums">{x.unbatched_quantity}</td>
+            <td className="px-4 py-3"><div className={x.reconciled?"font-semibold text-emerald-700":"font-semibold text-red-700"}>{x.reconciled?"Reconciled":"Mismatch"}</div>{x.unbatched_warning&&<div className="mt-1 text-xs text-amber-700">Unbatched / uncosted stock</div>}{x.lot_mismatches?.length>0&&<div className="mt-1 text-xs text-red-700">{x.lot_mismatches.length} lot issue(s)</div>}</td>
+          </tr>)}</tbody>
+        </table>}
+        {!reconLoading&&!(reconciliation.items||[]).length&&<p className="p-8 text-center text-sm text-slate-500">No material stock balances found for this access scope.</p>}
+      </div>
+      <p className="text-xs text-slate-500">Wastage is recorded as an annotation because stock was already deducted when material was issued. Opening or legacy stock without a receipt lot is shown separately; this report never changes stock automatically.{reconciliation.truncated?" Only the first 500 balances are shown.":""}</p>
     </section>}
     {tab==="staff"&&<section className="space-y-3">
       <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-900">Hourly cost = monthly salary ÷ monthly productive hours. Default basis: 26 working days × 8.25 productive hours = 214.5 hours. Authorized managers can adjust the working basis. Salary is a company expense; job labour allocation must not add the salary expense a second time.</div>
