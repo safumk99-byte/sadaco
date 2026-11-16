@@ -248,9 +248,14 @@ def _material_usage_adjustment(request, action):
         employee = StaffProfile.objects.filter(pk=data.get("employee")).first() if data.get("employee") else None
         if data.get("employee") and not employee:
             return JsonResponse({"detail": "Employee not found."}, status=404)
+        selected_issue = MaterialIssue.objects.filter(
+            pk=data.get("material_issue"), material_id=line.pk, job_id=line.job_id
+        ).first()
+        if not selected_issue:
+            return JsonResponse({"detail": "The selected material issue does not belong to this production material line."}, status=404)
         operation = return_issued_material if action == "return" else record_issued_wastage
         movement = operation(
-            material_issue_id=data.get("material_issue"), quantity=data.get("quantity"),
+            material_issue_id=selected_issue.pk, quantity=data.get("quantity"),
             user=request.user, employee=employee, reference=str(data.get("reference", "")),
             remarks=str(data.get("remarks", "")),
         )
