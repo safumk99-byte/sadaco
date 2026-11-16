@@ -263,3 +263,19 @@ Reviewed the current feature-branch seed migrations against the verified PDF val
 4. Do not run the broad PDF-baseline cleanup migration as if it reproduced the authorized operational reset. The checked-in `products.0012_remove_demo_operational_data` is catalogue-only and intentionally preserves multiple legacy business relations; the broader reset was a separate, explicitly authorized transaction already recorded above.
 
 Production, `main`, Render deployment and the disposable validation clone remain unchanged by this read-only audit.
+
+
+## 2026-11-16 — Phase 1 migration-test design review (read-only)
+
+A second source review focused on the seed migration behavior and the current test coverage:
+
+- `products/tests.py` currently tests product forms, access to product pages and stock-ledger operations. It does not assert the PDF seed migration outputs or exercise the historical migration state.
+- `products.0010_material_master_and_costing_rates` uses historical models from the migration app registry (correct for a data migration), seeds MaterialVariant and MachineRate rows, and records an initial MaterialRateHistory row for each priced material. Its reverse data operation is intentionally a no-op; the table-creation operations are reversed by Django separately.
+- `products.0011_seed_staff_compensation` only iterates existing StaffProfile rows. It does not create missing staff identities. The matching logic therefore cannot assign Junaid/Ashiq until legitimate StaffProfile records exist. This is consistent with the identity-preservation rule, but the ₹21,000 unassigned portion must remain visible as a configuration gap rather than be silently treated as payroll-ready.
+- `MaterialRateHistory` has no uniqueness constraint on (material, effective_from), and `MachineRate` has no uniqueness constraint on its natural key (operation, material_name, thickness_mm). This is not proof of a current duplicate, and no constraint should be added without confirming the intended business semantics (multiple same-day rate changes may be legitimate). It does mean tests should verify exact seeded row counts and should detect duplicate natural-key machine rates.
+- The current seed uses `update_or_create` for MaterialVariant/MachineRate and `get_or_create` for daily rate history. The migration is designed to run once under Django's migration recorder; it must not be manually re-executed as an ad-hoc seed command. Runtime behavior against the legacy clone remains unverified.
+- `core.0002_department` uses stable department codes with `get_or_create`; tests should assert all three exact codes/names and that pre-existing department rows are not overwritten by the seed defaults.
+
+**Test implementation decision:** do not add a test that blindly rewinds the entire live migration graph from a normal test database. The migration graph includes cross-app dependencies and a catalogue-cleanup RunPython operation. Implement the migration test with Django's `MigrationExecutor` in a dedicated `TransactionTestCase`, pin the pre-seed historical state, restore the latest leaf migrations in teardown, and run it in CI on disposable PostgreSQL. Then add ordinary model-level tests for rate-history recording and machine-rate natural-key validation if/when the corresponding business constraints are approved. These tests have not yet been implemented or executed.
+
+No application source, migration, database, production, `main`, or Render changes were made in this review.
