@@ -75,10 +75,11 @@ class DeliveryLifecycleTests(TestCase):
     def test_dispatch_is_blocked_until_full_payment_or_founder_credit_exception(self):
         self.order.status = SalesOrder.Status.READY
         self.order.save(update_fields=["status", "updated_at"])
+        DeliveryRecord.objects.create(order=self.order, status=DeliveryRecord.Status.SCHEDULED)
         response = self._update({"status": DeliveryRecord.Status.OUT})
         self.assertEqual(response.status_code, 400)
         self.assertIn("Final payment", response.json()["detail"])
-        self.assertFalse(DeliveryRecord.objects.filter(order=self.order).exists())
+        self.assertEqual(DeliveryRecord.objects.get(order=self.order).status, DeliveryRecord.Status.SCHEDULED)
 
     def test_founder_credit_exception_allows_dispatch_with_balance(self):
         founder = User.objects.create_superuser(username="delivery_founder", password="StrongPass123!")
@@ -88,6 +89,7 @@ class DeliveryLifecycleTests(TestCase):
         from django.utils import timezone
         self.order.credit_exception_approved_at = timezone.now()
         self.order.save()
+        DeliveryRecord.objects.create(order=self.order, status=DeliveryRecord.Status.SCHEDULED)
         response = self._update({"status": DeliveryRecord.Status.OUT})
         self.assertEqual(response.status_code, 200, response.content)
 
