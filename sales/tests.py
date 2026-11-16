@@ -34,7 +34,12 @@ class SalesModelTests(TestCase):
         )
         self.assertTrue(enquiry.enquiry_no.startswith("ENQ-"))
         self.assertTrue(quotation.quotation_no.startswith("QUO-"))
-        self.assertTrue(order.order_no.startswith("ORD-"))
+        self.assertEqual(order.order_no, f"SAD-{timezone.localdate().year}-0001")
+        second_order = SalesOrder.objects.create(
+            customer=self.customer, item_description="Second Memento", quantity=Decimal("1"),
+            confirmed_price=Decimal("500")
+        )
+        self.assertEqual(second_order.order_no, f"SAD-{timezone.localdate().year}-0002")
 
     def test_quotation_cost_total(self):
         quotation = Quotation.objects.create(
