@@ -49,6 +49,40 @@ class ProductionDepartmentAccessTests(TestCase):
         )
 
 
+    def test_new_production_job_gets_all_stage_tasks_automatically(self):
+        from production.models import ProductionStageTask
+        from sales.models import PaymentRecord
+        order = self.creative_job.order
+        quotation = Quotation.objects.create(
+            customer=order.customer, item_description=order.item_description,
+            quantity=order.quantity, quoted_price=order.confirmed_price,
+        )
+        order.quotation = quotation
+        order.status = SalesOrder.Status.CONFIRMED
+        order.save(update_fields=["quotation", "status", "updated_at"])
+        DesignApproval.objects.create(
+            quotation=quotation, version=1, status=DesignApproval.Status.APPROVED,
+        )
+        PaymentRecord.objects.create(
+            order=order, payment_type=PaymentRecord.PaymentType.ADVANCE,
+            amount=500, status=PaymentRecord.Status.RECEIVED,
+        )
+        self.client.force_login(self.creative_manager)
+        response = self.client.post(
+            "/api/production/jobs/create/",
+            data='{"order": %d, "station": "custom"}' % order.pk,
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 201, response.content)
+        new_job_id = response.json()["job"]["id"]
+        tasks = ProductionStageTask.objects.filter(job_id=new_job_id)
+        self.assertEqual(tasks.count(), len(ProductionStageTask.Stage.values))
+        self.assertEqual(
+            set(tasks.values_list("stage", flat=True)),
+            set(ProductionStageTask.Stage.values),
+        )
+        self.assertFalse(tasks.exclude(status=ProductionStageTask.Status.PENDING).exists())
+
     def test_production_creation_requires_fifty_percent_advance(self):
         order = self.creative_job.order
         quotation = Quotation.objects.create(
