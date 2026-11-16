@@ -165,6 +165,8 @@ def _order(o):
         "deadline": o.deadline.isoformat() if o.deadline else None,
         "status": o.status,
         "status_label": o.get_status_display(),
+        "closed_at": o.closed_at.isoformat() if o.closed_at else None,
+        "closed_by": (o.closed_by.get_full_name() or o.closed_by.username) if o.closed_by_id else None,
         "responsible_staff": (o.responsible_staff.user.get_full_name() or o.responsible_staff.user.username) if o.responsible_staff else None,
     }
 
