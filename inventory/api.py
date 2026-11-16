@@ -156,8 +156,12 @@ def cost_opening_stock_api(request, movement_id):
         data = json.loads(request.body or "{}")
         unit_cost = Decimal(str(data.get("unit_cost")))
         source_reference = str(data.get("cost_source_reference", "")).strip()
-        if unit_cost < 0:
-            raise ValidationError("Verified unit cost cannot be negative.")
+        if not unit_cost.is_finite() or unit_cost < 0:
+            raise ValidationError("Verified unit cost must be a finite, non-negative amount.")
+        if unit_cost != unit_cost.quantize(Decimal("0.01")):
+            raise ValidationError("Verified unit cost cannot have more than two decimal places.")
+        if unit_cost > Decimal("999999999999.99"):
+            raise ValidationError("Verified unit cost exceeds the supported amount.")
         if not source_reference:
             raise ValidationError("A source reference (invoice, valuation sheet or approved cost record) is required.")
         with transaction.atomic():
