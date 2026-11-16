@@ -19,6 +19,30 @@ class QualityCheckForm(forms.ModelForm):
             "remarks": forms.Textarea(attrs={"rows": 3}),
         }
 
+    def clean(self):
+        cleaned = super().clean()
+        if (
+            cleaned.get("check_type") == QualityCheck.CheckType.FINAL
+            and cleaned.get("result") == QualityCheck.Result.PASS
+        ):
+            checklist_fields = (
+                "design_match", "measurement_ok", "cutting_ok", "assembly_ok",
+                "sticking_ok", "finishing_ok", "polishing_ok", "colour_ok",
+                "electrical_ok", "engraving_ok", "appearance_ok", "packing_ok",
+            )
+            incomplete = [
+                self.fields[field].label or field.replace("_", " ").title()
+                for field in checklist_fields
+                if not cleaned.get(field)
+            ]
+            if incomplete:
+                raise forms.ValidationError(
+                    "Final QC cannot pass until every checklist item is confirmed: "
+                    + ", ".join(incomplete)
+                    + "."
+                )
+        return cleaned
+
 
 class ReworkRecordForm(forms.ModelForm):
     class Meta:
