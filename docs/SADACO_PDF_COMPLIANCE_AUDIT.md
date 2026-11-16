@@ -481,3 +481,11 @@ This remains a source-level review only. No Django test command, migration, Neon
 - A receipt-backed sheet issue now reduces its returnable/wastage quantity by the sheet-equivalent of all offcut area already registered against that issue. This prevents a sheet area already transferred into reusable offcut inventory from also being restored as a whole/partial sheet return or counted again as sheet wastage.
 - Added regression tests for both return and wastage rejection when the requested sheet-equivalent quantity would overlap registered offcut area.
 - The source-issue offcut-registration guard already checks cumulative registered offcut area against the issue's remaining area after prior returns and wastage.
+
+
+### Purchase-to-production integration coverage and physical offcut dimensions
+
+- The reusable-offcut workflow regression fixture now receives its source sheet through the real Purchase Goods Receipt API, then verifies the receipt lot and department stock balance before issuing it to the source production job. This joins the previously separate purchase-receipt and offcut-costing tests into one cross-app integration path.
+- Offcut registration now validates that the measured piece dimensions fit within one physical source sheet, allowing rotation. The prior area-only check could accept an impossible long/narrow rectangle whose area was small enough but whose length exceeded the sheet.
+- Added a regression test for an offcut dimension that exceeds the source sheet even though its declared usable area is small.
+- CI for these newest commits is pending; no production DB, main, or deployment was changed.
