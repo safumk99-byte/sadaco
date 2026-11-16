@@ -12,7 +12,7 @@ from core.models import Department
 from products.models import Product, ProductCategory
 from staff.models import Designation, StaffProfile, WorkArea
 
-from .models import Customer, CustomerFeedback, CustomerNotification, DeliveryRecord, DesignApproval, Enquiry, OrderRequest, PaymentRecord, Quotation, QuotationApproval, QuotationConfiguration, QuotationLineItem, SalesOrder
+from .models import PaymentRecord, Customer, CustomerFeedback, CustomerNotification, DeliveryRecord, DesignApproval, Enquiry, OrderRequest, PaymentRecord, Quotation, QuotationApproval, QuotationConfiguration, QuotationLineItem, SalesOrder
 
 
 class SalesModelTests(TestCase):
@@ -395,6 +395,50 @@ class SalesOrderLifecyclePermissionTests(TestCase):
             "status": status,
             "notes": notes,
         }
+
+
+    def test_order_payment_is_recorded_as_received_and_cannot_forge_verified(self):
+        order = SalesOrder.objects.create(
+            customer=self.customer, item_description="Payment Test", quantity=1,
+            confirmed_price=1000, status=SalesOrder.Status.CONFIRMED,
+        )
+        self.client.force_login(self.manager)
+        response = self.client.post(
+            f"/api/sales/orders/{order.pk}/payments/",
+            data=json.dumps({
+                "payment_type": "advance", "amount": "500",
+                "payment_method": "upi", "status": "verified",
+            }),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 201, response.content)
+        payment = PaymentRecord.objects.get(order=order)
+        self.assertEqual(payment.status, PaymentRecord.Status.RECEIVED)
+        self.assertEqual(payment.amount, Decimal("500"))
+
+    def test_only_founder_can_approve_payment_exceptions(self):
+        order = SalesOrder.objects.create(
+            customer=self.customer, item_description="Exception Test", quantity=1,
+            confirmed_price=1000,
+        )
+        self.client.force_login(self.manager)
+        denied = self.client.post(
+            f"/api/sales/orders/{order.pk}/payment-exception/",
+            data=json.dumps({"type": "advance", "reason": "Need exception"}),
+            content_type="application/json",
+        )
+        self.assertEqual(denied.status_code, 403)
+        founder = User.objects.create_superuser(username="payment_founder", password="StrongPass123!")
+        self.client.force_login(founder)
+        approved = self.client.post(
+            f"/api/sales/orders/{order.pk}/payment-exception/",
+            data=json.dumps({"type": "advance", "reason": "Founder-approved exception"}),
+            content_type="application/json",
+        )
+        self.assertEqual(approved.status_code, 200, approved.content)
+        order.refresh_from_db()
+        self.assertEqual(order.advance_exception_approved_by, founder)
+        self.assertEqual(order.advance_exception_reason, "Founder-approved exception")
 
     def test_sales_cannot_create_order_as_delivered(self):
         from django.test import RequestFactory
