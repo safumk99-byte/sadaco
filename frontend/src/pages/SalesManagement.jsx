@@ -820,7 +820,7 @@ function CustomerHistory({ customer, canManage, onClose }) {
     }
   };
   useEffect(() => { load(); }, [customer.id]);
-  const save = async (e) => {
+  const complete = async (interactionId) => {\n    try {\n      await api.post(`/sales/customers/${customer.id}/interactions/${interactionId}/complete/`);\n      await load();\n    } catch (e) {\n      setError(e.response?.data?.detail || "Unable to complete follow-up.");\n    }\n  };\n  const save = async (e) => {
     e.preventDefault();
     setSaving(true);
     setError("");
@@ -862,7 +862,7 @@ function CustomerHistory({ customer, canManage, onClose }) {
             </div>
             <div className="mt-1 text-xs text-slate-500">{item.interaction_type_label} · {new Date(item.created_at).toLocaleString()} · {item.created_by}</div>
             {item.notes && <p className="mt-2 whitespace-pre-wrap text-sm text-slate-700">{item.notes}</p>}
-            {item.next_follow_up && <div className="mt-2 text-sm font-medium text-slate-600">Next follow-up: {item.next_follow_up}</div>}
+            {item.next_follow_up && <div className="mt-2 text-sm font-medium text-slate-600">Next follow-up: {item.next_follow_up}</div>}\n            {canManage && !item.completed && <button onClick={() => complete(item.id)} className="mt-3 text-sm font-semibold text-indigo-600">Mark complete</button>}
           </div>
         )) : <Empty />}
       </div>
