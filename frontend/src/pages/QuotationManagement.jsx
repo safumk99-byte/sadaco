@@ -11,7 +11,7 @@ const blankLine = () => ({ category: "material", description: "", dimensions: ""
 const blankQuote = () => ({
   customer: "", item_description: "", dimensions: "", quantity: "1", discount_percent: "0",
   advance_required: "0", delivery_timeline: "", valid_until: "", terms: "", notes: "",
-  line_items: [blankLine()],
+  discount_type: "percentage", discount_value: "0", line_items: [blankLine()],
 });
 
 export default function QuotationManagement() {
@@ -62,7 +62,7 @@ export default function QuotationManagement() {
       const q = response.data.quotation;
       setEditor({ initial: q, form: {
         customer: String(q.customer.id), item_description: q.item_description, dimensions: q.dimensions || "",
-        quantity: q.quantity, discount_percent: q.discount_percent, advance_required: q.advance_required,
+        quantity: q.quantity, discount_type: q.discount_type || "percentage", discount_value: q.discount_value ?? q.discount_percent ?? "0", advance_required: q.advance_required,
         delivery_timeline: q.delivery_timeline || "", valid_until: q.valid_until || "", terms: q.terms || "",
         notes: q.notes || "", line_items: q.line_items.map((x) => ({
           category: x.category, description: x.description, dimensions: x.dimensions || "",
@@ -202,7 +202,7 @@ function QuotationEditor({ initial, form: initialForm, customers, config, onClos
   const set = (key, value) => setForm((old) => ({ ...old, [key]: value }));
   const updateLine = (index, key, value) => set("line_items", form.line_items.map((line, i) => i === index ? { ...line, [key]: value } : line));
   const subtotal = form.line_items.reduce((sum, line) => sum + Number(line.quantity || 0) * Number(line.unit_price || 0), 0);
-  const discount = subtotal * Number(form.discount_percent || 0) / 100;
+  const discount = form.discount_type === "amount" ? Number(form.discount_value || 0) : subtotal * Number(form.discount_value || 0) / 100;
   const taxRate = config?.tax_rate == null ? null : Number(config.tax_rate);
   const tax = taxRate == null ? null : (subtotal - discount) * taxRate / 100;
   const total = subtotal - discount + (tax || 0);
@@ -245,7 +245,7 @@ function QuotationEditor({ initial, form: initialForm, customers, config, onClos
           <div className="flex justify-between"><span>Discount</span><b>− {money(discount)}</b></div>
           {taxRate == null ? <div className="text-xs text-amber-700">Tax rate has not been configured. Sending is disabled until Founder sets it.</div> : <div className="flex justify-between"><span>{config.tax_label || "Tax"} ({taxRate}%)</span><b>{money(tax)}</b></div>}
           <div className="flex justify-between border-t border-slate-200 pt-2 text-base"><span className="font-bold">Estimated Total</span><b>{money(total)}</b></div>
-          {Number(form.discount_percent || 0) > 0 && config?.manager_discount_limit_percent == null && <div className="text-xs text-amber-700">Founder must configure the Manager Discount Limit before a discounted quotation can be submitted.</div>}
+          {discount > 0 && (!config?.manager_discount_limit_type || config?.manager_discount_limit_value == null) && <div className="text-xs text-amber-700">Founder must configure the Manager Discount Limit and select its unit before a discounted quotation can be submitted.</div>}
         </div>
       </div>
       <Field label="Terms & Conditions" area value={form.terms} onChange={(v) => set("terms", v)} />
@@ -262,7 +262,8 @@ function ConfigurationEditor({ config, onClose, onSaved }) {
     company_address: config?.company_address || "", company_phone: config?.company_phone || "",
     company_email: config?.company_email || "", company_website: config?.company_website || "",
     tax_label: config?.tax_label || "", tax_rate: config?.tax_rate ?? "",
-    manager_discount_limit_percent: config?.manager_discount_limit_percent ?? "",
+    manager_discount_limit_type: config?.manager_discount_limit_type || "",
+    manager_discount_limit_value: config?.manager_discount_limit_value ?? "",
     default_terms: config?.default_terms || "", default_validity_days: config?.default_validity_days ?? "",
   });
   const [busy, setBusy] = useState(false);
@@ -288,7 +289,8 @@ function ConfigurationEditor({ config, onClose, onSaved }) {
       <div className="grid gap-3 md:grid-cols-2">
         <Field label="Tax Label" placeholder="Enter tax name" value={form.tax_label} onChange={(v) => set("tax_label", v)} />
         <Field label="Tax Rate (%)" type="number" min="0" max="100" step="0.01" placeholder="Not configured" value={form.tax_rate} onChange={(v) => set("tax_rate", v)} />
-        <Field label="Manager Discount Limit (%)" type="number" min="0" max="100" step="0.01" placeholder="Not configured" value={form.manager_discount_limit_percent} onChange={(v) => set("manager_discount_limit_percent", v)} />
+        <Select label="Manager Discount Limit Type" value={form.manager_discount_limit_type} onChange={(v) => set("manager_discount_limit_type", v)} options={[["percentage", "Percentage"], ["amount", "Fixed Amount (₹)"]]} />
+        <Field label={form.manager_discount_limit_type === "amount" ? "Manager Discount Limit (₹)" : "Manager Discount Limit (%)"} type="number" min="0" step="0.01" placeholder="Not configured" value={form.manager_discount_limit_value} onChange={(v) => set("manager_discount_limit_value", v)} />
         <Field label="Default Validity (days)" type="number" min="1" step="1" value={form.default_validity_days} onChange={(v) => set("default_validity_days", v)} />
       </div>
       <Field label="Default Terms & Conditions" area value={form.default_terms} onChange={(v) => set("default_terms", v)} />
@@ -304,7 +306,7 @@ function QuotationDetail({ quotation, canManage, canApprove, busy, onClose, onAc
     <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><div><div className="text-lg font-bold">{quotation.customer.name}</div><div className="text-sm text-slate-500">{quotation.customer.phone} · {quotation.customer.email}</div></div><Status value={quotation.status.replaceAll("_", " ")} /></div>
     <div className="mb-4 grid gap-3 sm:grid-cols-3"><Stat label="Subtotal" value={money(quotation.subtotal)} /><Stat label="Discount" value={money(quotation.discount_amount)} /><Stat label="Quotation Total" value={money(quotation.quoted_price)} /></div>
     <div className="overflow-x-auto rounded-xl border border-slate-200"><table className="w-full text-sm"><thead className="bg-slate-50"><tr><th className="p-3 text-left">Category / Description</th><th className="p-3 text-right">Qty</th><th className="p-3 text-right">Unit Price</th><th className="p-3 text-right">Amount</th></tr></thead><tbody>{quotation.line_items.map((line) => <tr key={line.id} className="border-t border-slate-100"><td className="p-3"><b>{line.category_label}</b><div className="text-xs text-slate-500">{line.description} {line.dimensions && `· ${line.dimensions}`}</div></td><td className="p-3 text-right">{line.quantity} {line.unit}</td><td className="p-3 text-right">{money(line.unit_price)}</td><td className="p-3 text-right font-semibold">{money(line.line_total)}</td></tr>)}</tbody></table></div>
-    <div className="mt-4 space-y-1 text-sm"><div className="flex justify-between"><span>Tax {quotation.tax_rate == null ? "(not configured)" : `(${quotation.tax_rate}%)`}</span><b>{money(quotation.tax_amount)}</b></div><div className="flex justify-between"><span>Advance Required</span><b>{money(quotation.advance_required)}</b></div><div className="flex justify-between"><span>Valid Until</span><b>{quotation.valid_until || "—"}</b></div></div>
+    <div className="mt-4 space-y-1 text-sm"><div className="flex justify-between"><span>Discount {quotation.discount_type === "amount" ? "(fixed amount)" : `(${quotation.discount_percent}%)`}</span><b>− {money(quotation.discount_amount)}</b></div><div className="flex justify-between"><span>Tax {quotation.tax_rate == null ? "(not configured)" : `(${quotation.tax_rate}%)`}</span><b>{money(quotation.tax_amount)}</b></div><div className="flex justify-between"><span>Advance Required</span><b>{money(quotation.advance_required)}</b></div><div className="flex justify-between"><span>Valid Until</span><b>{quotation.valid_until || "—"}</b></div></div>
     {quotation.terms && <div className="mt-4 rounded-xl bg-slate-50 p-3 text-sm"><b>Terms & Conditions</b><p className="mt-1 whitespace-pre-wrap">{quotation.terms}</p></div>}
     {quotation.approval_history?.length > 0 && <div className="mt-4"><h3 className="font-bold">Approval History</h3><div className="mt-2 space-y-2">{quotation.approval_history.map((event, i) => <div key={i} className="rounded-lg border border-slate-200 p-3 text-sm"><b>{event.action}</b> · {event.performed_by}<div className="text-xs text-slate-500">{new Date(event.created_at).toLocaleString()} · Discount {event.discount_percent}%</div>{event.notes && <p>{event.notes}</p>}</div>)}</div></div>}
     {canApprove && quotation.status === "pending_approval" && <div className="mt-5 space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-4"><h3 className="font-bold text-amber-900">Founder Approval Required</h3><textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Approval / rejection note" rows="2" className="w-full rounded-lg border border-amber-200 bg-white p-3 text-sm" /><div className="flex justify-end gap-2"><button disabled={busy} onClick={() => onAction("reject", notes)} className="rounded-lg border border-red-300 px-4 py-2 text-sm font-semibold text-red-700">Reject</button><button disabled={busy} onClick={() => onAction("approve", notes)} className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white">Approve & Send</button></div></div>}
