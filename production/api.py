@@ -157,12 +157,14 @@ def options(request):
             "rate": str(rate.rate), "unit": rate.unit,
             "material_name": rate.material_name,
             "thickness_mm": str(rate.thickness_mm) if rate.thickness_mm is not None else None,
-        } for rate in MachineRate.objects.filter(is_active=True).order_by("operation", "material_name", "thickness_mm")]
+        } for rate in MachineRate.objects.filter(is_active=True, rate__gt=0).order_by("operation", "material_name", "thickness_mm")]
         labour_qs = StaffProfile.objects.filter(
             status=StaffProfile.Status.ACTIVE,
             compensation__is_active=True,
             compensation__payment_type=StaffCompensation.PaymentType.MONTHLY,
-            compensation__monthly_salary__isnull=False,
+            compensation__monthly_salary__gt=0,
+            compensation__working_days_per_month__gt=0,
+            compensation__productive_hours_per_day__gt=0,
         ).select_related("user", "compensation")
         if not _global_admin(request.user):
             department_id = _manager_department_id(request.user)
