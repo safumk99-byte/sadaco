@@ -126,6 +126,8 @@ def quotation_configuration(request):
             limit_value = _decimal(data.get("manager_discount_limit_value"), "manager_discount_limit_value", None)
             if limit_value is not None and limit_value < 0:
                 raise ValueError("Manager Discount Limit cannot be negative.")
+            if limit_value is not None and config.manager_discount_limit_type == "percentage" and limit_value > 100:
+                raise ValueError("A percentage Manager Discount Limit cannot exceed 100%.")
             config.manager_discount_limit_value = limit_value
         for field in ("company_name", "company_address", "company_phone", "company_email", "company_website", "tax_label", "default_terms"):
             if field in data:
