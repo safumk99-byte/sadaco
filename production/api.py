@@ -145,7 +145,8 @@ def options(request):
     products = Product.objects.filter(status=Product.Status.ACTIVE).order_by('name')[:300]
     return JsonResponse({'staff': [{'id': s.id, 'name': str(s)} for s in staff],
         'orders': [{'id': o.id, 'order_no': o.order_no, 'customer': o.customer.name, 'item_description': o.item_description, 'deadline': o.deadline.isoformat() if o.deadline else None} for o in orders],
-        'products': [{'id': p.id, 'name': p.name, 'sku': p.sku} for p in products],\n        'materials': [{'id': m.id, 'name': m.material_name, 'brand': m.brand, 'thickness_mm': str(m.thickness_mm) if m.thickness_mm is not None else None, 'unit': m.unit} for m in MaterialVariant.objects.filter(is_active=True).order_by('material_name', 'brand', 'thickness_mm')[:500]]})
+        'products': [{'id': p.id, 'name': p.name, 'sku': p.sku} for p in products],
+        'materials': [{'id': m.id, 'name': m.material_name, 'brand': m.brand, 'thickness_mm': str(m.thickness_mm) if m.thickness_mm is not None else None, 'unit': m.unit} for m in MaterialVariant.objects.filter(is_active=True).order_by('material_name', 'brand', 'thickness_mm')[:500]]})
 
 @require_GET
 @login_required
