@@ -221,7 +221,7 @@ def record_issued_wastage(*, material_issue_id, quantity, user=None, reference="
     if quantity <= 0:
         raise ValidationError("Wastage quantity must be greater than zero.")
     issue = MaterialIssue.objects.select_for_update(of=("self",)).select_related(
-        "material", "stock_lot", "material__job__order__customer"
+        "material", "stock_lot", "stock_movement", "material__job__order__customer"
     ).get(pk=material_issue_id, status=MaterialIssue.Status.ISSUED)
     material = ProductionMaterial.objects.select_for_update(of=("self",)).get(pk=issue.material_id)
     if not material.material_variant_id or not issue.stock_lot_id or issue.unit_rate is None:
