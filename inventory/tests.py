@@ -314,8 +314,8 @@ class MaterialStockCountTests(TestCase):
         self.assertEqual(reviewed.correction_movement.quantity, Decimal("2"))
         from inventory.services import reconcile_material_stock_balance
         reconciliation = reconcile_material_stock_balance(self.balance)
-        self.assertEqual(reconciliation["movement_expected_balance"], "10")
-        self.assertEqual(reconciliation["movement_difference"], "0")
+        self.assertEqual(reconciliation["movement_expected_balance"], "10.000")
+        self.assertEqual(reconciliation["movement_difference"], "0.000")
         self.assertEqual(reconciliation["unknown_movement_types"], [])
         self.assertTrue(reconciliation["reconciled"])
         self.assertTrue(reconciliation["unbatched_warning"])
