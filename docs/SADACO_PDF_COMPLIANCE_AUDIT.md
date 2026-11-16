@@ -425,3 +425,16 @@ Inspected `purchase/api.py`, `purchase/forms.py`, `inventory/api.py`, `inventory
 Before modifying code, settle the business rule for partial deliveries and offcut accounting. The source review has isolated those two product decisions; inventing them would risk changing stock and costing semantics. Once confirmed, implement only the selected behavior with API-level regression tests and transaction rollback/concurrency coverage.
 
 This remains a source-level review only. No Django test command, migration, Neon write, production change, merge, or deployment was performed.
+
+
+## 2026-11-16 — Partial Goods Receipt implementation (CI pending)
+
+- Implemented per-line receipt quantities in `purchase/api.py`. New clients may submit `items: [{purchase_item_id, received_quantity}]`; omitted lines are not received, zero quantities are skipped, and at least one positive quantity is required.
+- The API rejects duplicate/foreign purchase-item IDs, malformed or negative quantities, quantities above the remaining pending amount, and quantities with more than two decimal places. Material receipts still require a stock location.
+- Existing clients that omit the `items` array retain the prior behavior of receiving all pending quantities. This keeps the endpoint backward compatible while the UI is migrated.
+- Receipt posting remains inside the existing atomic transaction and PurchaseOrder row lock. Each partial batch creates its own GoodsReceipt, GoodsReceiptLine, stock movement and receipt-backed cost lot. PurchaseItem.received_quantity and PurchaseOrder status are updated from the accepted batch; the order remains Partial while any quantity is pending.
+- Added regression tests for two receipt batches against one line (1.5 then 1.0 from an order of 4), stock/lot totals and Partial status, plus over-receipt rejection without stock writes.
+- Updated the React Purchase Management page to open a quantity-entry receipt dialog showing ordered, already received and pending quantities, with supplier reference and location fields.
+- Commits: API partial receipt support `ed2d6f129b224b1614e24ea0c5233716eb1b641a`; regression tests `c38786252a421d58d08bd5d8062fd44cd4a132bd`; UI `8589b8cc7dc3c3fceb03c82ae986d7574b795917`; quantity precision validation `51b4786723b6ba84aa5f46e41df3ec8b9b2d2de0`.
+- GitHub Actions CI runs #207 and #208 were triggered by these commits; their final status must be checked before calling the implementation verified.
+- No Neon database, production, `main`, or Render deployment was changed. No local Django or Playwright test command was run in this session.
