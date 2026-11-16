@@ -196,6 +196,8 @@ def receive(request, pk):
                 return JsonResponse({"detail": "A receipt item does not belong to this purchase order."}, status=400)
             if not qty.is_finite() or qty < 0:
                 return JsonResponse({"detail": "Received quantities must be zero or greater."}, status=400)
+            if max(-qty.as_tuple().exponent, 0) > 2:
+                return JsonResponse({"detail": "Received quantities support up to 2 decimal places."}, status=400)
             if qty > item.pending_quantity:
                 return JsonResponse({
                     "detail": f"Received quantity for item {item.pk} exceeds its pending quantity ({item.pending_quantity})."
