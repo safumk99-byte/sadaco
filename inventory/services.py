@@ -288,7 +288,8 @@ def reconcile_material_stock_balance(balance):
         MaterialStockMovement.Type.OFFCUT_IN,
     }
     negative = {MaterialStockMovement.Type.JOB_ISSUE}
-    movements = list(balance.movements.all().order_by("created_at", "pk"))
+    # The API prefetches movements in chronological order for all visible balances.
+    movements = list(balance.movements.all())
     movement_expected = Decimal("0")
     unknown_types = []
     for movement in movements:
@@ -299,11 +300,8 @@ def reconcile_material_stock_balance(balance):
         elif movement.movement_type != MaterialStockMovement.Type.WASTAGE:
             unknown_types.append(movement.movement_type)
 
-    lots = list(
-        MaterialStockLot.objects.filter(balance_id=balance.pk)
-        .prefetch_related("issues")
-        .order_by("created_at", "pk")
-    )
+    # Receipt lots and their issue history are prefetched by the API caller.
+    lots = list(balance.cost_lots.all())
     lot_remaining_total = Decimal("0")
     lot_mismatches = []
     for lot in lots:
