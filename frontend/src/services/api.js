@@ -57,3 +57,6 @@ export async function createCampaign(data) { return (await api.post('/marketing/
 export async function createMarketingContent(data) { return (await api.post('/marketing/content/create/',data)).data }
 export async function createMarketingLead(data) { return (await api.post('/marketing/leads/create/',data)).data }
 export async function getReportsDashboard(params={}) { return (await api.get('/reports/dashboard/',{params})).data }
+
+export async function getApprovalThresholds() { return (await api.get('/finance/approval-thresholds/')).data }
+export async function updateApprovalThresholds(data) { return (await api.post('/finance/approval-thresholds/update/', data)).data }
