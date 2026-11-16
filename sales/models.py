@@ -2,7 +2,7 @@ import uuid
 
 from django.conf import settings
 from django.core.validators import MaxValueValidator, MinValueValidator
-from django.db import models
+from django.db import models, transaction
 from core.models import Department
 
 
@@ -164,6 +164,19 @@ class Quotation(models.Model):
         return self.quotation_no
 
 
+class SalesOrderSequence(models.Model):
+    """Yearly counter for human-readable SADACO order numbers."""
+
+    year = models.PositiveSmallIntegerField(unique=True)
+    last_number = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["year"]
+
+    def __str__(self):
+        return f"SAD-{self.year}-{self.last_number:04d}"
+
+
 class SalesOrder(models.Model):
     class Status(models.TextChoices):
         CONFIRMED = "confirmed", "Confirmed"
@@ -197,7 +210,17 @@ class SalesOrder(models.Model):
 
     def save(self, *args, **kwargs):
         if not self.order_no:
-            self.order_no = f"ORD-{uuid.uuid4().hex[:10].upper()}"
+            # Lock the yearly counter so concurrent order creation cannot reuse an ID.
+            with transaction.atomic():
+                year = timezone.localdate().year
+                sequence, _ = SalesOrderSequence.objects.select_for_update().get_or_create(
+                    year=year, defaults={"last_number": 0}
+                )
+                sequence.last_number += 1
+                sequence.save(update_fields=["last_number"])
+                self.order_no = f"SAD-{year}-{sequence.last_number:04d}"
+                super().save(*args, **kwargs)
+            return
         super().save(*args, **kwargs)
 
     def __str__(self):
