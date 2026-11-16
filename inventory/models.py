@@ -134,6 +134,8 @@ class ReusableOffcut(models.Model):
     source_issue = models.ForeignKey("inventory.MaterialIssue", on_delete=models.PROTECT, null=True, blank=True, related_name="generated_offcuts")
     source_lot = models.ForeignKey("purchase.MaterialStockLot", on_delete=models.PROTECT, null=True, blank=True, related_name="generated_offcuts")
     cost_per_sqft = models.DecimalField(max_digits=14, decimal_places=6, null=True, blank=True, validators=[MinValueValidator(0)])
+    discarded_area_sqft = models.DecimalField(max_digits=12, decimal_places=4, default=0, validators=[MinValueValidator(0)])
+    discarded_cost = models.DecimalField(max_digits=14, decimal_places=2, default=0, validators=[MinValueValidator(0)])
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.AVAILABLE)
     source_job = models.ForeignKey("production.ProductionJob", on_delete=models.PROTECT, null=True, blank=True, related_name="generated_offcuts")
     used_for_job = models.ForeignKey("production.ProductionJob", on_delete=models.PROTECT, null=True, blank=True, related_name="used_offcuts")
