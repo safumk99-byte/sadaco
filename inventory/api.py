@@ -247,8 +247,23 @@ def offcut_create_api(request):
         if data.get("source_job") and int(data["source_job"]) != issue.job_id:
             return JsonResponse({"detail": "Source job must match the selected material issue."}, status=400)
         sheet_area = material.sheet_area_sqft
-        if sheet_area <= 0:
+        if (
+            not material.sheet_width_ft or not material.sheet_height_ft
+            or material.sheet_width_ft <= 0 or material.sheet_height_ft <= 0
+            or sheet_area <= 0
+        ):
             return JsonResponse({"detail": "The material master must have valid sheet dimensions."}, status=400)
+        sheet_width_mm = material.sheet_width_ft * Decimal("304.8")
+        sheet_height_mm = material.sheet_height_ft * Decimal("304.8")
+        fits_sheet = (
+            length_mm <= sheet_width_mm and width_mm <= sheet_height_mm
+        ) or (
+            width_mm <= sheet_width_mm and length_mm <= sheet_height_mm
+        )
+        if not fits_sheet:
+            return JsonResponse({
+                "detail": "Offcut dimensions cannot exceed one source sheet, including rotated orientation."
+            }, status=400)
         already_registered = ReusableOffcut.objects.filter(source_issue=issue).aggregate(total=Sum("usable_area_sqft"))["total"] or Decimal("0")
         issue_area_available = max(issue.quantity - issue.returned_quantity - issue.wastage_quantity, Decimal("0")) * sheet_area
         if already_registered + usable_area > issue_area_available:
