@@ -68,3 +68,17 @@ class PurchaseApprovalThresholdTests(TestCase):
         self.assertEqual(rejected.status_code, 200, rejected.content.decode())
         order = PurchaseOrder.objects.get()
         self.assertEqual(order.status, PurchaseOrder.Status.DRAFT)
+
+    def test_founder_approval_sends_purchase_order(self):
+        from core.api import approval_review_api
+        ApprovalThreshold.objects.create(purchase_amount=Decimal("1500"), expense_amount=Decimal("1000"), updated_by=self.founder)
+        self.post(create, self.manager, {
+            "supplier": self.supplier.pk, "order_date": date.today().isoformat(), "status": "sent",
+            "discount": "0", "tax": "0", "notes": "", "material_variant": self.material.pk,
+            "quantity": "2", "unit_cost": "1000", "approval_reason": "Required acrylic stock for confirmed production jobs.",
+        })
+        approval = ApprovalRequest.objects.get(module="purchase")
+        response = self.post(approval_review_api, self.founder, {"status": "approved", "reviewer_note": "Approved."}, approval.pk)
+        self.assertEqual(response.status_code, 200, response.content.decode())
+        order = PurchaseOrder.objects.get()
+        self.assertEqual(order.status, PurchaseOrder.Status.SENT)
