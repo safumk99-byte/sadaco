@@ -854,7 +854,7 @@ class ReusableOffcutAreaLedgerTests(TestCase):
         self.assertEqual(source_final["offcut_inventory_value"], "0.00")
         self.assertEqual(source_final["net_material_cost"], "37.50")
         self.assertEqual(target_final["net_material_cost"], "12.50")
-        # ₹50 returned + ₹37.50 source cost + ₹12.50 target cost = ₹100 receipt issue value.
+        # ₹50 return credit + ₹37.50 source cost + ₹12.50 target cost = ₹100 issued value.
         self.assertEqual(
             Decimal(source_final["net_material_cost"]) + Decimal(target_final["net_material_cost"]),
             Decimal("50.00"),
