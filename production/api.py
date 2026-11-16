@@ -60,7 +60,8 @@ def _job_visible(user, job):
     if getattr(getattr(user, "profile", None), "role", None) == UserProfile.Role.MANAGER:
         department_id = _manager_department_id(user)
         return bool(department_id and job.order.customer.department_id == department_id)
-    staff_id = getattr(getattr(user, 'staff_profile', None), 'id', None)\n    return bool(staff_id and (job.assigned_staff_id == staff_id or job.stage_tasks.filter(assigned_staff_id=staff_id).exists()))
+    staff_id = getattr(getattr(user, 'staff_profile', None), 'id', None)
+    return bool(staff_id and (job.assigned_staff_id == staff_id or job.stage_tasks.filter(assigned_staff_id=staff_id).exists()))
 
 
 def _staff_in_manager_department(user, staff):
@@ -314,6 +315,7 @@ def upsert_stage_task(request, pk):
         return JsonResponse({"detail": "Select a valid production stage."}, status=400)
     with transaction.atomic():
         task = ProductionStageTask.objects.select_for_update().filter(job=job, stage=stage).first()
+        created = task is None
         manager = _manager(request.user)
         staff_id = getattr(getattr(request.user, "staff_profile", None), "id", None)
         if task is None and not manager:
@@ -366,7 +368,7 @@ def upsert_stage_task(request, pk):
             task.remarks = str(data.get("remarks") or "").strip()
         task.updated_by = request.user
         task.save()
-    return JsonResponse({"stage_task": _stage_task(task)}, status=200 if task.pk else 201)
+    return JsonResponse({"stage_task": _stage_task(task)}, status=201 if created else 200)
 
 
 def _data(request):
