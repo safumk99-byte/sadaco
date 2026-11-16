@@ -531,3 +531,57 @@ class ReusableOffcutAreaLedgerTests(TestCase):
         self.assertEqual(rejected.status_code, 400)
         from inventory.models import OffcutUsage
         self.assertFalse(OffcutUsage.objects.exists())
+
+
+    def test_offcut_usage_cannot_exceed_remaining_sheet_requirement_area(self):
+        from inventory.models import OffcutUsage
+        from production.models import ProductionMaterial
+
+        small_line = ProductionMaterial.objects.create(
+            job=self.target_job, material_variant=self.material, material_name="Offcut Acrylic",
+            quantity_required=Decimal("0.10"), unit="Sheet",
+        )
+        response = self._create_offcut(usable_area="10")
+        self.assertEqual(response.status_code, 201, response.content)
+        rejected = self.client.post(
+            f"/api/inventory/materials/offcuts/{response.json()['id']}/action/",
+            data=json.dumps({
+                "action": "used", "job": self.target_job.pk,
+                "material_line": small_line.pk, "used_area_sqft": "4",
+            }),
+            content_type="application/json",
+        )
+        self.assertEqual(rejected.status_code, 400)
+        self.assertIn("no more than 3.2000 additional sq ft", rejected.json()["detail"])
+        self.assertFalse(OffcutUsage.objects.filter(target_material=small_line).exists())
+
+    def test_offcut_area_reduces_sheet_issue_requirement_and_prevents_overissue(self):
+        from inventory.services import issue_material
+
+        response = self._create_offcut(usable_area="10")
+        self.assertEqual(response.status_code, 201, response.content)
+        used = self.client.post(
+            f"/api/inventory/materials/offcuts/{response.json()['id']}/action/",
+            data=json.dumps({
+                "action": "used", "job": self.target_job.pk,
+                "material_line": self.target_line.pk, "used_area_sqft": "4",
+            }),
+            content_type="application/json",
+        )
+        self.assertEqual(used.status_code, 200, used.content)
+        self.target_line.refresh_from_db()
+        self.assertEqual(self.target_line.offcut_equivalent_quantity, Decimal("0.125"))
+        self.assertEqual(self.target_line.pending_quantity, Decimal("1.875"))
+
+        with self.assertRaisesMessage(ValidationError, "Cannot issue more than pending requirement"):
+            issue_material(
+                material_id=self.target_line.pk, quantity="1.88",
+                lot_id=self.lot.pk, user=self.manager,
+            )
+        issue_material(
+            material_id=self.target_line.pk, quantity="1.87",
+            lot_id=self.lot.pk, user=self.manager,
+        )
+        self.target_line.refresh_from_db()
+        self.assertEqual(self.target_line.issued_quantity, Decimal("1.87"))
+        self.assertEqual(self.target_line.pending_quantity, Decimal("0.005"))
