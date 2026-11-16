@@ -197,8 +197,11 @@ def quotation_workflow_create(request):
         discount = _decimal(data.get("discount_percent", 0), "discount_percent", Decimal("0"))
         if discount < 0 or discount > 100:
             raise ValueError("Discount percentage must be between 0 and 100.")
+        item_description = str(data.get("item_description") or "").strip()
+        if not item_description:
+            raise ValueError("Product / service description is required.")
         quantity = _decimal(data.get("quantity", 1), "quantity", Decimal("1"))
-        if quantity <= 0:
+        if quantity is None or quantity <= 0:
             raise ValueError("Quantity must be greater than zero.")
         advance = _decimal(data.get("advance_required", 0), "advance_required", Decimal("0"))
         if advance < 0:
@@ -207,7 +210,7 @@ def quotation_workflow_create(request):
         config = QuotationConfiguration.get_solo()
         with transaction.atomic():
             quotation = Quotation.objects.create(
-                customer=customer, item_description=str(data.get("item_description") or "").strip() or "Quotation",
+                customer=customer, item_description=item_description,
                 quantity=quantity, dimensions=str(data.get("dimensions") or "").strip(),
                 discount_percent=discount, advance_required=advance, valid_until=valid_until,
                 delivery_timeline=str(data.get("delivery_timeline") or "").strip(),
@@ -242,14 +245,14 @@ def quotation_workflow_update(request, pk):
             if field in data:
                 setattr(quotation, field, str(data.get(field) or "").strip())
         if "quantity" in data:
-            quotation.quantity = _decimal(data["quantity"], "quantity")
-            if quotation.quantity <= 0:
+            quotation.quantity = _decimal(data["quantity"], "quantity", Decimal("1"))
+            if quotation.quantity is None or quotation.quantity <= 0:
                 raise ValueError("Quantity must be greater than zero.")
         if "discount_percent" in data:
-            quotation.discount_percent = _decimal(data["discount_percent"], "discount_percent")
+            quotation.discount_percent = _decimal(data["discount_percent"], "discount_percent", Decimal("0"))
         if "advance_required" in data:
-            quotation.advance_required = _decimal(data["advance_required"], "advance_required")
-            if quotation.advance_required < 0:
+            quotation.advance_required = _decimal(data["advance_required"], "advance_required", Decimal("0"))
+            if quotation.advance_required is None or quotation.advance_required < 0:
                 raise ValueError("Advance cannot be negative.")
         if "valid_until" in data:
             quotation.valid_until = date.fromisoformat(data["valid_until"]) if data["valid_until"] else None
