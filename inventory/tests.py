@@ -622,3 +622,63 @@ class ReusableOffcutAreaLedgerTests(TestCase):
         self.target_line.refresh_from_db()
         self.assertEqual(self.target_line.issued_quantity, Decimal("1.87"))
         self.assertEqual(self.target_line.pending_quantity, Decimal("0"))
+
+
+class MaterialIssueEmployeeDepartmentAPITests(TestCase):
+    def setUp(self):
+        from staff.models import StaffProfile
+
+        self.department = Department.objects.create(code="issue-employee-a", name="Issue Employee A")
+        self.other_department = Department.objects.create(code="issue-employee-b", name="Issue Employee B")
+        self.manager = User.objects.create_user(username="issue_employee_manager", password="StrongPass123!")
+        UserProfile.objects.create(
+            user=self.manager, role=UserProfile.Role.MANAGER, department=self.department
+        )
+        customer = Customer.objects.create(
+            name="Issue Employee Customer", phone="9000000033", department=self.department
+        )
+        order = SalesOrder.objects.create(
+            customer=customer, item_description="Issue Employee Job",
+            quantity=1, confirmed_price=1000,
+        )
+        self.job = ProductionJob.objects.create(order=order, station=ProductionJob.Station.LASER)
+        material = MaterialVariant.objects.create(
+            material_name="Issue Employee Acrylic", brand="Test", thickness_mm=Decimal("3"),
+            purchase_rate=Decimal("100"), unit="Sheet",
+        )
+        self.balance = MaterialStockBalance.objects.create(
+            material=material, department=self.department, location="Main Store",
+            quantity=Decimal("10"),
+        )
+        self.line = ProductionMaterial.objects.create(
+            job=self.job, material_variant=material, material_name="Issue Employee Acrylic",
+            quantity_required=Decimal("5"), unit="Sheet",
+        )
+        from staff.models import StaffProfile
+        foreign_user = User.objects.create_user(username="foreign_issue_employee", password="StrongPass123!")
+        UserProfile.objects.create(
+            user=foreign_user, role=UserProfile.Role.STAFF, department=self.other_department
+        )
+        self.foreign_employee = StaffProfile.objects.create(
+            user=foreign_user, staff_id="FOREIGN-ISSUE-01", department=self.other_department
+        )
+        self.client.force_login(self.manager)
+
+    def test_manager_cannot_record_material_issue_against_foreign_department_employee(self):
+        response = self.client.post(
+            "/api/inventory/materials/issues/create/",
+            data=json.dumps({
+                "material_line": self.line.pk,
+                "quantity": "1",
+                "balance": self.balance.pk,
+                "employee": self.foreign_employee.pk,
+            }),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("production job department", response.json()["detail"])
+        self.balance.refresh_from_db()
+        self.line.refresh_from_db()
+        self.assertEqual(self.balance.quantity, Decimal("10"))
+        self.assertEqual(self.line.issued_quantity, Decimal("0"))
+
