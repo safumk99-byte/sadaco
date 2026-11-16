@@ -166,3 +166,64 @@ class ProductionDepartmentAccessTests(TestCase):
         self.assertEqual(response.status_code, 403)
         self.creative_job.refresh_from_db()
         self.assertNotEqual(self.creative_job.status, ProductionJob.Status.COMPLETED)
+
+
+class ProductionMaterialFormSafetyTests(TestCase):
+    def setUp(self):
+        self.department = Department.objects.get_or_create(
+            code="material-form-test", defaults={"name": "Material Form Test"}
+        )[0]
+        self.manager = User.objects.create_user(username="material_form_mgr", password="StrongPass123!")
+        UserProfile.objects.create(
+            user=self.manager, role=UserProfile.Role.MANAGER, department=self.department
+        )
+        customer = Customer.objects.create(
+            name="Material Form Customer", phone="9000000099", department=self.department
+        )
+        self.order = SalesOrder.objects.create(
+            customer=customer, item_description="Material form job", quantity=1, confirmed_price=1000
+        )
+        self.job = ProductionJob.objects.create(order=self.order, station=ProductionJob.Station.LASER)
+
+    def test_material_master_line_is_created_unissued_and_uses_master_unit(self):
+        from decimal import Decimal
+        from products.models import MaterialVariant
+        material = MaterialVariant.objects.create(
+            material_name="Acrylic Sheet", brand="Astari", thickness_mm=Decimal("3"),
+            unit="Sheet",
+        )
+        self.client.force_login(self.manager)
+        response = self.client.post(
+            f"/api/production/jobs/{self.job.pk}/materials/",
+            data={
+                "material_variant": material.pk,
+                "material_name": "Forged name must be replaced",
+                "quantity_required": "2",
+                "unit": "Piece",
+                "issued_quantity": "2",
+            },
+        )
+        self.assertEqual(response.status_code, 201, response.content)
+        from .models import ProductionMaterial
+        line = ProductionMaterial.objects.get(job=self.job)
+        self.assertEqual(line.material_variant_id, material.pk)
+        self.assertEqual(line.material_name, "Acrylic Sheet")
+        self.assertEqual(line.unit, "Sheet")
+        self.assertEqual(line.issued_quantity, Decimal("0"))
+
+    def test_material_line_rejects_both_product_and_material_master(self):
+        from decimal import Decimal
+        from products.models import Product, MaterialVariant
+        product = Product.objects.create(name="Finished product", sku="PF-001", unit="Piece")
+        material = MaterialVariant.objects.create(
+            material_name="Acrylic Sheet", brand="Astari", thickness_mm=Decimal("3"), unit="Sheet",
+        )
+        self.client.force_login(self.manager)
+        response = self.client.post(
+            f"/api/production/jobs/{self.job.pk}/materials/",
+            data={
+                "product": product.pk, "material_variant": material.pk,
+                "material_name": "Acrylic Sheet", "quantity_required": "2", "unit": "Sheet",
+            },
+        )
+        self.assertEqual(response.status_code, 400)
