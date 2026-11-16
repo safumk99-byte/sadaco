@@ -525,3 +525,11 @@ This remains a source-level review only. No Django test command, migration, Neon
 - This closes a path that could previously mark material as issued without stock movement or issue-cost attribution.
 - CI run #276 completed successfully for commit `947131b8b098869fce533f0020512ab6def4f7e3`: Django system checks, committed migrations, migration-plan verification, Django regression tests and frontend build all passed. This is GitHub CI on its PostgreSQL service database, not Neon clone or Production DB validation.
 - No Neon, Production DB, `main`, merge, or deployment was changed.
+
+
+## 2026-11-16 stock reconciliation correction handling
+
+- The read-only stock reconciliation previously treated an approved physical-count correction as an unknown movement. That could report a false ledger mismatch even though the approved count had correctly updated the stock balance.
+- Reconciliation now processes movements chronologically and treats CORRECTION / CLOSING rows as post-movement balance snapshots, resetting the running expected balance to balance_after. Wastage remains an annotation and does not decrement stock a second time.
+- Regression coverage now verifies that an approved negative physical-count adjustment reconciles to the approved balance, while still reporting the quantity as unbatched when no cost lot exists.
+- No stock rows were changed by this code fix; it only corrects the read-only reconciliation calculation.
