@@ -179,7 +179,7 @@ def return_issued_material(*, material_issue_id, quantity, user=None, reference=
     quantity = Decimal(str(quantity))
     if quantity <= 0:
         raise ValidationError("Return quantity must be greater than zero.")
-    issue = MaterialIssue.objects.select_for_update().select_related(
+    issue = MaterialIssue.objects.select_for_update(of=("self",)).select_related(
         "material", "stock_lot", "material__job__order__customer"
     ).get(pk=material_issue_id, status=MaterialIssue.Status.ISSUED)
     material = ProductionMaterial.objects.select_for_update(of=("self",)).get(pk=issue.material_id)
