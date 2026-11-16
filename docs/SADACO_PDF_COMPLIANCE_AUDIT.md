@@ -127,8 +127,7 @@ The same clone confirms 25 product rows total, 2 with positive stock, 0 referenc
 
 The user has explicitly superseded the earlier conservative operational-data preservation rule:
 
-- The final requirements PDF is the sole source of truth.
-- Legacy operational/catalogue data may be fully removed and rebuilt; do not preserve old demo products, old rates, orders, stock, customer records or old workflow history merely because they exist.
+- The final requirements PDF is the sole source of truth.- Legacy operational/catalogue data may be fully removed and rebuilt; do not preserve old demo products, old rates, orders, stock, customer records or old workflow history merely because they exist.
 - **Mandatory preservation boundary:** retain every existing Django User/account, UserProfile, authentication credential, role/group/permission assignment, and every existing StaffProfile. Never delete or recreate these identities.
 - Retain only staff-linked designation/work-area master rows required by retained staff foreign keys; all other legacy business data/configuration is eligible for cleanup and PDF-based reseeding.
 - Before any cleanup, generate a table-by-table deletion plan and verify that cascades cannot delete Users, UserProfiles or StaffProfiles. Apply and test only on the isolated disposable/staging clone first. Do not touch production Neon or the main branch.
@@ -257,8 +256,7 @@ Reviewed the current feature-branch seed migrations against the verified PDF val
 
 **Remaining blockers:**
 
-1. The actual Django migration engine still must run `migrate --plan`, `migrate --noinput`, and `migrate --check` against `br-lucky-pond-azm200bm` using the exact feature-branch checkout. The Mobile Commander PC Bridge timed out during this session, so this could not be executed.
-2. Add automated migration/seed assertions for 51 material variants, 51 initial rate-history rows, 5 machine rates, the expected staff compensation mapping and the 3 department codes. Current inspection found no dedicated tests for these migration seed expectations in `products/tests.py`.
+1. The actual Django migration engine still must run `migrate --plan`, `migrate --noinput`, and `migrate --check` against `br-lucky-pond-azm200bm` using the exact feature-branch checkout. The Mobile Commander PC Bridge timed out during this session, so this could not be executed.2. Add automated migration/seed assertions for 51 material variants, 51 initial rate-history rows, 5 machine rates, the expected staff compensation mapping and the 3 department codes. Current inspection found no dedicated tests for these migration seed expectations in `products/tests.py`.
 3. Verify model/schema parity, indexes, constraints, foreign keys and row counts after the normal Django migration run. Do not substitute hand-written DDL or manual migration-record insertion.
 4. Do not run the broad PDF-baseline cleanup migration as if it reproduced the authorized operational reset. The checked-in `products.0012_remove_demo_operational_data` is catalogue-only and intentionally preserves multiple legacy business relations; the broader reset was a separate, explicitly authorized transaction already recorded above.
 
@@ -302,3 +300,13 @@ No application source, migration, database, production, `main`, or Render change
 - Source-only correction commits: duplicate removal `7e6522ce3267eda675c6395da56678dfd0bb75e8`; test documentation clarification `821d2a684df62679798a0ba961223283b01de1c2`.
 - CI has not yet rerun on the corrected head. Do not claim migration or Django regression tests pass until the new run completes.
 - No Neon branch, production database, `main`, or Render deployment was changed.
+
+## 2026-11-16 — Corrected migration graph CI verification
+
+- Latest reviewed feature-branch head: `1f83ca9ce2cfb36e935551639bf64c67b3e2fe8f`.
+- GitHub Actions run #197 (ID `43785677007`) completed successfully: frontend build, Django system checks, committed database migrations, migration-plan verification, and Django security/business regression tests all passed.
+- This run confirms the duplicate `products` migration leaf was resolved and the committed feature-branch migration chain applies successfully to the CI PostgreSQL 16 database.
+- The CI regression suite includes `products/test_pdf_baseline_migrations.py`; therefore its seed-function assertions have now executed in CI. These are not historical-state `MigrationExecutor` tests and do not validate the legacy Neon migration history.
+- No CI step connected to Neon. The actual Django migration engine has still not been run against isolated Neon validation branch `br-lucky-pond-azm200bm` because the PC/local Django environment is unavailable. The legacy finance-history/schema reconciliation remains the Phase 1 release blocker.
+- Next safe work: design a read-only schema/migration-history comparison and a dedicated `MigrationExecutor` test strategy for the legacy baseline. Do not alter migration dependencies, fake migrations, run manual DDL, or write to Neon until that evidence is available.
+- Production Neon, `main`, Render and the isolated validation clone remain unchanged by this CI run.
