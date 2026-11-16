@@ -523,5 +523,5 @@ This remains a source-level review only. No Django test command, migration, Neon
 - Production options now expose active Material Master choices; the React Production Management form lets a manager select one when creating a material requirement.
 - Regression tests cover Material Master linkage, authoritative master name/unit, ignoring a forged issued quantity, and rejecting simultaneous Product and MaterialVariant references.
 - This closes a path that could previously mark material as issued without stock movement or issue-cost attribution.
-- CI run #274 was triggered for commit `1dc451d5cb9947ae5fba1527dc2647fabb9bdd8e`; final status must be checked before treating the change as CI-verified.
+- CI run #276 completed successfully for commit `947131b8b098869fce533f0020512ab6def4f7e3`: Django system checks, committed migrations, migration-plan verification, Django regression tests and frontend build all passed. This is GitHub CI on its PostgreSQL service database, not Neon clone or Production DB validation.
 - No Neon, Production DB, `main`, merge, or deployment was changed.
