@@ -35,6 +35,7 @@ export default function PurchaseManagement() {
     [error, setError] = useState("");
   const [modal, setModal] = useState(null);
   const [form, setForm] = useState({});
+  const [selectedOrder, setSelectedOrder] = useState(null);
   const load = async () => {
     try {
       setError("");
@@ -85,20 +86,51 @@ export default function PurchaseManagement() {
       setBusy(false);
     }
   };
-  const receive = async (id) => {
-    if (
-      !confirm(
-        "Receive all pending quantities for this purchase order and update stock?",
-      )
-    )
-      return;
+  const startReceive = (order) => {
+    setSelectedOrder(order);
+    setForm({
+      received_date: new Date().toISOString().slice(0, 10),
+      location: "",
+      supplier_reference: "",
+      items: (order.items || [])
+        .filter((item) => Number(item.pending_quantity) > 0)
+        .map((item) => ({
+          purchase_item_id: item.id,
+          received_quantity: item.pending_quantity,
+        })),
+    });
+    setModal("receive");
+  };
+  const updateReceiptQuantity = (itemId, quantity) => {
+    setForm((current) => ({
+      ...current,
+      items: (current.items || []).map((item) =>
+        item.purchase_item_id === itemId
+          ? { ...item, received_quantity: quantity }
+          : item,
+      ),
+    }));
+  };
+  const submitReceipt = async (e) => {
+    e.preventDefault();
+    if (!selectedOrder) return;
+    setBusy(true);
+    setError("");
     try {
-      await receivePurchaseOrder(id, {
-        received_date: new Date().toISOString().slice(0, 10),
+      await receivePurchaseOrder(selectedOrder.id, {
+        received_date: form.received_date,
+        location: form.location,
+        supplier_reference: form.supplier_reference,
+        items: form.items,
       });
+      setModal(null);
+      setSelectedOrder(null);
+      setForm({});
       await load();
     } catch (e) {
       setError(e.response?.data?.detail || "Could not receive goods.");
+    } finally {
+      setBusy(false);
     }
   };
   return (
@@ -234,7 +266,7 @@ export default function PurchaseManagement() {
                       <td>
                         {o.items
                           ?.map(
-                            (i) => `${i.product?.name || "-"} × ${i.quantity}`,
+                            (i) => `${i.product?.name || i.material_variant?.name || "-"} × ${i.quantity}`,
                           )
                           .join(", ")}
                       </td>
@@ -242,7 +274,7 @@ export default function PurchaseManagement() {
                         {o.status !== "received" &&
                           o.status !== "cancelled" && (
                             <button
-                              onClick={() => receive(o.id)}
+                              onClick={() => startReceive(o)}
                               className="rounded-lg bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700"
                             >
                               Receive
@@ -282,6 +314,100 @@ export default function PurchaseManagement() {
           </div>
         )}
       </div>
+      {modal === "receive" && selectedOrder && (
+        <Modal title={`Receive Goods · ${selectedOrder.po_no}`} close={() => setModal(null)}>
+          <form onSubmit={submitReceipt} className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="Received date">
+                <input
+                  type="date"
+                  required
+                  className={input}
+                  value={form.received_date || ""}
+                  onChange={(e) => setForm({ ...form, received_date: e.target.value })}
+                />
+              </Field>
+              <Field label="Stock location (required for materials)">
+                <input
+                  className={input}
+                  value={form.location || ""}
+                  placeholder="Enter stock location"
+                  onChange={(e) => setForm({ ...form, location: e.target.value })}
+                />
+              </Field>
+              <div className="sm:col-span-2">
+                <Field label="Supplier invoice / reference">
+                  <input
+                    className={input}
+                    value={form.supplier_reference || ""}
+                    onChange={(e) => setForm({ ...form, supplier_reference: e.target.value })}
+                  />
+                </Field>
+              </div>
+            </div>
+            <div className="overflow-x-auto rounded-xl border border-slate-200">
+              <table className="w-full min-w-[560px] text-left text-sm">
+                <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+                  <tr>
+                    <th className="p-3">Item</th>
+                    <th className="p-3">Ordered</th>
+                    <th className="p-3">Received</th>
+                    <th className="p-3">Pending</th>
+                    <th className="p-3">Receive now</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(selectedOrder.items || [])
+                    .filter((item) => Number(item.pending_quantity) > 0)
+                    .map((item) => (
+                      <tr key={item.id} className="border-t border-slate-100">
+                        <td className="p-3 font-medium">
+                          {item.product?.name || item.material_variant?.name || "Stock item"}
+                        </td>
+                        <td className="p-3">{item.quantity}</td>
+                        <td className="p-3">{item.received_quantity}</td>
+                        <td className="p-3 font-semibold">{item.pending_quantity}</td>
+                        <td className="p-3">
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            max={item.pending_quantity}
+                            required
+                            className={input + " min-w-[110px]"}
+                            value={
+                              form.items?.find((line) => line.purchase_item_id === item.id)
+                                ?.received_quantity ?? "0"
+                            }
+                            onChange={(e) => updateReceiptQuantity(item.id, e.target.value)}
+                          />
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="text-xs text-slate-500">
+              Enter only the quantity physically received now. Any remaining quantity stays pending and can be received later in a separate receipt.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setModal(null)}
+                className="rounded-xl border px-4 py-2"
+              >
+                Cancel
+              </button>
+              <button
+                disabled={busy}
+                className="rounded-xl bg-slate-900 px-4 py-2 font-semibold text-white disabled:opacity-50"
+              >
+                {busy ? "Saving..." : "Save Goods Receipt"}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
       {modal === "order" && (
         <Modal title="Create Purchase Order" close={() => setModal(null)}>
           <form onSubmit={submitOrder} className="grid gap-4 sm:grid-cols-2">
