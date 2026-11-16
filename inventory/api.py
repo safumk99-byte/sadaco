@@ -550,6 +550,10 @@ def _material_usage_adjustment(request, action):
         employee = StaffProfile.objects.filter(pk=data.get("employee")).first() if data.get("employee") else None
         if data.get("employee") and not employee:
             return JsonResponse({"detail": "Employee not found."}, status=404)
+        if employee and employee.department_id != line.job.order.customer.department_id:
+            return JsonResponse({"detail": "The selected employee must belong to the production job department."}, status=400)
+        if employee and employee.status != StaffProfile.Status.ACTIVE:
+            return JsonResponse({"detail": "Select an active employee for material return or wastage."}, status=400)
         selected_issue = MaterialIssue.objects.filter(
             pk=data.get("material_issue"), material_id=line.pk, job_id=line.job_id
         ).first()
