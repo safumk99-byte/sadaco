@@ -83,6 +83,7 @@ jobs:
           staff.tests.DepartmentAccessScopeTests
           products.test_costing.MaterialCostingModelTests
           products.test_costing.CostingPermissionTests
+          products.test_pdf_baseline_migrations
 
   frontend-build:
     runs-on: ubuntu-latest
