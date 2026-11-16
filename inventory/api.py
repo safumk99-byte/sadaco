@@ -508,6 +508,10 @@ def production_material_issue_api(request):
         employee = StaffProfile.objects.filter(pk=data.get("employee")).first() if data.get("employee") else None
         if data.get("employee") and not employee:
             return JsonResponse({"detail": "Employee not found."}, status=404)
+        if employee and employee.department_id != line.job.order.customer.department_id:
+            return JsonResponse({"detail": "The selected employee must belong to the production job department."}, status=400)
+        if employee and employee.status != StaffProfile.Status.ACTIVE:
+            return JsonResponse({"detail": "Select an active employee for material issue."}, status=400)
         issue, movement = issue_material(
             material_id=line.pk,
             quantity=data.get("quantity"),
