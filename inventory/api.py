@@ -13,7 +13,7 @@ from core.models import Department
 from products.models import MaterialVariant
 from staff.models import StaffProfile
 from production.models import ProductionJob
-from .models import MaterialStockBalance, MaterialStockMovement, MaterialStockCount, ReusableOffcut
+from .models import MaterialStockBalance, MaterialStockMovement, MaterialStockCount, ReusableOffcut, MaterialIssue
 from purchase.models import MaterialStockLot
 from .services import record_material_movement
 
@@ -264,7 +264,7 @@ def _material_usage_adjustment(request, action):
             "balance_after": str(movement.balance_after),
         }, status=201)
     except (ValueError, TypeError, InvalidOperation, ValidationError,
-            MaterialStockBalance.DoesNotExist, ProductionMaterial.DoesNotExist) as exc:
+            MaterialStockBalance.DoesNotExist, ProductionMaterial.DoesNotExist, MaterialIssue.DoesNotExist) as exc:
         return JsonResponse({"detail": str(exc)}, status=400)
 
 
