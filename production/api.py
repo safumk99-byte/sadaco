@@ -296,6 +296,8 @@ def _stage_task(task):
         "actual_start": task.actual_start.isoformat() if task.actual_start else None,
         "actual_completion": task.actual_completion.isoformat() if task.actual_completion else None,
         "status": task.status, "status_label": task.get_status_display(),
+        "is_overdue": bool(task.expected_completion and task.expected_completion < timezone.localdate() and task.status not in (ProductionStageTask.Status.COMPLETED, ProductionStageTask.Status.SKIPPED)),
+        "days_overdue": max((timezone.localdate() - task.expected_completion).days, 0) if task.expected_completion and task.expected_completion < timezone.localdate() and task.status not in (ProductionStageTask.Status.COMPLETED, ProductionStageTask.Status.SKIPPED) else 0,
         "remarks": task.remarks, "updated_by": task.updated_by.get_full_name() if task.updated_by else None,
         "updated_at": task.updated_at.isoformat(),
     }
@@ -305,7 +307,6 @@ def _stage_task(task):
 @login_required
 def upsert_stage_task(request, pk):
     from datetime import date
-    from django.utils.dateparse import parse_datetime
     from django.db import transaction
     job = get_object_or_404(_visible_jobs(request.user), pk=pk)
     if not _job_visible(request.user, job):
@@ -350,6 +351,8 @@ def upsert_stage_task(request, pk):
             if task.planned_start and task.expected_completion and task.expected_completion < task.planned_start:
                 return JsonResponse({"detail": "Expected completion cannot be before planned start."}, status=400)
         status = data.get("status", task.status)
+        if status == ProductionStageTask.Status.ASSIGNED and not task.assigned_staff_id:
+            return JsonResponse({"detail": "Assign an active staff member before marking this stage as Assigned."}, status=400)
         if status not in ProductionStageTask.Status.values:
             return JsonResponse({"detail": "Select a valid stage task status."}, status=400)
         if not manager and status not in (ProductionStageTask.Status.IN_PROGRESS, ProductionStageTask.Status.ON_HOLD, ProductionStageTask.Status.COMPLETED):
