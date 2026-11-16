@@ -223,3 +223,51 @@ class ProductionStageStaffQualityVisibilityTests(TestCase):
         self.client.force_login(other)
         response = self.client.get(f"/api/quality/jobs/{self.job.pk}/")
         self.assertEqual(response.status_code, 404)
+
+
+
+class FinalQCProductionStageGateTests(TestCase):
+    def setUp(self):
+        from core.models import Department
+        from sales.models import Customer, SalesOrder
+        from production.models import ProductionJob, ProductionStageTask
+
+        department = Department.objects.create(code="qc-stage-gate", name="QC Stage Gate")
+        self.manager = User.objects.create_user(username="qc_stage_gate_manager", password="StrongPass123!")
+        UserProfile.objects.create(user=self.manager, role=UserProfile.Role.MANAGER, department=department)
+        customer = Customer.objects.create(name="QC Stage Gate Customer", phone="9000000066", department=department)
+        order = SalesOrder.objects.create(customer=customer, item_description="QC Stage Gate Item", quantity=1, confirmed_price=1000)
+        self.job = ProductionJob.objects.create(order=order, station=ProductionJob.Station.CUSTOM, status=ProductionJob.Status.IN_PROGRESS)
+        self.task = ProductionStageTask.objects.create(job=self.job, stage="cnc", status=ProductionStageTask.Status.IN_PROGRESS)
+        self.client.force_login(self.manager)
+
+    def _payload(self):
+        return {
+            "job": self.job.pk, "check_type": "final", "result": "pass", "inspector": "",
+            "stage": "final", "design_match": True, "measurement_ok": True,
+            "finishing_ok": True, "colour_ok": True, "engraving_ok": True,
+            "cutting_ok": True, "assembly_ok": True, "sticking_ok": True,
+            "polishing_ok": True, "electrical_ok": True, "appearance_ok": True,
+            "packing_ok": True, "defects": "", "rework_reason": "",
+            "corrective_action": "", "remarks": "",
+        }
+
+    def test_final_qc_pass_is_blocked_while_a_scheduled_stage_is_incomplete(self):
+        response = self.client.post(
+            "/api/quality/checks/create/",
+            data=json.dumps(self._payload()),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("cnc", response.json()["incomplete_stages"])
+        self.assertFalse(self.job.quality_checks.exists())
+
+    def test_final_qc_pass_is_allowed_after_scheduled_stage_is_completed(self):
+        self.task.status = "completed"
+        self.task.save()
+        response = self.client.post(
+            "/api/quality/checks/create/",
+            data=json.dumps(self._payload()),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 201, response.content)
