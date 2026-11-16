@@ -105,12 +105,26 @@ def _sync_job(job):
 
 def _incomplete_production_stages(job):
     from production.models import ProductionStageTask
-    return list(
-        job.stage_tasks.exclude(status__in=[
+    required_stages = [
+        ProductionStageTask.Stage.DESIGN,
+        ProductionStageTask.Stage.LASER,
+        ProductionStageTask.Stage.CNC,
+        ProductionStageTask.Stage.ASSEMBLY_STICKING,
+        ProductionStageTask.Stage.POLISHING_PAINTING,
+        ProductionStageTask.Stage.ELECTRICAL_LED,
+        ProductionStageTask.Stage.FINAL_ASSEMBLY,
+    ]
+    tasks = {
+        task.stage: task.status
+        for task in job.stage_tasks.filter(stage__in=required_stages)
+    }
+    return [
+        stage for stage in required_stages
+        if tasks.get(stage) not in (
             ProductionStageTask.Status.COMPLETED,
             ProductionStageTask.Status.SKIPPED,
-        ]).values_list("stage", flat=True)
-    )
+        )
+    ]
 
 
 def _data(request):
