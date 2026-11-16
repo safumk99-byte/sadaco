@@ -45,6 +45,8 @@ def record_production_cost(*, job_id, cost_type, quantity, user, machine_rate_id
         ).first()
         if not rate:
             raise ValidationError("The selected machine rate is not active or does not exist.")
+        if not Decimal(rate.rate).is_finite() or Decimal(rate.rate) <= 0:
+            raise ValidationError("The selected machine rate must be a positive verified amount.")
 
         material_line = None
         if material_line_id:
@@ -99,6 +101,7 @@ def record_production_cost(*, job_id, cost_type, quantity, user, machine_rate_id
         if (
             compensation.payment_type != StaffCompensation.PaymentType.MONTHLY
             or compensation.monthly_salary is None
+            or compensation.monthly_salary <= 0
             or compensation.working_days_per_month <= 0
             or compensation.productive_hours_per_day <= 0
         ):
