@@ -477,7 +477,7 @@ class QuotationLineItem(models.Model):
 
     class Meta:
         ordering = ["sort_order", "id"]
-        indexes = [models.Index(fields=["quotation", "sort_order"])]
+        
 
     def save(self, *args, **kwargs):
         from decimal import Decimal, ROUND_HALF_UP
@@ -504,7 +504,7 @@ class QuotationApproval(models.Model):
 
     class Meta:
         ordering = ["created_at", "id"]
-        indexes = [models.Index(fields=["quotation", "created_at"])]
+        
 
     def __str__(self):
         return f"{self.quotation.quotation_no} · {self.get_action_display()}"
