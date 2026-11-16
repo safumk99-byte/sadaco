@@ -4,6 +4,7 @@ from decimal import Decimal
 
 from django.contrib.auth.models import User
 from django.test import TestCase
+from django.utils import timezone
 from django.urls import reverse
 
 from accounts.models import UserProfile
@@ -728,7 +729,7 @@ class QuotationWorkflowApiTests(TestCase):
         )
         self.assertEqual(submitted.status_code, 200, submitted.content)
         quotation.refresh_from_db()
-        quotation.valid_until = date.today() - date.resolution
+        quotation.valid_until = timezone.localdate() - date.resolution
         quotation.save(update_fields=["valid_until", "updated_at"])
 
         self.client.logout()
