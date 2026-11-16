@@ -11,6 +11,7 @@ from django.views.decorators.http import require_http_methods
 from django.contrib.auth.decorators import login_required
 
 from accounts.models import UserProfile
+from products.models import Product
 from .api import _customer_qs, _global_admin, _manager, _quotation_qs
 from .models import Customer, Quotation, QuotationApproval, QuotationConfiguration, QuotationLineItem
 from .quotation_services import quotation_pdf_response
@@ -68,6 +69,7 @@ def _quotation_payload(quotation):
         "id": quotation.pk,
         "quotation_no": quotation.quotation_no,
         "customer": {"id": quotation.customer_id, "name": quotation.customer.name, "phone": quotation.customer.phone, "email": quotation.customer.email, "address": quotation.customer.address},
+        "product": ({"id": quotation.product_id, "name": quotation.product.name, "sku": quotation.product.sku, "image": quotation.product.image.url if quotation.product.image else None} if quotation.product_id else None),
         "item_description": quotation.item_description,
         "dimensions": quotation.dimensions,
         "quantity": str(quotation.quantity),
@@ -212,6 +214,14 @@ def _calculate(quotation, config):
 
 
 @login_required
+@require_http_methods(["GET"])
+def quotation_products(request):
+    if not _manager(request.user):
+        raise PermissionDenied
+    products = Product.objects.filter(status=Product.Status.ACTIVE, customer_visible=True, category__is_active=True, category__parent__is_active=True, category__parent__is_section=True, category__is_section=False).select_related("category", "category__parent").order_by("category__parent__name", "category__name", "name")
+    return JsonResponse({"products": [{"id": p.pk, "name": p.name, "sku": p.sku, "category": p.category.name, "description": p.description, "unit": p.unit, "price": str(p.customer_price), "image": p.image.url if p.image else None} for p in products]})
+
+@login_required
 @require_http_methods(["POST"])
 def quotation_workflow_create(request):
     if not _manager(request.user):
@@ -222,6 +232,7 @@ def quotation_workflow_create(request):
     try:
         items = _validated_items(data.get("line_items"))
         customer = get_object_or_404(_customer_qs(request.user).filter(status=Customer.Status.ACTIVE), pk=data.get("customer"))
+        product = get_object_or_404(Product.objects.filter(status=Product.Status.ACTIVE, customer_visible=True), pk=data["product"]) if data.get("product") not in (None, "") else None
         discount_type = str(data.get("discount_type") or "percentage")
         if discount_type not in ("percentage", "amount"):
             raise ValueError("Choose percentage or fixed amount for the discount.")
@@ -241,7 +252,7 @@ def quotation_workflow_create(request):
         config = QuotationConfiguration.get_solo()
         with transaction.atomic():
             quotation = Quotation.objects.create(
-                customer=customer, item_description=item_description,
+                customer=customer, product=product, item_description=(product.name if product else item_description),
                 quantity=quantity, dimensions=str(data.get("dimensions") or "").strip(),
                 discount_type=discount_type, discount_value=discount, advance_required=advance, valid_until=valid_until,
                 delivery_timeline=str(data.get("delivery_timeline") or "").strip(),
@@ -272,6 +283,10 @@ def quotation_workflow_update(request, pk):
         items = _validated_items(data.get("line_items")) if "line_items" in data else None
         if "customer" in data:
             quotation.customer = get_object_or_404(_customer_qs(request.user).filter(status=Customer.Status.ACTIVE), pk=data["customer"])
+        if "product" in data:
+            quotation.product = get_object_or_404(Product.objects.filter(status=Product.Status.ACTIVE, customer_visible=True), pk=data["product"]) if data["product"] not in (None, "") else None
+            if quotation.product:
+                quotation.item_description = quotation.product.name
         for field in ("item_description", "dimensions", "delivery_timeline", "terms", "notes"):
             if field in data:
                 setattr(quotation, field, str(data.get(field) or "").strip())
