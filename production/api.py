@@ -159,6 +159,7 @@ def detail(request, pk):
     issue_rows = [{
         "id": item.pk,
         "material_line": item.material_id,
+        "material_variant_id": item.material.material_variant_id,
         "material_name": item.material.material_name,
         "quantity": str(item.quantity),
         "returned_quantity": str(item.returned_quantity),
