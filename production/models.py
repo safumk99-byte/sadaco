@@ -101,8 +101,31 @@ class ProductionMaterial(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     @property
+    def offcut_consumed_area_sqft(self):
+        if not self.material_variant_id:
+            return Decimal("0")
+        from django.db.models import Sum
+        return self.offcut_usages.aggregate(total=Sum("used_area_sqft"))["total"] or Decimal("0")
+
+    @property
+    def offcut_equivalent_quantity(self):
+        # Area-based offcuts fulfil a sheet-based requirement only. Do not
+        # convert sq ft into unrelated units such as Piece, metre or kg.
+        if not self.material_variant_id or self.unit.strip().casefold() not in {"sheet", "sheets"}:
+            return Decimal("0")
+        sheet_area = self.material_variant.sheet_area_sqft
+        if sheet_area is None or sheet_area <= 0:
+            return Decimal("0")
+        return self.offcut_consumed_area_sqft / sheet_area
+
+    @property
+    def effective_fulfilled_quantity(self):
+        supplied_sheets = max(self.issued_quantity - self.returned_quantity, Decimal("0"))
+        return supplied_sheets + self.offcut_equivalent_quantity
+
+    @property
     def pending_quantity(self):
-        return max(self.quantity_required - self.issued_quantity, 0)
+        return max(self.quantity_required - self.effective_fulfilled_quantity, Decimal("0"))
 
     @property
     def actual_consumption(self):
