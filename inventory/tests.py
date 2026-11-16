@@ -255,6 +255,7 @@ class ReusableOffcutAreaLedgerTests(TestCase):
         self.assertEqual(offcut.cost_per_sqft, Decimal("3.125000"))
 
     def test_offcut_area_cannot_exceed_measured_rectangle(self):
+        from inventory.models import ReusableOffcut
         response = self._create_offcut(usable_area="11")
         self.assertEqual(response.status_code, 400)
         self.assertFalse(ReusableOffcut.objects.exists())
