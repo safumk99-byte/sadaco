@@ -286,6 +286,45 @@ class ReusableOffcutAreaLedgerTests(TestCase):
         self.assertEqual(OffcutUsage.objects.filter(offcut=offcut).count(), 2)
         self.assertEqual(sum(OffcutUsage.objects.filter(offcut=offcut).values_list("total_cost", flat=True)), Decimal("31.25"))
 
+    def test_job_cost_summary_transfers_offcut_value_and_records_discard_writeoff(self):
+        from inventory.models import ReusableOffcut
+        from production.api import _job_material_cost_summary
+
+        response = self._create_offcut(usable_area="10")
+        self.assertEqual(response.status_code, 201, response.content)
+        offcut = ReusableOffcut.objects.get(pk=response.json()["id"])
+
+        source_summary = _job_material_cost_summary(self.source_job)
+        self.assertEqual(source_summary["issued_material_cost"], "100.00")
+        self.assertEqual(source_summary["offcut_salvage_credit"], "31.25")
+        self.assertEqual(source_summary["net_material_cost"], "68.75")
+        self.assertEqual(source_summary["offcut_inventory_value"], "31.25")
+
+        use_response = self.client.post(
+            f"/api/inventory/materials/offcuts/{offcut.pk}/action/",
+            data=json.dumps({"action": "used", "job": self.target_job.pk, "material_line": self.target_line.pk, "used_area_sqft": "4"}),
+            content_type="application/json",
+        )
+        self.assertEqual(use_response.status_code, 200, use_response.content)
+        target_summary = _job_material_cost_summary(self.target_job)
+        self.assertEqual(target_summary["offcut_consumed_cost"], "12.50")
+        self.assertEqual(target_summary["net_material_cost"], "12.50")
+        self.assertEqual(_job_material_cost_summary(self.source_job)["offcut_inventory_value"], "18.75")
+
+        discard_response = self.client.post(
+            f"/api/inventory/materials/offcuts/{offcut.pk}/action/",
+            data=json.dumps({"action": "discarded"}),
+            content_type="application/json",
+        )
+        self.assertEqual(discard_response.status_code, 200, discard_response.content)
+        offcut.refresh_from_db()
+        self.assertEqual(offcut.discarded_area_sqft, Decimal("6"))
+        self.assertEqual(offcut.discarded_cost, Decimal("18.75"))
+        source_summary = _job_material_cost_summary(self.source_job)
+        self.assertEqual(source_summary["offcut_discard_writeoff"], "18.75")
+        self.assertEqual(source_summary["offcut_inventory_value"], "0.00")
+        self.assertEqual(source_summary["net_material_cost"], "87.50")
+
     def test_offcut_cannot_be_used_for_another_material_or_department(self):
         response = self._create_offcut()
         self.assertEqual(response.status_code, 201, response.content)
