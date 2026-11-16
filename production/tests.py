@@ -553,3 +553,28 @@ class ProductionStageTaskTests(TestCase):
             "stage": "cnc", "status": "in_progress",
         }, content_type="application/json")
         self.assertEqual(response.status_code, 409)
+
+
+    def test_cannot_mark_stage_assigned_without_an_owner(self):
+        self.client.force_login(self.manager)
+        response = self.client.post(self.url, data={
+            "stage": "laser", "status": "assigned",
+        }, content_type="application/json")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Assign an active staff member", response.json()["detail"])
+
+    def test_overdue_stage_task_is_flagged_in_job_detail(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        from .models import ProductionStageTask
+        yesterday = timezone.localdate() - timedelta(days=1)
+        ProductionStageTask.objects.create(
+            job=self.job, stage="cnc", assigned_staff=self.worker,
+            expected_completion=yesterday, status="in_progress",
+        )
+        self.client.force_login(self.manager)
+        response = self.client.get(f"/api/production/jobs/{self.job.pk}/")
+        self.assertEqual(response.status_code, 200)
+        task = response.json()["stage_tasks"][0]
+        self.assertTrue(task["is_overdue"])
+        self.assertEqual(task["days_overdue"], 1)
