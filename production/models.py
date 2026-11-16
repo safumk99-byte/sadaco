@@ -153,3 +153,53 @@ class ProductionIssue(models.Model):
     resolved_at = models.DateTimeField(null=True, blank=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+
+class ProductionCostEntry(models.Model):
+    """Append-only, rate-snapshotted machine or direct-labour cost against a job."""
+
+    class CostType(models.TextChoices):
+        MACHINE = "machine", "Machine / Operation"
+        LABOUR = "labour", "Direct Labour"
+
+    job = models.ForeignKey(ProductionJob, on_delete=models.PROTECT, related_name="cost_entries")
+    cost_type = models.CharField(max_length=12, choices=CostType.choices)
+    machine_rate = models.ForeignKey(
+        "products.MachineRate", on_delete=models.PROTECT, null=True, blank=True,
+        related_name="production_cost_entries",
+    )
+    staff = models.ForeignKey(
+        "staff.StaffProfile", on_delete=models.PROTECT, null=True, blank=True,
+        related_name="production_cost_entries",
+    )
+    material_line = models.ForeignKey(
+        ProductionMaterial, on_delete=models.PROTECT, null=True, blank=True,
+        related_name="cost_entries",
+    )
+    operation_snapshot = models.CharField(max_length=30, blank=True)
+    description = models.CharField(max_length=180, blank=True)
+    staff_name_snapshot = models.CharField(max_length=180, blank=True)
+    quantity = models.DecimalField(max_digits=14, decimal_places=3, validators=[MinValueValidator(Decimal("0.001"))])
+    unit = models.CharField(max_length=20)
+    unit_rate = models.DecimalField(max_digits=14, decimal_places=6, validators=[MinValueValidator(0)])
+    total_cost = models.DecimalField(max_digits=16, decimal_places=2, validators=[MinValueValidator(0)])
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="production_cost_entries",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "pk"]
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(cost_type="machine", machine_rate__isnull=False, staff__isnull=True)
+                    | models.Q(cost_type="labour", machine_rate__isnull=True, staff__isnull=False)
+                ),
+                name="prod_cost_entry_exactly_one_source",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.job.job_no} · {self.get_cost_type_display()} · ₹{self.total_cost}"
+
