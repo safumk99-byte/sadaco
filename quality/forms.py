@@ -8,7 +8,8 @@ class QualityCheckForm(forms.ModelForm):
         fields = [
             "check_type", "result", "inspector", "stage",
             "design_match", "measurement_ok", "finishing_ok",
-            "colour_ok", "engraving_ok", "defects",
+            "colour_ok", "engraving_ok", "cutting_ok", "assembly_ok",
+            "sticking_ok", "polishing_ok", "electrical_ok", "appearance_ok", "packing_ok", "defects",
             "rework_reason", "corrective_action", "remarks",
         ]
         widgets = {
