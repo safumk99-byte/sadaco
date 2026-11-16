@@ -214,9 +214,6 @@ class ReusableOffcutAreaLedgerTests(TestCase):
             material_name="Offcut Acrylic", brand="Test", thickness_mm=Decimal("3"),
             purchase_rate=Decimal("100"), unit="Sheet", sheet_width_ft=Decimal("8"), sheet_height_ft=Decimal("4"),
         )
-        self.balance = MaterialStockBalance.objects.create(
-            material=self.material, department=self.department, location="Offcut Store", quantity=Decimal("10"),
-        )
         self.source_line = ProductionMaterial.objects.create(
             job=self.source_job, material_variant=self.material, material_name="Offcut Acrylic",
             quantity_required=Decimal("2"), unit="Sheet",
@@ -226,12 +223,36 @@ class ReusableOffcutAreaLedgerTests(TestCase):
             quantity_required=Decimal("2"), unit="Sheet",
         )
         supplier = Supplier.objects.create(name="Offcut Supplier")
-        po = PurchaseOrder.objects.create(supplier=supplier, department=self.department)
-        item = PurchaseItem.objects.create(purchase_order=po, material_variant=self.material, quantity=Decimal("10"), unit_cost=Decimal("100"))
-        receipt = GoodsReceipt.objects.create(purchase_order=po)
-        receipt_line = GoodsReceiptLine.objects.create(receipt=receipt, purchase_item=item, received_quantity=Decimal("10"), unit_cost=Decimal("100"), line_total=Decimal("1000"))
-        lot = MaterialStockLot.objects.create(receipt_line=receipt_line, balance=self.balance, original_quantity=Decimal("10"), remaining_quantity=Decimal("10"), unit_cost=Decimal("100"))
-        self.issue, _ = issue_material(material_id=self.source_line.pk, quantity="1", lot_id=lot.pk, user=self.manager)
+        po = PurchaseOrder.objects.create(
+            supplier=supplier, department=self.department, status=PurchaseOrder.Status.SENT,
+        )
+        item = PurchaseItem.objects.create(
+            purchase_order=po, material_variant=self.material,
+            quantity=Decimal("10"), unit_cost=Decimal("100"),
+        )
+        # Exercise the real Goods Receipt API so this workflow verifies
+        # Purchase → department stock balance → receipt lot → production issue.
+        from django.test import RequestFactory
+        from purchase.api import receive
+        request = RequestFactory().post(
+            f"/api/purchase/orders/{po.pk}/receive/",
+            data=json.dumps({
+                "received_date": "2026-11-16", "location": "Offcut Store",
+                "items": [{"purchase_item_id": item.pk, "received_quantity": "10"}],
+            }),
+            content_type="application/json",
+        )
+        request.user = self.manager
+        receipt_response = receive(request, po.pk)
+        self.assertEqual(receipt_response.status_code, 200, receipt_response.content.decode())
+        receipt_line = GoodsReceiptLine.objects.get(receipt__purchase_order=po, purchase_item=item)
+        self.lot = receipt_line.stock_lot
+        self.balance = self.lot.balance
+        self.assertEqual(self.balance.quantity, Decimal("10"))
+        self.assertEqual(self.lot.unit_cost, Decimal("100"))
+        self.issue, _ = issue_material(
+            material_id=self.source_line.pk, quantity="1", lot_id=self.lot.pk, user=self.manager,
+        )
         self.client.force_login(self.manager)
 
     def _create_offcut(self, usable_area="10"):
