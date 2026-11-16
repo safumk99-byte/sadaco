@@ -127,10 +127,16 @@ class GoodsReceiptLine(models.Model):
 
 
 class MaterialStockLot(models.Model):
-    """Costed, receipt-backed quantity held in one department/location balance."""
+    """Costed quantity batch backed by either a purchase receipt or verified opening stock."""
     receipt_line = models.OneToOneField(
-        GoodsReceiptLine, on_delete=models.PROTECT, related_name="stock_lot"
+        GoodsReceiptLine, on_delete=models.PROTECT, related_name="stock_lot",
+        null=True, blank=True,
     )
+    opening_movement = models.OneToOneField(
+        "inventory.MaterialStockMovement", on_delete=models.PROTECT,
+        related_name="opening_cost_lot", null=True, blank=True,
+    )
+    cost_source_reference = models.CharField(max_length=160, blank=True)
     balance = models.ForeignKey(
         "inventory.MaterialStockBalance", on_delete=models.PROTECT, related_name="cost_lots"
     )
@@ -142,6 +148,19 @@ class MaterialStockLot(models.Model):
     class Meta:
         ordering = ["created_at", "id"]
         indexes = [models.Index(fields=["balance", "remaining_quantity"], name="purch_lot_bal_rem_idx")]
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(receipt_line__isnull=False, opening_movement__isnull=True)
+                    | models.Q(receipt_line__isnull=True, opening_movement__isnull=False)
+                ),
+                name="purch_lot_exactly_one_source",
+            )
+        ]
 
     def __str__(self):
-        return f"{self.receipt_line.receipt.receipt_no} · {self.remaining_quantity}/{self.original_quantity}"
+        source = (
+            self.receipt_line.receipt.receipt_no if self.receipt_line_id
+            else f"Opening #{self.opening_movement_id}"
+        )
+        return f"{source} · {self.remaining_quantity}/{self.original_quantity}"
