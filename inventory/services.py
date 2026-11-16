@@ -1,7 +1,7 @@
 from decimal import Decimal
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.db.models import F
+from django.db.models import F, Sum
 from django.utils import timezone
 
 from products.inventory import record_stock_transaction
@@ -173,6 +173,21 @@ def sync_reorder_alerts():
     return alerts
 
 
+def _remaining_issue_quantity_after_offcuts(issue, material):
+    """Sheet-equivalent quantity still available after offcut area has been separated."""
+    remaining = issue.quantity - issue.returned_quantity - issue.wastage_quantity
+    if not material.material_variant_id:
+        return remaining
+    sheet_area = material.material_variant.sheet_area_sqft
+    if sheet_area is None or sheet_area <= 0:
+        return remaining
+    from .models import ReusableOffcut
+    registered_area = ReusableOffcut.objects.filter(source_issue=issue).aggregate(
+        total=Sum("usable_area_sqft")
+    )["total"] or Decimal("0")
+    return max(remaining - (registered_area / sheet_area), Decimal("0"))
+
+
 @transaction.atomic
 def return_issued_material(*, material_issue_id, quantity, user=None, reference="", remarks="", employee=None):
     """Return unused material against one exact issue and restore its original receipt lot."""
@@ -185,9 +200,11 @@ def return_issued_material(*, material_issue_id, quantity, user=None, reference=
     material = ProductionMaterial.objects.select_for_update(of=("self",)).get(pk=issue.material_id)
     if not material.material_variant_id or not issue.stock_lot_id or issue.unit_rate is None:
         raise ValidationError("Only receipt-batch-tracked issues can be returned through this workflow.")
-    available = issue.quantity - issue.returned_quantity - issue.wastage_quantity
+    available = _remaining_issue_quantity_after_offcuts(issue, material)
     if quantity > available:
-        raise ValidationError(f"Return exceeds this issue's remaining unaccounted quantity: {available} {material.unit}.")
+        raise ValidationError(
+            f"Return exceeds the remaining issue quantity after registered offcuts: {available} {material.unit}."
+        )
     lot = issue.stock_lot.__class__.objects.select_for_update().get(pk=issue.stock_lot_id)
     if issue.stock_movement_id and issue.stock_movement.balance_id != lot.balance_id:
         raise ValidationError("The issue receipt batch must match the original issue stock location.")
@@ -226,9 +243,11 @@ def record_issued_wastage(*, material_issue_id, quantity, user=None, reference="
     material = ProductionMaterial.objects.select_for_update(of=("self",)).get(pk=issue.material_id)
     if not material.material_variant_id or not issue.stock_lot_id or issue.unit_rate is None:
         raise ValidationError("Only receipt-batch-tracked issues can record wastage through this workflow.")
-    available = issue.quantity - issue.returned_quantity - issue.wastage_quantity
+    available = _remaining_issue_quantity_after_offcuts(issue, material)
     if quantity > available:
-        raise ValidationError(f"Wastage exceeds this issue's remaining unaccounted quantity: {available} {material.unit}.")
+        raise ValidationError(
+            f"Wastage exceeds the remaining issue quantity after registered offcuts: {available} {material.unit}."
+        )
     lot = issue.stock_lot.__class__.objects.select_for_update().get(pk=issue.stock_lot_id)
     if issue.stock_movement_id and issue.stock_movement.balance_id != lot.balance_id:
         raise ValidationError("The issue receipt batch must match the original issue stock location.")
