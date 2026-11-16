@@ -5,6 +5,7 @@ urlpatterns = [
     path("materials/stock/", api.material_stock_api, name="material_stock"),
     path("materials/lots/", api.material_stock_lots_api, name="material_stock_lots"),
     path("materials/movements/", api.material_movements_api, name="material_movements"),
+    path("materials/reconciliation/", api.material_stock_reconciliation_api, name="material_stock_reconciliation"),
     path("materials/movements/create/", api.material_movement_create_api, name="material_movement_create"),
     path("materials/options/", api.material_options_api, name="material_options"),
     path("materials/balances/create/", api.material_balance_create_api, name="material_balance_create"),
