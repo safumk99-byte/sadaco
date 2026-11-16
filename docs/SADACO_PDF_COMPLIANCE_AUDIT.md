@@ -502,3 +502,15 @@ This remains a source-level review only. No Django test command, migration, Neon
 
 - Added a Stock Reconciliation tab to Material Master & Job Costing. Authorized users can refresh a read-only view of recorded stock, movement-derived expected stock, receipt-lot remaining stock, differences and unbatched quantities. The API is department-scoped; no automatic corrections are offered.
 - Added an endpoint regression test confirming a department manager cannot see another department's balance through the reconciliation report.
+
+
+## 2026-11-16 verified opening-stock costing workflow
+
+- Opening movements without verified cost remain unbatched and are not eligible for production issue. No current Material Master rate is copied into historical stock, and no zero/default cost is silently assigned.
+- MaterialStockLot now supports two mutually exclusive sources: a Goods Receipt Line or an Opening Stock Movement. The database enforces exactly one source.
+- Founder/Admin can review uncosted opening movements and register a costed opening batch only by entering an explicit non-negative unit cost and a mandatory source reference (invoice, approved valuation sheet or other verified record).
+- Registration locks the opening movement and department/location balance, prevents duplicate costing, and refuses the operation when the opening quantity exceeds the currently available unbatched balance.
+- The resulting batch uses the existing issue/cost attribution workflow; issue cost is snapshotted from that lot. Receipt-lot reporting and offcut source labels now support both purchase-receipt and opening-stock origins.
+- Department managers cannot assign historical opening-stock costs. This is Founder/Admin-only because it changes historical inventory valuation.
+- No historic rows are automatically costed, no stock quantities are changed by the costing registration itself, and no production/finance database was written.
+- Regression coverage added for verified reference enforcement, manager authorization, and issuing against a verified opening batch. CI validation is pending.
