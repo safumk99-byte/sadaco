@@ -141,6 +141,12 @@ class MaterialLedgerWorkflowTests(TestCase):
         self.assertEqual(lot.remaining_quantity, Decimal("2"))
         self.assertEqual(lot.unit_cost, Decimal("85.50"))
         self.assertEqual(lot.cost_source_reference, "Approved valuation sheet VAL-2026-11-16")
+        lot_response = self.client.get("/api/inventory/materials/lots/")
+        self.assertEqual(lot_response.status_code, 200, lot_response.content)
+        opening_row = next(row for row in lot_response.json()["items"] if row["id"] == lot.pk)
+        self.assertEqual(opening_row["source_type"], "opening_stock")
+        self.assertEqual(opening_row["opening_movement_id"], movement.pk)
+        self.assertIsNone(opening_row["receipt_no"])
 
         issue, _ = issue_material(
             material_id=self.line.pk, quantity="1", lot_id=lot.pk, user=admin,
