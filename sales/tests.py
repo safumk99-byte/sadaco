@@ -576,11 +576,12 @@ class QuotationWorkflowApiTests(TestCase):
             company_name="SADACO GROUP OF COMPANIES",
             tax_label="Tax",
             tax_rate=Decimal("5.00"),
-            manager_discount_limit_percent=Decimal("10.00"),
+            manager_discount_limit_type="percentage",
+            manager_discount_limit_value=Decimal("10.00"),
             default_terms="Payment terms as agreed.",
         )
 
-    def _create_quotation(self, discount="15"):
+    def _create_quotation(self, discount="15", discount_type="percentage"):
         self.client.login(username="quote_manager", password="StrongPass123!")
         response = self.client.post(
             "/api/sales/quotations/create-workflow/",
@@ -589,7 +590,8 @@ class QuotationWorkflowApiTests(TestCase):
                 "item_description": "Custom Acrylic Award",
                 "dimensions": "12 x 8 inch",
                 "quantity": "1",
-                "discount_percent": discount,
+                "discount_type": discount_type,
+                "discount_value": discount,
                 "valid_until": "2026-12-31",
                 "line_items": [{
                     "category": "material",
@@ -683,12 +685,13 @@ class QuotationWorkflowApiTests(TestCase):
         self.client.login(username="quote_founder", password="StrongPass123!")
         allowed = self.client.post(
             "/api/sales/quotations/configuration/",
-            data=json.dumps({"tax_rate": "7.5", "manager_discount_limit_percent": "12"}),
+            data=json.dumps({"tax_rate": "7.5", "manager_discount_limit_type": "amount", "manager_discount_limit_value": "120"}),
             content_type="application/json",
         )
         self.assertEqual(allowed.status_code, 200, allowed.content)
         self.assertEqual(allowed.json()["configuration"]["tax_rate"], "7.5")
-        self.assertEqual(allowed.json()["configuration"]["manager_discount_limit_percent"], "12")
+        self.assertEqual(allowed.json()["configuration"]["manager_discount_limit_type"], "amount")
+        self.assertEqual(allowed.json()["configuration"]["manager_discount_limit_value"], "120")
 
     def test_customer_acceptance_uses_accepted_status(self):
         quotation_data = self._create_quotation("0")
@@ -713,3 +716,19 @@ class QuotationWorkflowApiTests(TestCase):
         pdf = self.client.get(f"/api/sales/portal/quotations/{quotation_id}/pdf/")
         self.assertEqual(pdf.status_code, 200)
         self.assertEqual(pdf["Content-Type"], "application/pdf")
+
+
+    def test_fixed_amount_discount_limit_is_supported(self):
+        self.config.manager_discount_limit_type = "amount"
+        self.config.manager_discount_limit_value = Decimal("100.00")
+        self.config.save()
+        quotation_data = self._create_quotation("150", "amount")
+        response = self.client.post(
+            f"/api/sales/quotations/{quotation_data['id']}/submit/",
+            data="{}",
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()["quotation"]["status"], Quotation.Status.PENDING_APPROVAL)
+        self.assertEqual(response.json()["quotation"]["discount_amount"], "150.00")
+        self.assertEqual(response.json()["quotation"]["discount_percent"], "15.00")
