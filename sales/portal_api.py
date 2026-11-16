@@ -121,13 +121,15 @@ def portal_request_detail(request, pk):
 def portal_quotations(request):
     c=_guard_customer(request)
     if not c: return JsonResponse({"detail":"Customer account required."}, status=403)
-    return JsonResponse({"quotations":[_quotation(x) for x in c.quotations.prefetch_related("designs").all()]})
+    visible_statuses = [Quotation.Status.SENT, Quotation.Status.ACCEPTED, Quotation.Status.APPROVED, Quotation.Status.REJECTED, Quotation.Status.EXPIRED]
+    return JsonResponse({"quotations":[_quotation(x) for x in c.quotations.filter(status__in=visible_statuses).prefetch_related("designs").all()]})
 
 @login_required
 def portal_quotation_detail(request, pk):
     c=_guard_customer(request)
     if not c: return JsonResponse({"detail":"Customer account required."}, status=403)
-    return JsonResponse({"quotation":_quotation(get_object_or_404(Quotation.objects.prefetch_related("designs"),pk=pk,customer=c))})
+    visible_statuses = [Quotation.Status.SENT, Quotation.Status.ACCEPTED, Quotation.Status.APPROVED, Quotation.Status.REJECTED, Quotation.Status.EXPIRED]
+    return JsonResponse({"quotation":_quotation(get_object_or_404(Quotation.objects.prefetch_related("designs"),pk=pk,customer=c,status__in=visible_statuses))})
 
 @login_required
 @require_http_methods(["POST"])
