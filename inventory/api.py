@@ -85,6 +85,24 @@ def material_stock_lots_api(request):
 
 @require_GET
 @login_required
+def material_stock_reconciliation_api(request):
+    from .services import reconcile_material_stock_balance
+    balances = _visible_balances(request.user).order_by(
+        "department__name", "location", "material__material_name", "pk"
+    )
+    rows = [reconcile_material_stock_balance(balance) for balance in balances[:500]]
+    return JsonResponse({
+        "items": rows,
+        "count": len(rows),
+        "truncated": balances.count() > 500,
+        "reconciled_count": sum(1 for row in rows if row["reconciled"]),
+        "mismatch_count": sum(1 for row in rows if not row["reconciled"]),
+        "unbatched_count": sum(1 for row in rows if row["unbatched_warning"]),
+    })
+
+
+@require_GET
+@login_required
 def material_movements_api(request):
     qs = MaterialStockMovement.objects.select_related("balance__material", "balance__department", "job", "order", "employee", "created_by")
     scope = _manager_department(request.user)
