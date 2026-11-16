@@ -357,7 +357,7 @@ def order_payment_create(request, pk):
 @require_http_methods(["POST"])
 @login_required
 def order_payment_exception(request, pk):
-    if not _global_admin(request.user):
+    if not _founder(request.user):
         raise PermissionDenied
     import json
     try:
