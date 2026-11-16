@@ -109,6 +109,7 @@ class Quotation(models.Model):
 
     quotation_no = models.CharField(max_length=30, unique=True, editable=False)
     customer = models.ForeignKey(Customer, on_delete=models.PROTECT, related_name="quotations")
+    product = models.ForeignKey("products.Product", on_delete=models.SET_NULL, null=True, blank=True, related_name="quotations")
     enquiry = models.ForeignKey(Enquiry, on_delete=models.SET_NULL, null=True, blank=True, related_name="quotations")
     order_request = models.ForeignKey("OrderRequest", on_delete=models.SET_NULL, null=True, blank=True, related_name="quotations")
     item_description = models.CharField(max_length=255)
