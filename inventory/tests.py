@@ -664,6 +664,46 @@ class MaterialIssueEmployeeDepartmentAPITests(TestCase):
         )
         self.client.force_login(self.manager)
 
+    def test_inactive_employee_cannot_be_attributed_to_material_return(self):
+        from staff.models import StaffProfile
+        staff_user = User.objects.create_user(username="inactive_return_staff", password="StrongPass123!")
+        UserProfile.objects.create(user=staff_user, role=UserProfile.Role.STAFF, department=self.department)
+        employee = StaffProfile.objects.create(
+            user=staff_user, staff_id="INACTIVE-RETURN-01", department=self.department,
+            status=StaffProfile.Status.INACTIVE,
+        )
+        response = self.client.post(
+            "/api/inventory/materials/returns/create/",
+            data=json.dumps({"material_line": self.source_line.pk, "material_issue": self.issue.pk,
+                             "quantity": "0.10", "employee": employee.pk}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("active employee", response.json()["detail"])
+        self.issue.refresh_from_db()
+        self.balance.refresh_from_db()
+        self.assertEqual(self.issue.returned_quantity, Decimal("0"))
+        self.assertEqual(self.balance.quantity, Decimal("9"))
+
+    def test_inactive_employee_cannot_be_attributed_to_material_wastage(self):
+        from staff.models import StaffProfile
+        staff_user = User.objects.create_user(username="inactive_wastage_staff", password="StrongPass123!")
+        UserProfile.objects.create(user=staff_user, role=UserProfile.Role.STAFF, department=self.department)
+        employee = StaffProfile.objects.create(
+            user=staff_user, staff_id="INACTIVE-WASTE-01", department=self.department,
+            status=StaffProfile.Status.INACTIVE,
+        )
+        response = self.client.post(
+            "/api/inventory/materials/wastage/create/",
+            data=json.dumps({"material_line": self.source_line.pk, "material_issue": self.issue.pk,
+                             "quantity": "0.10", "employee": employee.pk}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("active employee", response.json()["detail"])
+        self.issue.refresh_from_db()
+        self.assertEqual(self.issue.wastage_quantity, Decimal("0"))
+
     def test_manager_cannot_record_material_issue_against_foreign_department_employee(self):
         response = self.client.post(
             "/api/inventory/materials/issues/create/",
