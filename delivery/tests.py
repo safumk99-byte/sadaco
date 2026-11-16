@@ -5,7 +5,7 @@ from django.test import TestCase
 
 from accounts.models import UserProfile
 from core.models import Department
-from sales.models import Customer, DeliveryRecord, SalesOrder
+from sales.models import Customer, DeliveryRecord, SalesOrder, PaymentRecord
 
 
 class DeliveryLifecycleTests(TestCase):
@@ -52,6 +52,14 @@ class DeliveryLifecycleTests(TestCase):
         self.assertEqual(self.order.status, SalesOrder.Status.CONFIRMED)
 
     def test_ready_order_can_be_dispatched_and_delivered(self):
+        PaymentRecord.objects.create(
+            order=self.order, payment_type=PaymentRecord.PaymentType.ADVANCE,
+            amount=500, status=PaymentRecord.Status.RECEIVED,
+        )
+        PaymentRecord.objects.create(
+            order=self.order, payment_type=PaymentRecord.PaymentType.FINAL,
+            amount=500, status=PaymentRecord.Status.RECEIVED,
+        )
         self.order.status = SalesOrder.Status.READY
         self.order.save(update_fields=["status", "updated_at"])
         scheduled = self._update({"status": DeliveryRecord.Status.SCHEDULED})
@@ -62,6 +70,26 @@ class DeliveryLifecycleTests(TestCase):
         self.assertEqual(delivered.status_code, 200)
         self.order.refresh_from_db()
         self.assertEqual(self.order.status, SalesOrder.Status.DELIVERED)
+
+
+    def test_dispatch_is_blocked_until_full_payment_or_founder_credit_exception(self):
+        self.order.status = SalesOrder.Status.READY
+        self.order.save(update_fields=["status", "updated_at"])
+        response = self._update({"status": DeliveryRecord.Status.OUT})
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Final payment", response.json()["detail"])
+        self.assertFalse(DeliveryRecord.objects.filter(order=self.order).exists())
+
+    def test_founder_credit_exception_allows_dispatch_with_balance(self):
+        founder = User.objects.create_superuser(username="delivery_founder", password="StrongPass123!")
+        self.order.status = SalesOrder.Status.READY
+        self.order.credit_exception_reason = "Approved customer credit terms"
+        self.order.credit_exception_approved_by = founder
+        from django.utils import timezone
+        self.order.credit_exception_approved_at = timezone.now()
+        self.order.save()
+        response = self._update({"status": DeliveryRecord.Status.OUT})
+        self.assertEqual(response.status_code, 200, response.content)
 
     def test_delivered_order_cannot_be_rewound_to_scheduled(self):
         self.order.status = SalesOrder.Status.DELIVERED
