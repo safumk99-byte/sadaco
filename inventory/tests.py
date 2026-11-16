@@ -127,7 +127,7 @@ class MaterialLedgerWorkflowTests(TestCase):
         # A tampered issue-to-lot relationship must fail the job-department/location consistency check.
         issue.stock_lot = other_lot
         issue.save(update_fields=["stock_lot"])
-        with self.assertRaises(MaterialStockBalance.DoesNotExist):
+        with self.assertRaises(ValidationError):
             return_issued_material(material_issue_id=issue.pk, quantity="1", user=self.manager)
 
     def test_return_and_wastage_cannot_exceed_the_same_issue(self):
