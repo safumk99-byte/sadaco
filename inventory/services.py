@@ -21,6 +21,14 @@ def _validated_stock_quantity(value, label="Stock quantity"):
     return quantity
 
 
+def _validated_issue_quantity(value, label):
+    """Validate against the two-decimal precision of production issue records."""
+    quantity = _validated_stock_quantity(value, label)
+    if max(-quantity.as_tuple().exponent, 0) > 2:
+        raise ValidationError(f"{label} supports up to two decimal places.")
+    return quantity
+
+
 from products.inventory import record_stock_transaction
 from production.models import ProductionMaterial
 from .models import MaterialIssue, StockCount, ReorderAlert, MaterialStockBalance, MaterialStockMovement
@@ -65,7 +73,7 @@ def issue_material(*, material_id, quantity, user=None, reference="", remarks=""
     Legacy Product-based issue remains available only for old lines not yet linked
     to MaterialVariant, so existing historical workflows are not silently broken.
     """
-    quantity = _validated_stock_quantity(quantity, "Issue quantity")
+    quantity = _validated_issue_quantity(quantity, "Issue quantity")
     material = ProductionMaterial.objects.select_for_update(of=("self",)).select_related(
         "product", "material_variant", "job", "job__order__customer"
     ).get(pk=material_id)
@@ -218,7 +226,7 @@ def _remaining_issue_quantity_after_offcuts(issue, material):
 @transaction.atomic
 def return_issued_material(*, material_issue_id, quantity, user=None, reference="", remarks="", employee=None):
     """Return unused material against one exact issue and restore its original receipt lot."""
-    quantity = _validated_stock_quantity(quantity, "Return quantity")
+    quantity = _validated_issue_quantity(quantity, "Return quantity")
     issue = MaterialIssue.objects.select_for_update(of=("self",)).select_related(
         "material", "stock_lot", "stock_movement", "material__job__order__customer"
     ).get(pk=material_issue_id, status=MaterialIssue.Status.ISSUED)
@@ -259,7 +267,7 @@ def return_issued_material(*, material_issue_id, quantity, user=None, reference=
 @transaction.atomic
 def record_issued_wastage(*, material_issue_id, quantity, user=None, reference="", remarks="", employee=None):
     """Attribute wastage to one issue; stock was deducted when that issue was created."""
-    quantity = _validated_stock_quantity(quantity, "Wastage quantity")
+    quantity = _validated_issue_quantity(quantity, "Wastage quantity")
     issue = MaterialIssue.objects.select_for_update(of=("self",)).select_related(
         "material", "stock_lot", "stock_movement", "material__job__order__customer"
     ).get(pk=material_issue_id, status=MaterialIssue.Status.ISSUED)
