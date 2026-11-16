@@ -245,7 +245,7 @@ def detail(request, pk):
     if not _job_visible(request.user, job): raise PermissionDenied
     from inventory.models import MaterialIssue
     material_issues = MaterialIssue.objects.filter(job_id=job.pk).select_related(
-        "material", "stock_lot__receipt_line__receipt"
+        "material", "stock_lot__receipt_line__receipt", "stock_lot__opening_movement"
     ).order_by("-issued_at", "-pk")
     issue_rows = [{
         "id": item.pk,
@@ -258,7 +258,14 @@ def detail(request, pk):
         "remaining_quantity": str(item.quantity - item.returned_quantity - item.wastage_quantity),
         "unit": item.material.unit,
         "unit_rate": str(item.unit_rate) if item.unit_rate is not None else None,
-        "receipt_no": item.stock_lot.receipt_line.receipt.receipt_no if item.stock_lot_id else None,
+        "receipt_no": (
+            item.stock_lot.receipt_line.receipt.receipt_no
+            if item.stock_lot_id and item.stock_lot.receipt_line_id
+            else f"Opening #{item.stock_lot.opening_movement_id}"
+            if item.stock_lot_id and item.stock_lot.opening_movement_id
+            else None
+        ),
+        "cost_source_reference": item.stock_lot.cost_source_reference if item.stock_lot_id else None,
         "issued_at": item.issued_at.isoformat(),
         "trackable": bool(item.stock_lot_id and item.unit_rate is not None),
     } for item in material_issues]
