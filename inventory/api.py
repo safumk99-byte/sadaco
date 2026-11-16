@@ -196,6 +196,7 @@ def offcuts_api(request):
             "usable_area_sqft": str(x.usable_area_sqft), "used_area_sqft": str(used_area),
             "remaining_area_sqft": str(max(x.usable_area_sqft - used_area, Decimal("0"))),
             "cost_per_sqft": str(x.cost_per_sqft) if x.cost_per_sqft is not None else None,
+            "discarded_area_sqft": str(x.discarded_area_sqft), "discarded_cost": str(x.discarded_cost),
             "source_issue_id": x.source_issue_id,
             "source_receipt": x.source_lot.receipt_line.receipt.receipt_no if x.source_lot_id else None,
             "usages": [{
@@ -318,7 +319,18 @@ def offcut_action_api(request, pk):
                 "cost_per_sqft": str(offcut.cost_per_sqft), "allocated_cost": str(total_cost),
             })
         if action == "discarded":
+            offcut.discarded_area_sqft = remaining_area
+            offcut.discarded_cost = (
+                (remaining_area * offcut.cost_per_sqft).quantize(Decimal("0.01"))
+                if offcut.cost_per_sqft is not None else Decimal("0")
+            )
             offcut.status = ReusableOffcut.Status.DISCARDED
+            offcut.save(update_fields=["status", "discarded_area_sqft", "discarded_cost", "updated_at"])
+            return JsonResponse({
+                "ok": True, "id": offcut.pk, "status": offcut.status,
+                "discarded_area_sqft": str(offcut.discarded_area_sqft),
+                "writeoff_cost": str(offcut.discarded_cost),
+            })
         else:
             return JsonResponse({"detail": "Action must be 'used' or 'discarded'."}, status=400)
         offcut.save(update_fields=["status", "used_for_job", "updated_at"])
