@@ -175,9 +175,9 @@ def _job_material_cost_summary(job):
         for row in generated
     ), Decimal("0"))
 
-    consumed_offcut_cost = sum((
-        row.total_cost for row in OffcutUsage.objects.filter(target_job_id=job.pk)
-    ), Decimal("0"))
+    target_usages = OffcutUsage.objects.filter(target_job_id=job.pk)
+    consumed_offcut_cost = sum((row.total_cost for row in target_usages), Decimal("0"))
+    consumed_offcut_area = sum((row.used_area_sqft for row in target_usages), Decimal("0"))
     net_cost = issued_cost - returned_cost - salvage_credit + discarded_writeoff + consumed_offcut_cost
     return {
         "currency": "INR",
@@ -189,7 +189,8 @@ def _job_material_cost_summary(job):
         "offcut_inventory_value": str(inventory_value.quantize(money)),
         "net_material_cost": str(net_cost.quantize(money)),
         "offcut_registered_area_sqft": str(registered_area.quantize(Decimal("0.0001"))),
-        "offcut_consumed_area_sqft": str(generated_used_area.quantize(Decimal("0.0001"))),
+        "generated_offcut_transferred_area_sqft": str(generated_used_area.quantize(Decimal("0.0001"))),
+        "offcut_consumed_here_area_sqft": str(consumed_offcut_area.quantize(Decimal("0.0001"))),
         "offcut_discarded_area_sqft": str(discarded_area.quantize(Decimal("0.0001"))),
         "unpriced_issue_count": MaterialIssue.objects.filter(job_id=job.pk, unit_rate__isnull=True).count(),
     }
