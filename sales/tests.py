@@ -498,3 +498,58 @@ class CustomerMasterRequirementsTests(TestCase):
             "alternate_phone": "", "email": "", "address": "", "status": "active", "notes": "",
         }, instance=customer)
         self.assertTrue(form.is_valid(), form.errors)
+
+
+class CustomerInteractionApiTests(TestCase):
+    def setUp(self):
+        from django.test import RequestFactory
+        self.factory = RequestFactory()
+        self.department = Department.objects.create(code="crm-followup", name="CRM Follow-up")
+        self.manager = User.objects.create_user(username="crm_manager", password="StrongPass123!")
+        UserProfile.objects.create(user=self.manager, role=UserProfile.Role.MANAGER, department=self.department)
+        self.customer = Customer.objects.create(name="CRM Customer", phone="9000001234", department=self.department)
+
+    def test_manager_can_create_and_view_customer_interaction(self):
+        from .api import customer_interactions
+        payload = {
+            "interaction_type": "call", "subject": "Discussed quotation",
+            "notes": "Customer requested a revised estimate.",
+            "next_follow_up": date.today().isoformat(), "completed": False,
+        }
+        request = self.factory.post(
+            f"/api/sales/customers/{self.customer.pk}/interactions/",
+            data=json.dumps(payload), content_type="application/json",
+        )
+        request.user = self.manager
+        created = customer_interactions(request, self.customer.pk)
+        self.assertEqual(created.status_code, 201)
+        request = self.factory.get(f"/api/sales/customers/{self.customer.pk}/interactions/")
+        request.user = self.manager
+        response = customer_interactions(request, self.customer.pk)
+        self.assertEqual(response.status_code, 200)
+        record = response.json()["interactions"][0]
+        self.assertEqual(record["subject"], "Discussed quotation")
+        self.assertFalse(record["completed"])
+        self.assertFalse(record["overdue"])
+
+    def test_manager_cannot_access_another_department_customer_history(self):
+        from .api import customer_interactions
+        other_department = Department.objects.create(code="crm-other", name="CRM Other")
+        other_customer = Customer.objects.create(name="Other CRM Customer", phone="9000001235", department=other_department)
+        request = self.factory.get(f"/api/sales/customers/{other_customer.pk}/interactions/")
+        request.user = self.manager
+        response = customer_interactions(request, other_customer.pk)
+        self.assertEqual(response.status_code, 404)
+
+    def test_non_manager_cannot_create_customer_interaction(self):
+        from .api import customer_interactions
+        staff_user = User.objects.create_user(username="crm_staff", password="StrongPass123!")
+        UserProfile.objects.create(user=staff_user, role=UserProfile.Role.STAFF, department=self.department)
+        request = self.factory.post(
+            f"/api/sales/customers/{self.customer.pk}/interactions/",
+            data=json.dumps({"interaction_type": "call", "subject": "Unauthorized"}),
+            content_type="application/json",
+        )
+        request.user = staff_user
+        with self.assertRaises(Exception):
+            customer_interactions(request, self.customer.pk)
