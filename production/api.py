@@ -149,6 +149,52 @@ def options(request):
 
 @require_GET
 @login_required
+def _job_material_cost_summary(job):
+    """Calculate receipt-backed material cost with offcut asset transfers and write-offs."""
+    from decimal import Decimal
+    from inventory.models import MaterialIssue, ReusableOffcut, OffcutUsage
+
+    money = Decimal("0.01")
+    issues = MaterialIssue.objects.filter(job_id=job.pk, unit_rate__isnull=False)
+    issued_cost = sum((row.quantity * row.unit_rate for row in issues), Decimal("0"))
+    returned_cost = sum((row.returned_quantity * row.unit_rate for row in issues), Decimal("0"))
+
+    generated = ReusableOffcut.objects.filter(source_job_id=job.pk, cost_per_sqft__isnull=False)
+    salvage_credit = sum((row.usable_area_sqft * row.cost_per_sqft for row in generated), Decimal("0"))
+    discarded_writeoff = sum((row.discarded_cost for row in generated), Decimal("0"))
+    registered_area = sum((row.usable_area_sqft for row in generated), Decimal("0"))
+    discarded_area = sum((row.discarded_area_sqft for row in generated), Decimal("0"))
+    generated_used_area = sum((
+        usage.used_area_sqft
+        for usage in OffcutUsage.objects.filter(offcut__in=generated)
+    ), Decimal("0"))
+    inventory_value = sum((
+        max(row.usable_area_sqft - row.discarded_area_sqft - sum(
+            (usage.used_area_sqft for usage in row.usages.all()), Decimal("0")
+        ), Decimal("0")) * row.cost_per_sqft
+        for row in generated
+    ), Decimal("0"))
+
+    consumed_offcut_cost = sum((
+        row.total_cost for row in OffcutUsage.objects.filter(target_job_id=job.pk)
+    ), Decimal("0"))
+    net_cost = issued_cost - returned_cost - salvage_credit + discarded_writeoff + consumed_offcut_cost
+    return {
+        "currency": "INR",
+        "issued_material_cost": str(issued_cost.quantize(money)),
+        "returned_material_credit": str(returned_cost.quantize(money)),
+        "offcut_salvage_credit": str(salvage_credit.quantize(money)),
+        "offcut_discard_writeoff": str(discarded_writeoff.quantize(money)),
+        "offcut_consumed_cost": str(consumed_offcut_cost.quantize(money)),
+        "offcut_inventory_value": str(inventory_value.quantize(money)),
+        "net_material_cost": str(net_cost.quantize(money)),
+        "offcut_registered_area_sqft": str(registered_area.quantize(Decimal("0.0001"))),
+        "offcut_consumed_area_sqft": str(generated_used_area.quantize(Decimal("0.0001"))),
+        "offcut_discarded_area_sqft": str(discarded_area.quantize(Decimal("0.0001"))),
+        "unpriced_issue_count": MaterialIssue.objects.filter(job_id=job.pk, unit_rate__isnull=True).count(),
+    }
+
+
 def detail(request, pk):
     job = get_object_or_404(_visible_jobs(request.user).prefetch_related('progress_updates__updated_by', 'materials__product', 'issues__staff'), pk=pk)
     if not _job_visible(request.user, job): raise PermissionDenied
@@ -173,7 +219,8 @@ def detail(request, pk):
     } for item in material_issues]
     return JsonResponse({'job': _job(job), 'progress': [_progress(x) for x in job.progress_updates.all()],
         'materials': [_material(x) for x in job.materials.all()], 'issues': [_issue(x) for x in job.issues.all()],
-        'material_issues': issue_rows, 'can_manage': _manager(request.user)})
+        'material_issues': issue_rows, 'material_costs': _job_material_cost_summary(job),
+        'can_manage': _manager(request.user)})
 
 def _data(request):
     try: return json.loads(request.body or '{}')
