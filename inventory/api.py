@@ -113,6 +113,76 @@ def material_stock_reconciliation_api(request):
 
 @require_GET
 @login_required
+def uncosted_opening_stock_api(request):
+    if _manager_department(request.user) is not None:
+        return JsonResponse({"detail": "Only Founder/Admin can review and cost opening stock."}, status=403)
+    rows = MaterialStockMovement.objects.filter(
+        movement_type=MaterialStockMovement.Type.OPENING,
+        opening_cost_lot__isnull=True,
+    ).select_related("balance__material", "balance__department", "created_by").order_by(
+        "created_at", "pk"
+    )[:500]
+    return JsonResponse({"items": [{
+        "movement_id": row.pk,
+        "balance_id": row.balance_id,
+        "material": str(row.balance.material),
+        "department": row.balance.department.name,
+        "location": row.balance.location,
+        "quantity": str(row.quantity),
+        "balance_after": str(row.balance_after),
+        "reference": row.reference,
+        "remarks": row.remarks,
+        "created_by": row.created_by.username if row.created_by_id else None,
+        "created_at": row.created_at.isoformat(),
+    } for row in rows]})
+
+
+@require_POST
+@login_required
+def cost_opening_stock_api(request, movement_id):
+    if _manager_department(request.user) is not None:
+        return JsonResponse({"detail": "Only Founder/Admin can assign a verified cost to opening stock."}, status=403)
+    try:
+        data = json.loads(request.body or "{}")
+        unit_cost = Decimal(str(data.get("unit_cost")))
+        source_reference = str(data.get("cost_source_reference", "")).strip()
+        if unit_cost < 0:
+            raise ValidationError("Verified unit cost cannot be negative.")
+        if not source_reference:
+            raise ValidationError("A source reference (invoice, valuation sheet or approved cost record) is required.")
+        with transaction.atomic():
+            movement = MaterialStockMovement.objects.select_for_update().select_related(
+                "balance__material", "balance__department"
+            ).get(pk=movement_id)
+            if movement.movement_type != MaterialStockMovement.Type.OPENING:
+                raise ValidationError("Only an Opening movement can be assigned an opening cost batch.")
+            if hasattr(movement, "opening_cost_lot"):
+                raise ValidationError("A cost batch has already been registered for this opening movement.")
+            balance = MaterialStockBalance.objects.select_for_update().get(pk=movement.balance_id)
+            lot_remaining = balance.cost_lots.aggregate(total=Sum("remaining_quantity"))["total"] or Decimal("0")
+            unbatched = balance.quantity - lot_remaining
+            if movement.quantity > unbatched:
+                raise ValidationError(
+                    "This opening quantity is no longer fully available as unbatched stock. Reconcile the physical balance first."
+                )
+            lot = MaterialStockLot.objects.create(
+                opening_movement=movement, balance=balance,
+                original_quantity=movement.quantity, remaining_quantity=movement.quantity,
+                unit_cost=unit_cost, cost_source_reference=source_reference,
+            )
+        return JsonResponse({
+            "ok": True, "lot_id": lot.pk, "movement_id": movement.pk,
+            "quantity": str(lot.original_quantity), "remaining_quantity": str(lot.remaining_quantity),
+            "unit_cost": str(lot.unit_cost), "cost_source_reference": lot.cost_source_reference,
+        }, status=201)
+    except MaterialStockMovement.DoesNotExist:
+        return JsonResponse({"detail": "Opening stock movement not found."}, status=404)
+    except (ValueError, TypeError, InvalidOperation, ValidationError) as exc:
+        return JsonResponse({"detail": str(exc)}, status=400)
+
+
+@require_GET
+@login_required
 def material_movements_api(request):
     qs = MaterialStockMovement.objects.select_related("balance__material", "balance__department", "job", "order", "employee", "created_by")
     scope = _manager_department(request.user)
