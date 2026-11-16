@@ -310,3 +310,29 @@ No application source, migration, database, production, `main`, or Render change
 - No CI step connected to Neon. The actual Django migration engine has still not been run against isolated Neon validation branch `br-lucky-pond-azm200bm` because the PC/local Django environment is unavailable. The legacy finance-history/schema reconciliation remains the Phase 1 release blocker.
 - Next safe work: design a read-only schema/migration-history comparison and a dedicated `MigrationExecutor` test strategy for the legacy baseline. Do not alter migration dependencies, fake migrations, run manual DDL, or write to Neon until that evidence is available.
 - Production Neon, `main`, Render and the isolated validation clone remain unchanged by this CI run.
+
+
+## 2026-11-16 — Isolated legacy-clone migration-history and Finance schema review (read-only)
+
+Target: `sadaco-phase1-migration-validation-2026-11-16` (`br-lucky-pond-azm200bm`), cloned from the pre-reset production snapshot. All queries in this review were SELECT-only.
+
+### Applied migration inventory compared with current source
+
+- The clone has the current source migration history through accounts 0004, core 0001, staff 0001, sales 0006, products 0009, finance 0002, purchase 0001, inventory 0001, production 0001, and quality/marketing 0001.
+- The expected current branch migrations after those points are pending: accounts 0005, core 0002, staff 0002, sales 0007, products 0010–0013, finance 0003, purchase 0002–0004, inventory 0002–0005 and production 0002.
+- Finance additionally contains three applied recorder names not present in current source: `0003_finance_management`, `0004_repair_finance_options`, and `0005_force_repair_paymentmethod_table`.
+- The current source has only finance migrations 0001–0003. Django's migration graph is built from source files; unknown recorder rows do not by themselves prove a dependency conflict. The exact runtime result must still be obtained from the Django MigrationLoader/MigrationExecutor against this clone. Do not rename or fabricate the missing legacy migration files based only on recorder names.
+
+### Finance schema facts
+
+- `finance_financetransaction` matches the current 0001 base columns and current model fields except the not-yet-added nullable `supplier_payment_id`. It currently has 0 rows.
+- `finance_supplierpayment` exists with the fields, foreign keys, unique payment number, and two composite indexes defined by current `finance.0002_accounts_control_center`. It currently has 0 rows.
+- The current `finance.0003_financetransaction_supplier_payment` adds a nullable OneToOne FK to SupplierPayment and then links matching transaction references. On the inspected clone the data backfill would encounter zero FinanceTransaction and zero SupplierPayment rows; this is an observation, not an execution.
+- Legacy `finance_paymentmethod` exists with 5 rows and no referencing foreign-key constraints. It is not represented in the current Finance models. Leave it untouched during migration validation; whether it should eventually be archived/dropped is a separate reviewed cleanup decision.
+- FinanceTransaction has the expected current base indexes and foreign keys. No `supplier_payment_id` index/FK/unique constraint exists yet, as expected before current 0003.
+
+### Revised assessment
+
+The read-only evidence does not show a concrete Finance schema collision with current 0003: the target SupplierPayment table exists in the expected shape, the new FinanceTransaction field is absent, and both related tables are empty. The three unknown legacy recorder names and the extra PaymentMethod table remain compatibility items to document, not grounds to alter the migration graph speculatively.
+
+**Still required before calling Phase 1 migration validation complete:** execute `python manage.py migrate --plan`, then the normal `python manage.py migrate --noinput`, then `python manage.py migrate --check` with the exact feature-branch checkout against this disposable clone; inspect the resulting constraints/indexes/schema and compare preserved account/staff identities. The connected GitHub CI run is against fresh PostgreSQL, not this Neon clone. No migration or SQL write was run here. Production, `main`, Render, staging and the validation clone remain unchanged.
