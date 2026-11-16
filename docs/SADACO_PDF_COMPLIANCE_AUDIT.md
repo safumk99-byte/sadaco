@@ -438,3 +438,14 @@ This remains a source-level review only. No Django test command, migration, Neon
 - Commits: API partial receipt support `ed2d6f129b224b1614e24ea0c5233716eb1b641a`; regression tests `c38786252a421d58d08bd5d8062fd44cd4a132bd`; UI `8589b8cc7dc3c3fceb03c82ae986d7574b795917`; quantity precision validation `51b4786723b6ba84aa5f46e41df3ec8b9b2d2de0`.
 - GitHub Actions CI runs #207 and #208 were triggered by these commits; their final status must be checked before calling the implementation verified.
 - No Neon database, production, `main`, or Render deployment was changed. No local Django or Playwright test command was run in this session.
+
+
+## 2026-11-16 — Offcut workflow source review (read-only)
+
+- `ReusableOffcut` currently stores material, department, location, thickness, length, width, usable area (sq ft), source job, target job and status. It does not retain the originating MaterialIssue, receipt lot, original material cost, or a consumed-area quantity.
+- `offcut_create_api` creates only the ReusableOffcut row. It does not validate that usable area is less than or equal to the rectangle area, does not reconcile the supplied dimensions with the area, and does not create an `OFFCUT_IN` movement.
+- `offcut_action_api` changes Available to Used/Discarded and records the target job for Used. It does not record how much area was consumed, decrement any offcut balance, link a material requirement, or create a costed issue.
+- The stock ledger balance is denominated in `MaterialVariant.unit` (for example, Sheet), while the offcut model stores area in square feet. Adding `usable_area_sqft` directly to the existing sheet quantity would mix units and corrupt the balance. The existing `OFFCUT_IN` movement type alone does not solve that unit mismatch.
+- Production UI currently exposes receipt-batch issue, return and wastage flows; no matching offcut registration/selection/consumption interface was found in the reviewed Production Management page.
+- Safe next design: retain offcuts as individually traceable pieces with dimensions and square-foot area, and add a separate area-based ledger/consumption record tied to the source issue/receipt lot and target production material. Only calculate cost when source-lot cost and the material's source sheet area are known; do not infer sheet size or value from the current MaterialVariant record.
+- No offcut code, schema, database, `main`, or deployment was changed during this review. Implementation is held pending confirmation of the business unit/cost rule.
