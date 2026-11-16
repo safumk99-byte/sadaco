@@ -545,6 +545,27 @@ class ReusableOffcutAreaLedgerTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("cannot exceed one source sheet", response.json()["detail"])
 
+    def test_offcut_rejects_non_finite_and_over_precision_measurements(self):
+        from inventory.models import ReusableOffcut
+        invalid_payloads = [
+            {"length_mm": "NaN", "width_mm": "100", "usable_area_sqft": "1"},
+            {"length_mm": "100.001", "width_mm": "100", "usable_area_sqft": "1"},
+            {"length_mm": "100", "width_mm": "100", "usable_area_sqft": "1.00001"},
+            {"length_mm": "100000000.00", "width_mm": "100", "usable_area_sqft": "1"},
+        ]
+        for values in invalid_payloads:
+            with self.subTest(values=values):
+                response = self.client.post(
+                    "/api/inventory/materials/offcuts/create/",
+                    data=json.dumps({
+                        "material": self.material.pk, "location": "Offcut Rack",
+                        "source_issue": self.issue.pk, **values,
+                    }),
+                    content_type="application/json",
+                )
+                self.assertEqual(response.status_code, 400, response.content)
+        self.assertFalse(ReusableOffcut.objects.exists())
+
     def test_offcut_area_cannot_exceed_measured_rectangle(self):
         from inventory.models import ReusableOffcut
         response = self._create_offcut(usable_area="11")
