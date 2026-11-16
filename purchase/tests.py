@@ -91,6 +91,110 @@ class PurchaseDepartmentAccessTests(TestCase):
         balance.refresh_from_db()
         self.assertEqual(balance.quantity, Decimal("4"))
 
+    def test_partial_goods_receipts_can_be_recorded_in_multiple_batches(self):
+        import json
+        from decimal import Decimal
+        from django.test import RequestFactory
+        from products.models import MaterialVariant
+        from inventory.models import MaterialStockBalance, MaterialStockMovement
+        from .api import receive
+
+        self.own.department = self.a
+        self.own.status = PurchaseOrder.Status.SENT
+        self.own.save(update_fields=["department", "status", "updated_at"])
+        material = MaterialVariant.objects.create(
+            material_name="Partial Receipt Acrylic", brand="Test", thickness_mm=Decimal("3"),
+            purchase_rate=Decimal("80"), unit="Sheet",
+        )
+        item = PurchaseItem.objects.create(
+            purchase_order=self.own, material_variant=material,
+            quantity=Decimal("4"), unit_cost=Decimal("125"),
+        )
+
+        def post_receipt(quantity, reference):
+            request = RequestFactory().post(
+                f"/api/purchase/orders/{self.own.pk}/receive/",
+                data=json.dumps({
+                    "received_date": "2026-11-16",
+                    "location": "Main Store",
+                    "supplier_reference": reference,
+                    "items": [{"purchase_item_id": item.pk, "received_quantity": str(quantity)}],
+                }),
+                content_type="application/json",
+            )
+            request.user = self.manager
+            return receive(request, self.own.pk)
+
+        first = post_receipt("1.5", "INV-PART-1")
+        self.assertEqual(first.status_code, 200, first.content.decode())
+        self.own.refresh_from_db()
+        item.refresh_from_db()
+        self.assertEqual(self.own.status, PurchaseOrder.Status.PARTIAL)
+        self.assertEqual(item.received_quantity, Decimal("1.5"))
+        self.assertEqual(item.pending_quantity, Decimal("2.5"))
+
+        second = post_receipt("1.0", "INV-PART-2")
+        self.assertEqual(second.status_code, 200, second.content.decode())
+        self.own.refresh_from_db()
+        item.refresh_from_db()
+        self.assertEqual(self.own.status, PurchaseOrder.Status.PARTIAL)
+        self.assertEqual(item.received_quantity, Decimal("2.5"))
+        self.assertEqual(item.pending_quantity, Decimal("1.5"))
+
+        lines = GoodsReceiptLine.objects.filter(purchase_item=item).order_by("id")
+        self.assertEqual(lines.count(), 2)
+        self.assertEqual(
+            list(lines.values_list("received_quantity", flat=True)),
+            [Decimal("1.5"), Decimal("1.0")],
+        )
+        self.assertEqual(
+            list(lines.values_list("unit_cost", flat=True)),
+            [Decimal("125"), Decimal("125")],
+        )
+        self.assertEqual(
+            lines.filter(material_stock_movement__movement_type=MaterialStockMovement.Type.PURCHASE_RECEIPT).count(),
+            2,
+        )
+        balance = MaterialStockBalance.objects.get(material=material, department=self.a, location="Main Store")
+        self.assertEqual(balance.quantity, Decimal("2.5"))
+        self.assertEqual(sum((line.stock_lot.original_quantity for line in lines), Decimal("0")), Decimal("2.5"))
+        self.assertEqual(sum((line.stock_lot.remaining_quantity for line in lines), Decimal("0")), Decimal("2.5"))
+
+    def test_receipt_rejects_quantity_above_pending_without_writing_stock(self):
+        import json
+        from decimal import Decimal
+        from django.test import RequestFactory
+        from products.models import MaterialVariant
+        from inventory.models import MaterialStockBalance
+        from .api import receive
+
+        self.own.department = self.a
+        self.own.status = PurchaseOrder.Status.SENT
+        self.own.save(update_fields=["department", "status", "updated_at"])
+        material = MaterialVariant.objects.create(
+            material_name="Over Receipt Acrylic", brand="Test", thickness_mm=Decimal("3"),
+            purchase_rate=Decimal("80"), unit="Sheet",
+        )
+        item = PurchaseItem.objects.create(
+            purchase_order=self.own, material_variant=material,
+            quantity=Decimal("4"), unit_cost=Decimal("125"),
+        )
+        request = RequestFactory().post(
+            f"/api/purchase/orders/{self.own.pk}/receive/",
+            data=json.dumps({
+                "location": "Main Store",
+                "items": [{"purchase_item_id": item.pk, "received_quantity": "4.01"}],
+            }),
+            content_type="application/json",
+        )
+        request.user = self.manager
+        response = receive(request, self.own.pk)
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(self.own.receipts.exists())
+        self.assertFalse(MaterialStockBalance.objects.exists())
+        item.refresh_from_db()
+        self.assertEqual(item.received_quantity, Decimal("0"))
+
     def test_cancelled_purchase_order_cannot_receive_goods(self):
         from django.test import RequestFactory
         from django.core.exceptions import PermissionDenied
