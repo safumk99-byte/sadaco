@@ -382,10 +382,17 @@ def offcut_create_api(request):
         issue_area_available = max(issue.quantity - issue.returned_quantity - issue.wastage_quantity, Decimal("0")) * sheet_area
         if already_registered + usable_area > issue_area_available:
             return JsonResponse({"detail": f"Registered offcut area would exceed the source issue's available sheet area ({max(issue_area_available - already_registered, Decimal('0'))} sq ft remaining)."}, status=400)
+        thickness_mm = material.thickness_mm
+        if data.get("thickness_mm") not in (None, ""):
+            supplied_thickness = Decimal(str(data["thickness_mm"]))
+            if not supplied_thickness.is_finite() or supplied_thickness < 0:
+                return JsonResponse({"detail": "Offcut thickness must be a finite, non-negative value."}, status=400)
+            if supplied_thickness != (material.thickness_mm or Decimal("0")):
+                return JsonResponse({"detail": "Offcut thickness must match the source Material Master thickness."}, status=400)
         cost_per_sqft = issue.stock_lot.unit_cost / sheet_area
         offcut = ReusableOffcut.objects.create(
             material=material, department=department, location=location,
-            thickness_mm=data.get("thickness_mm") or material.thickness_mm,
+            thickness_mm=thickness_mm,
             length_mm=length_mm, width_mm=width_mm, usable_area_sqft=usable_area,
             source_issue=issue, source_lot=issue.stock_lot, cost_per_sqft=cost_per_sqft,
             source_job=issue.job, notes=str(data.get("notes", "")).strip(), created_by=request.user,
