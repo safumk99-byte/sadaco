@@ -231,6 +231,33 @@ class MaterialLedgerWorkflowTests(TestCase):
             response.json()["items"][0]["balance_id"], self.balance.pk,
         )
 
+    def test_issue_rejects_precision_not_supported_by_production_issue_records(self):
+        with self.assertRaises(ValidationError):
+            issue_material(material_id=self.line.pk, quantity="1.001", lot_id=self.lot.pk, user=self.manager)
+        self.balance.refresh_from_db()
+        self.lot.refresh_from_db()
+        self.line.refresh_from_db()
+        self.assertEqual(self.balance.quantity, Decimal("10"))
+        self.assertEqual(self.lot.remaining_quantity, Decimal("10"))
+        self.assertEqual(self.line.issued_quantity, Decimal("0"))
+        self.assertFalse(self.line.inventory_issues.exists())
+
+    def test_return_and_wastage_reject_precision_not_supported_by_issue_records(self):
+        issue, _ = issue_material(
+            material_id=self.line.pk, quantity="2", lot_id=self.lot.pk, user=self.manager,
+        )
+        with self.assertRaises(ValidationError):
+            return_issued_material(material_issue_id=issue.pk, quantity="1.001", user=self.manager)
+        with self.assertRaises(ValidationError):
+            record_issued_wastage(material_issue_id=issue.pk, quantity="1.001", user=self.manager)
+        issue.refresh_from_db()
+        self.balance.refresh_from_db()
+        self.lot.refresh_from_db()
+        self.assertEqual(issue.returned_quantity, Decimal("0"))
+        self.assertEqual(issue.wastage_quantity, Decimal("0"))
+        self.assertEqual(self.balance.quantity, Decimal("8"))
+        self.assertEqual(self.lot.remaining_quantity, Decimal("8"))
+
     def test_issue_rejects_insufficient_stock(self):
         with self.assertRaises(ValidationError):
             issue_material(material_id=self.line.pk, quantity="11", lot_id=self.lot.pk, user=self.manager)
