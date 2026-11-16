@@ -421,6 +421,10 @@ def create(request):
     if assigned_staff and not _staff_in_manager_department(request.user, assigned_staff):
         return JsonResponse({"detail": "You can only assign jobs to staff in your own department."}, status=403)
     job = form.save(commit=False); job.order=order; job.created_by=request.user; job.save()
+    ProductionStageTask.objects.bulk_create([
+        ProductionStageTask(job=job, stage=stage)
+        for stage in ProductionStageTask.Stage.values
+    ])
     order.status = SalesOrder.Status.PRODUCTION_PENDING; order.save(update_fields=['status','updated_at'])
     return JsonResponse({'job': _job(job)}, status=201)
 
