@@ -323,7 +323,9 @@ def reconcile_material_stock_balance(balance):
     return {
         "balance_id": balance.pk,
         "material_id": balance.material_id,
+        "material": str(balance.material),
         "department_id": balance.department_id,
+        "department": balance.department.name,
         "location": balance.location,
         "recorded_balance": str(balance.quantity),
         "movement_expected_balance": str(movement_expected),
