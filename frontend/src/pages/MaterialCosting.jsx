@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import api from "../services/api";
 
-const tabs = [["materials","Material Master"],["machines","Machine Rates"],["staff","Staff Salary"],["reconciliation","Stock Reconciliation"]];
+const tabs = [["materials","Material Master"],["machines","Machine Rates"],["staff","Staff Salary"],["reconciliation","Stock Reconciliation"],["opening","Opening Stock Costing"]];
 const money = (value) => value === "" || value == null ? "—" : `₹${Number(value).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})}`;
 
 export default function MaterialCosting() {
@@ -20,6 +20,9 @@ export default function MaterialCosting() {
   const [machineEditing,setMachineEditing] = useState(null);
   const [reconciliation,setReconciliation] = useState({items:[],count:0,reconciled_count:0,mismatch_count:0,unbatched_count:0});
   const [reconLoading,setReconLoading] = useState(false);
+  const [openingItems,setOpeningItems] = useState([]);
+  const [openingLoading,setOpeningLoading] = useState(false);
+  const [openingDrafts,setOpeningDrafts] = useState({});
 
   async function load() {
     setError("");
@@ -42,6 +45,24 @@ export default function MaterialCosting() {
       .finally(()=>{if(active)setReconLoading(false);});
     return ()=>{active=false;};
   },[tab]);
+  async function loadUncostedOpeningStock(){
+    setOpeningLoading(true);setError("");
+    try{const {data}=await api.get("/inventory/materials/opening-batches/unpriced/");setOpeningItems(data.items||[]);}
+    catch(e){setError(e.response?.data?.detail||"Unable to load uncosted opening stock.");}
+    finally{setOpeningLoading(false);}
+  }
+  useEffect(()=>{if(tab==="opening")loadUncostedOpeningStock();},[tab]);
+  async function assignOpeningCost(movementId){
+    const draft=openingDrafts[movementId]||{};
+    setBusy(true);setError("");setNotice("");
+    try{
+      await api.post(`/inventory/materials/opening-batches/${movementId}/cost/`,draft);
+      setNotice("Verified opening-stock cost batch registered.");
+      setOpeningDrafts(old=>({...old,[movementId]:{unit_cost:"",cost_source_reference:""}}));
+      await loadUncostedOpeningStock();
+    }catch(e){setError(e.response?.data?.detail||"Unable to register opening-stock cost.");}
+    finally{setBusy(false);}
+  }
   const setField=(key,value)=>setForm(old=>({...old,[key]:value}));
   function startNew(){setEditing("new");setForm({material_name:"",brand:"",thickness_mm:"",variant:"",colour:"na",sheet_width_ft:"8",sheet_height_ft:"4",purchase_rate:"",retail_rate:"",unit:"Sheet",is_active:true});}
   function startEdit(item){setEditing(item.id);setForm({...item});}
@@ -136,6 +157,34 @@ export default function MaterialCosting() {
         {!reconLoading&&!(reconciliation.items||[]).length&&<p className="p-8 text-center text-sm text-slate-500">No material stock balances found for this access scope.</p>}
       </div>
       <p className="text-xs text-slate-500">Wastage is recorded as an annotation because stock was already deducted when material was issued. Opening or legacy stock without a receipt lot is shown separately; this report never changes stock automatically.{reconciliation.truncated?" Only the first 500 balances are shown.":""}</p>
+    </section>}
+    {tab==="opening"&&<section className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div><h2 className="text-lg font-bold text-slate-900">Uncosted Opening Stock</h2>
+          <p className="mt-1 max-w-3xl text-sm text-slate-500">Assign a cost only when supported by an actual invoice, approved valuation sheet or other verified cost record. No rate is estimated or copied from the current material master.</p></div>
+        <button onClick={loadUncostedOpeningStock} disabled={openingLoading} className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 disabled:opacity-50">{openingLoading?"Loading…":"Refresh"}</button>
+      </div>
+      <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">Opening stock without a verified unit cost remains unbatched and cannot be issued to a production job. A costed opening batch keeps the original opening movement and source reference for audit.</div>
+      {openingLoading?<div className="rounded-2xl border bg-white p-8 text-center text-sm text-slate-500">Loading opening movements…</div>:
+      <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
+        <table className="w-full min-w-[1050px] text-left text-sm">
+          <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>{["Opening Movement","Department / Location","Material","Quantity","Existing Reference","Verified Unit Cost (₹)","Cost Evidence Reference","Action"].map(x=><th key={x} className="px-4 py-3">{x}</th>)}</tr></thead>
+          <tbody className="divide-y divide-slate-100">{openingItems.map(x=>{
+            const draft=openingDrafts[x.movement_id]||{unit_cost:"",cost_source_reference:""};
+            return <tr key={x.movement_id}>
+              <td className="px-4 py-4 font-semibold">#{x.movement_id}<div className="text-xs font-normal text-slate-500">{new Date(x.created_at).toLocaleDateString()}</div></td>
+              <td className="px-4 py-4">{x.department}<div className="text-xs text-slate-500">{x.location}</div></td>
+              <td className="px-4 py-4">{x.material}</td>
+              <td className="px-4 py-4 font-semibold tabular-nums">{x.quantity}</td>
+              <td className="px-4 py-4">{x.reference||"—"}</td>
+              <td className="px-4 py-4"><input type="number" min="0" step="0.01" value={draft.unit_cost} onChange={e=>setOpeningDrafts(old=>({...old,[x.movement_id]:{...draft,unit_cost:e.target.value}}))} placeholder="Enter actual rate" className="w-36 rounded-lg border border-slate-300 px-3 py-2"/></td>
+              <td className="px-4 py-4"><input value={draft.cost_source_reference} onChange={e=>setOpeningDrafts(old=>({...old,[x.movement_id]:{...draft,cost_source_reference:e.target.value}}))} placeholder="Invoice / valuation ref" className="w-56 rounded-lg border border-slate-300 px-3 py-2"/></td>
+              <td className="px-4 py-4"><button disabled={busy||draft.unit_cost===""||!draft.cost_source_reference?.trim()} onClick={()=>assignOpeningCost(x.movement_id)} className="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40">Register Cost</button></td>
+            </tr>;
+          })}</tbody>
+        </table>
+        {!openingItems.length&&<p className="p-8 text-center text-sm text-slate-500">No uncosted opening movements found.</p>}
+      </div>}
     </section>}
     {tab==="staff"&&<section className="space-y-3">
       <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-900">Hourly cost = monthly salary ÷ monthly productive hours. Default basis: 26 working days × 8.25 productive hours = 214.5 hours. Authorized managers can adjust the working basis. Salary is a company expense; job labour allocation must not add the salary expense a second time.</div>
