@@ -1,8 +1,8 @@
 """Regression tests for the approved SADACO PDF baseline data migrations.
 
 These tests execute the RunPython seed functions against Django's test database.
-The normal test-database setup also applies the complete migration graph, including
-0013_staff_compensation_working_capacity.
+The normal test-database setup applies the complete migration graph, including
+products.0013_configurable_labour_hours.
 """
 from decimal import Decimal
 from importlib import import_module
