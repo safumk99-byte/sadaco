@@ -279,3 +279,15 @@ A second source review focused on the seed migration behavior and the current te
 **Test implementation decision:** do not add a test that blindly rewinds the entire live migration graph from a normal test database. The migration graph includes cross-app dependencies and a catalogue-cleanup RunPython operation. Implement the migration test with Django's `MigrationExecutor` in a dedicated `TransactionTestCase`, pin the pre-seed historical state, restore the latest leaf migrations in teardown, and run it in CI on disposable PostgreSQL. Then add ordinary model-level tests for rate-history recording and machine-rate natural-key validation if/when the corresponding business constraints are approved. These tests have not yet been implemented or executed.
 
 No application source, migration, database, production, `main`, or Render changes were made in this review.
+
+
+## 2026-11-16 — Phase 1 PDF seed regression tests added (not yet executed)
+
+- Added `products/test_pdf_baseline_migrations.py` on `feature/phase-2-department-access`.
+- The tests cover the exact 51 material variants, 51 rate-history rows, 5 machine rates, representative PDF prices, blank retail rates, absent Astari 6.5/7.5 mm rows, and idempotent material/machine seeding.
+- Department seed assertions cover the three exact division codes/names and idempotence.
+- Compensation seed assertions verify that only existing StaffProfile records receive compensation, expected monthly/work-based classifications are used, and Junaid/Ashiq identities are not fabricated.
+- Capacity defaults are asserted as 26 working days, 8.25 productive hours/day and 214.5 productive hours/month. The test database's normal setup must apply the complete migration graph, including migration 0013.
+- These tests call the migration RunPython functions against the test database's current app registry; they are seed-function regression tests, not a historical-state MigrationExecutor test. A dedicated legacy migration-graph test remains outstanding.
+- No test command has been run in this session because the PC/local Django environment is unavailable. GitHub commit status currently reports no checks for the test commit; do not describe the tests as passing.
+- No Neon branch, production database, `main`, or Render deployment was changed.
