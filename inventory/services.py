@@ -279,7 +279,6 @@ def reconcile_material_stock_balance(balance):
     and never changes sheet-unit stock.
     """
     from .models import MaterialStockMovement
-    from purchase.models import MaterialStockLot
 
     positive = {
         MaterialStockMovement.Type.OPENING,
