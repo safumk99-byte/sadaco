@@ -18,7 +18,7 @@ urlpatterns = [
     path("portal/products/", portal_products), path("portal/products/<int:pk>/", portal_product_detail),
     path("portal/notifications/", portal_notifications), path("portal/notifications/<int:pk>/read/", portal_notification_read),
     path("portal/requests/", portal_requests), path("portal/requests/create/", portal_request_create), path("portal/requests/<int:pk>/", portal_request_detail),
-    path("portal/quotations/", portal_quotations), path("portal/quotations/<int:pk>/", portal_quotation_detail), path("portal/quotations/<int:pk>/respond/", portal_quotation_response),
+    path("portal/quotations/", portal_quotations), path("portal/quotations/<int:pk>/", portal_quotation_detail), path("portal/quotations/<int:pk>/respond/", portal_quotation_response), path("portal/quotations/<int:pk>/pdf/", portal_quotation_pdf),
     path("portal/designs/<int:pk>/respond/", portal_design_response), path("portal/orders/", portal_orders), path("portal/orders/<int:pk>/", portal_order_detail),
     path("portal/orders/<int:pk>/feedback/", portal_feedback),
 ]
