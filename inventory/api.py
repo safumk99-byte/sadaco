@@ -100,8 +100,18 @@ def material_stock_reconciliation_api(request):
     visible = _visible_balances(request.user).order_by(
         "department__name", "location", "material__material_name", "pk"
     )
+    try:
+        page = int(request.GET.get("page", "1"))
+    except (TypeError, ValueError):
+        return JsonResponse({"detail": "Page must be a positive integer."}, status=400)
+    if page < 1:
+        return JsonResponse({"detail": "Page must be a positive integer."}, status=400)
+
+    page_size = 100
     total = visible.count()
-    balances = list(visible[:500])
+    total_pages = (total + page_size - 1) // page_size
+    start = (page - 1) * page_size
+    balances = list(visible[start:start + page_size])
     prefetch_related_objects(
         balances,
         Prefetch("movements", queryset=MaterialStockMovement.objects.order_by("created_at", "pk")),
@@ -114,7 +124,13 @@ def material_stock_reconciliation_api(request):
     return JsonResponse({
         "items": rows,
         "count": len(rows),
-        "truncated": total > 500,
+        "total_count": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": total_pages,
+        "has_next": page < total_pages,
+        "has_previous": page > 1 and total > 0,
+        "truncated": False,
         "reconciled_count": sum(1 for row in rows if row["reconciled"]),
         "mismatch_count": sum(1 for row in rows if not row["reconciled"]),
         "unbatched_count": sum(1 for row in rows if row["unbatched_warning"]),
