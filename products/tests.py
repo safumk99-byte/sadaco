@@ -191,3 +191,92 @@ class MachineRateAuditAtomicityTests(TestCase):
                 )
         rate.refresh_from_db()
         self.assertEqual(rate.rate, Decimal("20.00"))
+
+
+class MaterialAndCompensationAuditAtomicityTests(TestCase):
+    def setUp(self):
+        self.admin = User.objects.create_superuser(
+            username="costing_audit_admin", email="audit@example.com",
+            password="StrongPass123!",
+        )
+        self.client.force_login(self.admin)
+
+    def _post(self, url, payload):
+        import json
+        return self.client.post(
+            url, data=json.dumps(payload), content_type="application/json"
+        )
+
+    def test_material_rate_history_failure_rolls_back_material_create(self):
+        from unittest.mock import patch
+        from products.models import MaterialVariant
+
+        payload = {
+            "material_name": "Atomic Acrylic",
+            "brand": "Test",
+            "thickness_mm": "3",
+            "variant": "Clear",
+            "colour": "clear",
+            "sheet_width_ft": "8",
+            "sheet_height_ft": "4",
+            "purchase_rate": "3200",
+            "retail_rate": "",
+        }
+        with patch(
+            "products.models.MaterialRateHistory.objects.create",
+            side_effect=RuntimeError("history unavailable"),
+        ):
+            with self.assertRaises(RuntimeError):
+                self._post("/api/costing/materials/create/", payload)
+        self.assertFalse(MaterialVariant.objects.filter(material_name="Atomic Acrylic").exists())
+
+    def test_material_rate_update_history_failure_rolls_back_rate(self):
+        from unittest.mock import patch
+        from products.models import MaterialVariant
+
+        material = MaterialVariant.objects.create(
+            material_name="Atomic Existing", brand="Test", thickness_mm=Decimal("3"),
+            colour="clear", purchase_rate=Decimal("3000"),
+        )
+        with patch(
+            "products.models.MaterialRateHistory.objects.create",
+            side_effect=RuntimeError("history unavailable"),
+        ):
+            with self.assertRaises(RuntimeError):
+                self._post(
+                    f"/api/costing/materials/{material.pk}/update/",
+                    {"purchase_rate": "3500"},
+                )
+        material.refresh_from_db()
+        self.assertEqual(material.purchase_rate, Decimal("3000"))
+
+    def test_staff_compensation_audit_failure_rolls_back_salary_change(self):
+        from unittest.mock import patch
+        from staff.models import StaffProfile
+        from products.models import StaffCompensation
+
+        staff_user = User.objects.create_user(
+            username="costed_staff", password="StrongPass123!"
+        )
+        staff = StaffProfile.objects.create(user=staff_user, staff_id="AUD-001")
+        compensation = StaffCompensation.objects.create(
+            staff=staff,
+            payment_type=StaffCompensation.PaymentType.MONTHLY,
+            monthly_salary=Decimal("15000"),
+        )
+        with patch(
+            "products.costing_api.AuditLog.objects.create",
+            side_effect=RuntimeError("audit unavailable"),
+        ):
+            with self.assertRaises(RuntimeError):
+                self._post(
+                    f"/api/costing/staff-compensation/{staff.pk}/save/",
+                    {
+                        "payment_type": "monthly",
+                        "monthly_salary": "18000",
+                        "working_days_per_month": 26,
+                        "productive_hours_per_day": "8.25",
+                    },
+                )
+        compensation.refresh_from_db()
+        self.assertEqual(compensation.monthly_salary, Decimal("15000"))
