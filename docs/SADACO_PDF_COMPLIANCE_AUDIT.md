@@ -550,3 +550,12 @@ This remains a source-level review only. No Django test command, migration, Neon
 - Removed obsolete duplicate definitions of the offcut create/action APIs that were shadowing the newer receipt-traceable, dimension-validated and cost-aware implementations. This restores the intended source-issue link, sheet-dimension checks, partial area usage, job material matching, cost snapshots and return/wastage safeguards.
 - Changed row locking to lock only the primary production material / issue rows when nullable related objects are selected, avoiding PostgreSQL's unsupported FOR UPDATE on the nullable side of an outer join.
 - Added the previously unexecuted reusable-offcut regression suite to the CI workflow so these paths are exercised on subsequent runs.
+
+
+## 2026-11-22 — Global stock reconciliation summary implementation
+
+- Updated `/api/inventory/materials/reconciliation/` so reconciled, mismatch and unbatched counts are computed across the complete permission-scoped set of stock balances, not just the current 100-row page.
+- The calculation processes balances in bounded 100-row chunks and prefetches their movement and receipt-lot issue histories per chunk, avoiding a single unbounded in-memory load.
+- The response now declares `summary_scope: all_visible_balances`; row details remain paginated and manager department scoping remains applied to both page data and global summary.
+- Added a regression test with 205 balances and one deliberately inconsistent balance on page one. It asserts page one and page two return identical global totals (204 reconciled, 1 mismatch, 1 unbatched) while page two rows themselves are all reconciled.
+- This is a source change only. GitHub Actions must validate it; no local Django tests, Neon/production database writes, Main merge or deployment are claimed.
