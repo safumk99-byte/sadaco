@@ -2,6 +2,7 @@ import json
 from decimal import Decimal, InvalidOperation
 
 from django.contrib.auth.decorators import login_required
+from django.db import transaction
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 from django.views.decorators.http import require_GET, require_POST
@@ -148,17 +149,19 @@ def machine_rates_api(request):
 
 @require_POST
 @login_required
+@transaction.atomic
 def machine_rate_save_api(request, pk=None):
     if not _can_manage_costing(request.user):
         return JsonResponse({"detail": "You do not have permission to edit machine rates."}, status=403)
     data = _data(request)
-    rate = get_object_or_404(MachineRate, pk=pk) if pk else MachineRate()
+    rate = get_object_or_404(MachineRate.objects.select_for_update(), pk=pk) if pk else MachineRate()
     previous = {
         "operation": rate.operation,
         "material_name": rate.material_name,
         "thickness_mm": rate.thickness_mm,
         "rate": rate.rate,
         "unit": rate.unit,
+        "is_active": rate.is_active,
     } if pk else None
     try:
         rate.operation = str(data.get("operation", rate.operation)).strip()
@@ -172,6 +175,8 @@ def machine_rate_save_api(request, pk=None):
         rate.save()
     except (ValueError, InvalidOperation) as exc:
         return JsonResponse({"detail": str(exc)}, status=400)
+    # Keep the rate mutation and its audit record in one transaction. A failed
+    # audit write must never leave an untraceable rate change behind.
     AuditLog.objects.create(
         user=request.user,
         module="machine_rates",
