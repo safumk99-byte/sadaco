@@ -102,11 +102,12 @@ def material_master_api(request):
 
 @require_POST
 @login_required
+@transaction.atomic
 def material_master_save_api(request, pk=None):
     if not _can_manage_costing(request.user):
         return JsonResponse({"detail": "You do not have permission to edit material rates."}, status=403)
     data = _data(request)
-    item = get_object_or_404(MaterialVariant, pk=pk) if pk else MaterialVariant()
+    item = get_object_or_404(MaterialVariant.objects.select_for_update(), pk=pk) if pk else MaterialVariant()
     try:
         item.material_name = str(data.get("material_name", item.material_name)).strip()
         if not item.material_name:
@@ -215,10 +216,11 @@ def staff_compensation_api(request):
 
 @require_POST
 @login_required
+@transaction.atomic
 def staff_compensation_save_api(request, staff_id):
     if not _can_manage_costing(request.user):
         return JsonResponse({"detail": "You do not have permission to edit staff compensation."}, status=403)
-    staff = get_object_or_404(_staff_compensation_queryset(request.user), pk=staff_id)
+    staff = get_object_or_404(_staff_compensation_queryset(request.user).select_for_update(), pk=staff_id)
     data = _data(request)
     payment_type = str(data.get("payment_type", "")).strip()
     if payment_type not in dict(StaffCompensation.PaymentType.choices):
@@ -238,7 +240,7 @@ def staff_compensation_save_api(request, staff_id):
             raise ValueError("Working days must be 1–31 and productive hours must be greater than zero.")
     except (ValueError, InvalidOperation) as exc:
         return JsonResponse({"detail": str(exc)}, status=400)
-    previous = StaffCompensation.objects.filter(staff=staff).first()
+    previous = StaffCompensation.objects.select_for_update().filter(staff=staff).first()
     previous_values = {
         "payment_type": previous.payment_type,
         "monthly_salary": str(previous.monthly_salary) if previous.monthly_salary is not None else None,
