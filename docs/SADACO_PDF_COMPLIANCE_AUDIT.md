@@ -559,3 +559,12 @@ This remains a source-level review only. No Django test command, migration, Neon
 - The response now declares `summary_scope: all_visible_balances`; row details remain paginated and manager department scoping remains applied to both page data and global summary.
 - Added a regression test with 205 balances and one deliberately inconsistent balance on page one. It asserts page one and page two return identical global totals (204 reconciled, 1 mismatch, 1 unbatched) while page two rows themselves are all reconciled.
 - This is a source change only. GitHub Actions must validate it; no local Django tests, Neon/production database writes, Main merge or deployment are claimed.
+
+
+## 2026-11-22 — Opening-stock costing pagination
+
+- Removed the fixed 500-row opening-stock review cap. The uncosted opening-stock API now returns 100 rows per page with total count and navigation metadata.
+- Updated Material Master & Job Costing → Opening Stock Costing to navigate all pages and show the total number of uncosted opening movements.
+- Updated Stock Reconciliation labels and explanatory text to make clear that the summary covers all visible balances, not the current page.
+- Added API regression coverage for 205 uncosted opening movements across three pages, including complete, duplicate-free ID coverage.
+- Source changes only; CI and database validation remain pending.
