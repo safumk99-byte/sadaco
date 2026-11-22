@@ -118,3 +118,76 @@ class InventoryModuleTests(TestCase):
     def test_stock_page_requires_login(self):
         response = self.client.get(reverse("products:stock"))
         self.assertEqual(response.status_code, 302)
+
+class MachineRateAuditAtomicityTests(TestCase):
+    def setUp(self):
+        self.manager = User.objects.create_user(
+            username="machine_rate_auditor", password="StrongPass123!"
+        )
+        UserProfile.objects.create(user=self.manager, role=UserProfile.Role.MANAGER)
+        self.create_url = "/api/costing/machine-rates/create/"
+
+    def _post(self, url, payload):
+        import json
+        return self.client.post(
+            url, data=json.dumps(payload), content_type="application/json"
+        )
+
+    def test_machine_rate_create_writes_audit_log(self):
+        from core.models import AuditLog
+        from .models import MachineRate
+
+        self.client.force_login(self.manager)
+        response = self._post(self.create_url, {
+            "operation": "laser_cutting",
+            "material_name": "",
+            "thickness_mm": "",
+            "rate": "23.50",
+            "unit": "minute",
+            "is_active": True,
+        })
+        self.assertEqual(response.status_code, 201, response.content)
+        rate = MachineRate.objects.get(pk=response.json()["id"])
+        audit = AuditLog.objects.get(module="machine_rates", reference=f"MachineRate:{rate.pk}")
+        self.assertEqual(audit.action, AuditLog.Action.CREATE)
+        self.assertIn("rate=23.50/minute", audit.description)
+
+    def test_machine_rate_update_audit_contains_previous_values(self):
+        from core.models import AuditLog
+        from .models import MachineRate
+
+        rate = MachineRate.objects.create(
+            operation=MachineRate.Operation.LASER_CUTTING,
+            rate=Decimal("20.00"), unit="minute", is_active=True,
+        )
+        self.client.force_login(self.manager)
+        response = self._post(
+            f"/api/costing/machine-rates/{rate.pk}/update/",
+            {"rate": "24.00", "is_active": False},
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        rate.refresh_from_db()
+        self.assertEqual(rate.rate, Decimal("24.00"))
+        self.assertFalse(rate.is_active)
+        audit = AuditLog.objects.get(module="machine_rates", reference=f"MachineRate:{rate.pk}")
+        self.assertEqual(audit.action, AuditLog.Action.UPDATE)
+        self.assertIn("20.00", audit.description)
+        self.assertIn("'is_active': True", audit.description)
+
+    def test_audit_failure_rolls_back_machine_rate_change(self):
+        from unittest.mock import patch
+        from .models import MachineRate
+
+        rate = MachineRate.objects.create(
+            operation=MachineRate.Operation.LASER_CUTTING,
+            rate=Decimal("20.00"), unit="minute", is_active=True,
+        )
+        self.client.force_login(self.manager)
+        with patch("products.costing_api.AuditLog.objects.create", side_effect=RuntimeError("audit unavailable")):
+            with self.assertRaises(RuntimeError):
+                self._post(
+                    f"/api/costing/machine-rates/{rate.pk}/update/",
+                    {"rate": "29.00"},
+                )
+        rate.refresh_from_db()
+        self.assertEqual(rate.rate, Decimal("20.00"))
