@@ -1045,6 +1045,36 @@ class StockReconciliationPaginationApiTests(TestCase):
                 self.assertEqual(response.status_code, 400)
                 self.assertIn("positive integer", response.json()["detail"])
 
+    def test_uncosted_opening_stock_paginates_without_omitting_records(self):
+        balances = self._create_balances(self.department, 205, "Opening Page Store")
+        MaterialStockMovement.objects.bulk_create([
+            MaterialStockMovement(
+                balance=balance, movement_type=MaterialStockMovement.Type.OPENING,
+                quantity=Decimal("1"), balance_after=Decimal("1"),
+                reference=f"OPEN-{index:03d}",
+            )
+            for index, balance in enumerate(balances)
+        ])
+        self.client.force_login(self.admin)
+
+        first = self.client.get("/api/inventory/materials/opening-batches/unpriced/?page=1")
+        second = self.client.get("/api/inventory/materials/opening-batches/unpriced/?page=2")
+        third = self.client.get("/api/inventory/materials/opening-batches/unpriced/?page=3")
+        for response in (first, second, third):
+            self.assertEqual(response.status_code, 200, response.content)
+            self.assertEqual(response.json()["total_count"], 205)
+            self.assertEqual(response.json()["page_size"], 100)
+
+        payloads = [response.json() for response in (first, second, third)]
+        self.assertEqual([payload["count"] for payload in payloads], [100, 100, 5])
+        ids = [row["movement_id"] for payload in payloads for row in payload["items"]]
+        self.assertEqual(len(ids), 205)
+        self.assertEqual(len(set(ids)), 205)
+        self.assertFalse(payloads[0]["has_previous"])
+        self.assertTrue(payloads[1]["has_previous"])
+        self.assertTrue(payloads[1]["has_next"])
+        self.assertFalse(payloads[2]["has_next"])
+
     def test_reconciliation_summary_is_global_not_page_scoped(self):
         balances = self._create_balances(self.department, 205, "Global Summary Store")
         # One deliberately inconsistent balance is placed on page one.
