@@ -1,62 +1,17 @@
-# SADACO — React + Vite Frontend / Django API Backend
+# SADACO ERP — Clean Rebuild
 
-SADACO is now an API-first application with a fully React + Vite frontend.
+This repository is being rebuilt from the approved SADACO ERP requirements PDF.
 
-## Architecture
+- Repository retained; historical Git objects and commits remain available.
+- Legacy application files removed from the default branch.
+- New implementation must be designed against the PDF requirements and acceptance criteria.
+- Existing Neon production database schema and Django migration history are retained; operational records have been cleared.
+- Do not deploy or run migrations until the new architecture, migration plan, and environment configuration are reviewed.
 
-- Frontend: React 19 + Vite + React Router + Tailwind CSS
-- Backend: Django 5.2 REST-style JSON APIs
-- Database: PostgreSQL / Neon
-- Authentication: Django session authentication exposed through JSON APIs
-- Web Push: Django service-worker endpoint + React subscription UI
+## Rebuild principles
 
-## Important
-
-There are no Django HTML templates or template-driven application routes in this version. The management UI and customer portal are React pages. Django is retained for authentication, business logic, database models, migrations, API endpoints, PDF/report generation support, and Web Push.
-
-## Run
-
-### Backend
-
-```bash
-python -m venv venv
-venv\\Scripts\\activate
-pip install -r requirements.txt
-python manage.py migrate
-python manage.py runserver
-```
-
-### Frontend
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-The Vite development server proxies `/api` requests to Django. See `frontend/vite.config.js`.
-
-## Customer Portal
-
-Customer registration and the complete customer portal are React routes:
-
-- `/register`
-- `/login`
-- `/customer`
-
-Customer portal features include products, requests, quotations, design responses, orders, notifications, feedback, and profile management.
-
-## Playwright E2E testing
-
-1. Copy/fill `.env.test` with the SADACO test username and password.
-2. Run `npm install` in the project root.
-3. Run `npx playwright install chromium`.
-4. Start Django and the React/Vite frontend.
-5. Run `npm run test:e2e:full`.
-6. View the report with `npm run test:e2e:report`.
-
-The `.env.test` file is ignored by Git so test credentials are not committed.
-
-### React + Vite CSRF
-
-`settings.py` includes `CSRF_TRUSTED_ORIGINS` for `http://localhost:5173` and `http://127.0.0.1:5173`, which prevents Django's Origin checking from rejecting local React login requests.
+1. One shared database with strict division-level access for SADACO Creatives, SADACO CNC, and SADACO Decor Co.
+2. Role-based access and auditable approval workflows.
+3. No invented prices, rates, or business rules.
+4. Stock, costing, finance, order lifecycle, HR, QC, delivery, and reporting must satisfy the PDF.
+5. Automated backend, frontend, integration, and end-to-end acceptance tests are mandatory before production deployment.
