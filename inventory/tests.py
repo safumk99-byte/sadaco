@@ -1044,3 +1044,25 @@ class StockReconciliationPaginationApiTests(TestCase):
                 response = self.client.get(f"/api/inventory/materials/reconciliation/?page={page}")
                 self.assertEqual(response.status_code, 400)
                 self.assertIn("positive integer", response.json()["detail"])
+
+    def test_reconciliation_summary_is_global_not_page_scoped(self):
+        balances = self._create_balances(self.department, 205, "Global Summary Store")
+        # One deliberately inconsistent balance is placed on page one.
+        balances[0].quantity = Decimal("3")
+        balances[0].save(update_fields=["quantity"])
+        self.client.force_login(self.admin)
+
+        first = self.client.get("/api/inventory/materials/reconciliation/?page=1")
+        second = self.client.get("/api/inventory/materials/reconciliation/?page=2")
+        self.assertEqual(first.status_code, 200, first.content)
+        self.assertEqual(second.status_code, 200, second.content)
+
+        for payload in (first.json(), second.json()):
+            self.assertEqual(payload["summary_scope"], "all_visible_balances")
+            self.assertEqual(payload["reconciled_count"], 204)
+            self.assertEqual(payload["mismatch_count"], 1)
+            self.assertEqual(payload["unbatched_count"], 1)
+
+        # Page two contains only reconciled rows, but still reports the same
+        # global summary as page one.
+        self.assertTrue(all(row["reconciled"] for row in second.json()["items"]))
