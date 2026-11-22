@@ -568,3 +568,12 @@ This remains a source-level review only. No Django test command, migration, Neon
 - Updated Stock Reconciliation labels and explanatory text to make clear that the summary covers all visible balances, not the current page.
 - Added API regression coverage for 205 uncosted opening movements across three pages, including complete, duplicate-free ID coverage.
 - Source changes only; CI and database validation remain pending.
+
+
+## 2026-11-22 — Stock balance and movement API pagination
+
+- Replaced the unbounded Material Stock API response with stable 100-row pagination. Search and department filters are applied before counting, slicing and aggregating total quantity.
+- Replaced the 500-row material movement cap with stable 100-row pagination, ordered newest-first with primary-key tie-break.
+- Both endpoints now return count, total_count, page, page_size, total_pages and navigation flags; stock total quantity remains the aggregate across the full filtered queryset, not just the page.
+- Added regression tests covering 205 stock balances and 105 movements, proving complete duplicate-free coverage across pages and preserving whole-filter total quantity.
+- UI callers must be checked/migrated to consume pagination before this API change is considered end-to-end complete. CI validation pending; no local tests or database writes performed.
