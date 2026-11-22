@@ -18,7 +18,8 @@ export default function MaterialCosting() {
   const [form,setForm] = useState({});
   const [machineForm,setMachineForm] = useState({operation:"laser_cutting",rate:"",unit:"minute"});
   const [machineEditing,setMachineEditing] = useState(null);
-  const [reconciliation,setReconciliation] = useState({items:[],count:0,reconciled_count:0,mismatch_count:0,unbatched_count:0});
+  const [reconciliation,setReconciliation] = useState({items:[],count:0,total_count:0,page:1,page_size:100,total_pages:0,has_next:false,has_previous:false,reconciled_count:0,mismatch_count:0,unbatched_count:0});
+  const [reconPage,setReconPage] = useState(1);
   const [reconLoading,setReconLoading] = useState(false);
   const [openingItems,setOpeningItems] = useState([]);
   const [openingLoading,setOpeningLoading] = useState(false);
@@ -39,12 +40,13 @@ export default function MaterialCosting() {
     if(tab!=="reconciliation") return;
     let active=true;
     setReconLoading(true);
-    api.get("/inventory/materials/reconciliation/")
+    setError("");
+    api.get(`/inventory/materials/reconciliation/?page=${reconPage}`)
       .then(({data})=>{if(active)setReconciliation(data);})
       .catch(e=>{if(active)setError(e.response?.data?.detail||"Unable to load stock reconciliation.");})
       .finally(()=>{if(active)setReconLoading(false);});
     return ()=>{active=false;};
-  },[tab]);
+  },[tab,reconPage]);
   async function loadUncostedOpeningStock(){
     setOpeningLoading(true);setError("");
     try{const {data}=await api.get("/inventory/materials/opening-batches/unpriced/");setOpeningItems(data.items||[]);}
@@ -133,12 +135,12 @@ export default function MaterialCosting() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div><h2 className="text-lg font-bold text-slate-900">Material Stock Reconciliation</h2>
           <p className="mt-1 text-sm text-slate-500">Compare department stock balances with movement history and receipt-batch quantities. This report is read-only.</p></div>
-        <button onClick={()=>{setReconLoading(true);api.get("/inventory/materials/reconciliation/").then(({data})=>setReconciliation(data)).catch(e=>setError(e.response?.data?.detail||"Unable to refresh reconciliation.")).finally(()=>setReconLoading(false));}} disabled={reconLoading} className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 disabled:opacity-50">{reconLoading?"Checking…":"Refresh"}</button>
+        <button onClick={()=>{setReconLoading(true);setError("");api.get(`/inventory/materials/reconciliation/?page=${reconPage}`).then(({data})=>setReconciliation(data)).catch(e=>setError(e.response?.data?.detail||"Unable to refresh reconciliation.")).finally(()=>setReconLoading(false));}} disabled={reconLoading} className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 disabled:opacity-50">{reconLoading?"Checking…":"Refresh"}</button>
       </div>
       <div className="grid gap-3 sm:grid-cols-3">
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4"><p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Reconciled</p><p className="mt-1 text-2xl font-bold text-emerald-900">{reconciliation.reconciled_count||0}</p></div>
-        <div className="rounded-2xl border border-red-200 bg-red-50 p-4"><p className="text-xs font-semibold uppercase tracking-wide text-red-700">Mismatches</p><p className="mt-1 text-2xl font-bold text-red-900">{reconciliation.mismatch_count||0}</p></div>
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4"><p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Unbatched Balances</p><p className="mt-1 text-2xl font-bold text-amber-900">{reconciliation.unbatched_count||0}</p></div>
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4"><p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Reconciled (This Page)</p><p className="mt-1 text-2xl font-bold text-emerald-900">{reconciliation.reconciled_count||0}</p></div>
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-4"><p className="text-xs font-semibold uppercase tracking-wide text-red-700">Mismatches (This Page)</p><p className="mt-1 text-2xl font-bold text-red-900">{reconciliation.mismatch_count||0}</p></div>
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4"><p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Unbatched (This Page)</p><p className="mt-1 text-2xl font-bold text-amber-900">{reconciliation.unbatched_count||0}</p></div>
       </div>
       <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
         {reconLoading?<p className="p-8 text-center text-sm text-slate-500">Reconciling stock records…</p>:<table className="w-full min-w-[1050px] text-left text-sm">
@@ -156,7 +158,14 @@ export default function MaterialCosting() {
         </table>}
         {!reconLoading&&!(reconciliation.items||[]).length&&<p className="p-8 text-center text-sm text-slate-500">No material stock balances found for this access scope.</p>}
       </div>
-      <p className="text-xs text-slate-500">Wastage is recorded as an annotation because stock was already deducted when material was issued. Opening or legacy stock without a receipt lot is shown separately; this report never changes stock automatically.{reconciliation.truncated?" Only the first 500 balances are shown.":""}</p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-xs text-slate-500">Showing {reconciliation.count||0} of {reconciliation.total_count||0} stock balances. Summary counts above apply to this page. Wastage is an annotation because stock was already deducted at issue; unbatched opening / legacy stock is shown separately. This report never changes stock automatically.</p>
+        <div className="flex items-center gap-2">
+          <button onClick={()=>setReconPage(p=>Math.max(1,p-1))} disabled={reconLoading||!reconciliation.has_previous} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 disabled:opacity-40">Previous</button>
+          <span className="text-sm tabular-nums text-slate-600">Page {reconciliation.total_pages?reconciliation.page:0} / {reconciliation.total_pages||0}</span>
+          <button onClick={()=>setReconPage(p=>p+1)} disabled={reconLoading||!reconciliation.has_next} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 disabled:opacity-40">Next</button>
+        </div>
+      </div>
     </section>}
     {tab==="opening"&&<section className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
