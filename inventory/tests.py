@@ -959,3 +959,88 @@ class MaterialIssueEmployeeDepartmentAPITests(TestCase):
         self.assertEqual(self.balance.quantity, Decimal("10"))
         self.assertEqual(self.line.issued_quantity, Decimal("0"))
 
+
+
+class StockReconciliationPaginationApiTests(TestCase):
+    def setUp(self):
+        self.department = Department.objects.create(code="recon-page-a", name="Reconciliation Page A")
+        self.other_department = Department.objects.create(code="recon-page-b", name="Reconciliation Page B")
+        self.admin = User.objects.create_superuser(
+            username="recon-page-admin", email="recon-page@example.com", password="StrongPass123!",
+        )
+        self.manager = User.objects.create_user(
+            username="recon-page-manager", password="StrongPass123!",
+        )
+        UserProfile.objects.create(
+            user=self.manager, role=UserProfile.Role.MANAGER, department=self.department,
+        )
+        self.material = MaterialVariant.objects.create(
+            material_name="Reconciliation Page Material", unit="Sheet",
+        )
+
+    def _create_balances(self, department, count, prefix):
+        return MaterialStockBalance.objects.bulk_create([
+            MaterialStockBalance(
+                material=self.material, department=department,
+                location=f"{prefix}-{index:03d}", quantity=Decimal("0"),
+            )
+            for index in range(count)
+        ])
+
+    def test_reconciliation_pages_cover_every_balance_without_duplicates(self):
+        self._create_balances(self.department, 205, "Admin Store")
+        self.client.force_login(self.admin)
+
+        first = self.client.get("/api/inventory/materials/reconciliation/?page=1")
+        second = self.client.get("/api/inventory/materials/reconciliation/?page=2")
+        third = self.client.get("/api/inventory/materials/reconciliation/?page=3")
+
+        for response in (first, second, third):
+            self.assertEqual(response.status_code, 200, response.content)
+            self.assertEqual(response.json()["total_count"], 205)
+            self.assertEqual(response.json()["page_size"], 100)
+            self.assertFalse(response.json()["truncated"])
+
+        first_data, second_data, third_data = (r.json() for r in (first, second, third))
+        self.assertEqual([first_data["count"], second_data["count"], third_data["count"]], [100, 100, 5])
+        self.assertTrue(first_data["has_next"])
+        self.assertTrue(second_data["has_previous"])
+        self.assertTrue(second_data["has_next"])
+        self.assertTrue(third_data["has_previous"])
+        self.assertFalse(third_data["has_next"])
+
+        ids = (
+            [row["balance_id"] for row in first_data["items"]]
+            + [row["balance_id"] for row in second_data["items"]]
+            + [row["balance_id"] for row in third_data["items"]]
+        )
+        self.assertEqual(len(ids), 205)
+        self.assertEqual(len(set(ids)), 205)
+
+    def test_reconciliation_pagination_respects_manager_department_scope(self):
+        self._create_balances(self.department, 101, "Manager Store")
+        self._create_balances(self.other_department, 3, "Other Store")
+        self.client.force_login(self.manager)
+
+        first = self.client.get("/api/inventory/materials/reconciliation/?page=1")
+        second = self.client.get("/api/inventory/materials/reconciliation/?page=2")
+
+        self.assertEqual(first.status_code, 200, first.content)
+        self.assertEqual(second.status_code, 200, second.content)
+        self.assertEqual(first.json()["total_count"], 101)
+        self.assertEqual(first.json()["count"], 100)
+        self.assertEqual(second.json()["count"], 1)
+        self.assertEqual(
+            {row["department_id"] for response in (first, second) for row in response.json()["items"]},
+            {self.department.pk},
+        )
+
+    def test_reconciliation_rejects_invalid_page_numbers(self):
+        self._create_balances(self.department, 1, "Invalid Page Store")
+        self.client.force_login(self.admin)
+
+        for page in ("0", "-1", "not-a-number"):
+            with self.subTest(page=page):
+                response = self.client.get(f"/api/inventory/materials/reconciliation/?page={page}")
+                self.assertEqual(response.status_code, 400)
+                self.assertIn("positive integer", response.json()["detail"])
