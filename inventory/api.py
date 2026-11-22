@@ -121,6 +121,29 @@ def material_stock_reconciliation_api(request):
         ),
     )
     rows = [reconcile_material_stock_balance(balance) for balance in balances]
+
+    # Summary counts cover the complete permission-scoped balance queryset, not
+    # only the currently displayed page. Process in bounded chunks to avoid
+    # loading the entire movement/lot history into memory at once.
+    global_summary = {"reconciled_count": 0, "mismatch_count": 0, "unbatched_count": 0}
+    for offset in range(0, total, page_size):
+        if offset == start:
+            chunk_rows = rows
+        else:
+            chunk = list(visible[offset:offset + page_size])
+            prefetch_related_objects(
+                chunk,
+                Prefetch("movements", queryset=MaterialStockMovement.objects.order_by("created_at", "pk")),
+                Prefetch(
+                    "cost_lots",
+                    queryset=MaterialStockLot.objects.prefetch_related("issues").order_by("created_at", "pk"),
+                ),
+            )
+            chunk_rows = [reconcile_material_stock_balance(balance) for balance in chunk]
+        global_summary["reconciled_count"] += sum(1 for row in chunk_rows if row["reconciled"])
+        global_summary["mismatch_count"] += sum(1 for row in chunk_rows if not row["reconciled"])
+        global_summary["unbatched_count"] += sum(1 for row in chunk_rows if row["unbatched_warning"])
+
     return JsonResponse({
         "items": rows,
         "count": len(rows),
@@ -131,9 +154,8 @@ def material_stock_reconciliation_api(request):
         "has_next": page < total_pages,
         "has_previous": page > 1 and total > 0,
         "truncated": False,
-        "reconciled_count": sum(1 for row in rows if row["reconciled"]),
-        "mismatch_count": sum(1 for row in rows if not row["reconciled"]),
-        "unbatched_count": sum(1 for row in rows if row["unbatched_warning"]),
+        **global_summary,
+        "summary_scope": "all_visible_balances",
     })
 
 
