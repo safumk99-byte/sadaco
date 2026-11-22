@@ -22,6 +22,8 @@ export default function MaterialCosting() {
   const [reconPage,setReconPage] = useState(1);
   const [reconLoading,setReconLoading] = useState(false);
   const [openingItems,setOpeningItems] = useState([]);
+  const [openingMeta,setOpeningMeta] = useState({count:0,total_count:0,page:1,page_size:100,total_pages:0,has_next:false,has_previous:false});
+  const [openingPage,setOpeningPage] = useState(1);
   const [openingLoading,setOpeningLoading] = useState(false);
   const [openingDrafts,setOpeningDrafts] = useState({});
 
@@ -47,13 +49,16 @@ export default function MaterialCosting() {
       .finally(()=>{if(active)setReconLoading(false);});
     return ()=>{active=false;};
   },[tab,reconPage]);
-  async function loadUncostedOpeningStock(){
+  async function loadUncostedOpeningStock(page=openingPage){
     setOpeningLoading(true);setError("");
-    try{const {data}=await api.get("/inventory/materials/opening-batches/unpriced/");setOpeningItems(data.items||[]);}
-    catch(e){setError(e.response?.data?.detail||"Unable to load uncosted opening stock.");}
+    try{
+      const {data}=await api.get(`/inventory/materials/opening-batches/unpriced/?page=${page}`);
+      setOpeningItems(data.items||[]);
+      setOpeningMeta(data);
+    }catch(e){setError(e.response?.data?.detail||"Unable to load uncosted opening stock.");}
     finally{setOpeningLoading(false);}
   }
-  useEffect(()=>{if(tab==="opening")loadUncostedOpeningStock();},[tab]);
+  useEffect(()=>{if(tab==="opening")loadUncostedOpeningStock(openingPage);},[tab,openingPage]);
   async function assignOpeningCost(movementId){
     const draft=openingDrafts[movementId]||{};
     setBusy(true);setError("");setNotice("");
@@ -138,9 +143,9 @@ export default function MaterialCosting() {
         <button onClick={()=>{setReconLoading(true);setError("");api.get(`/inventory/materials/reconciliation/?page=${reconPage}`).then(({data})=>setReconciliation(data)).catch(e=>setError(e.response?.data?.detail||"Unable to refresh reconciliation.")).finally(()=>setReconLoading(false));}} disabled={reconLoading} className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 disabled:opacity-50">{reconLoading?"Checking…":"Refresh"}</button>
       </div>
       <div className="grid gap-3 sm:grid-cols-3">
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4"><p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Reconciled (This Page)</p><p className="mt-1 text-2xl font-bold text-emerald-900">{reconciliation.reconciled_count||0}</p></div>
-        <div className="rounded-2xl border border-red-200 bg-red-50 p-4"><p className="text-xs font-semibold uppercase tracking-wide text-red-700">Mismatches (This Page)</p><p className="mt-1 text-2xl font-bold text-red-900">{reconciliation.mismatch_count||0}</p></div>
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4"><p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Unbatched (This Page)</p><p className="mt-1 text-2xl font-bold text-amber-900">{reconciliation.unbatched_count||0}</p></div>
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4"><p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Reconciled (All Stock)</p><p className="mt-1 text-2xl font-bold text-emerald-900">{reconciliation.reconciled_count||0}</p></div>
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-4"><p className="text-xs font-semibold uppercase tracking-wide text-red-700">Mismatches (All Stock)</p><p className="mt-1 text-2xl font-bold text-red-900">{reconciliation.mismatch_count||0}</p></div>
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4"><p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Unbatched (All Stock)</p><p className="mt-1 text-2xl font-bold text-amber-900">{reconciliation.unbatched_count||0}</p></div>
       </div>
       <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
         {reconLoading?<p className="p-8 text-center text-sm text-slate-500">Reconciling stock records…</p>:<table className="w-full min-w-[1050px] text-left text-sm">
@@ -159,7 +164,7 @@ export default function MaterialCosting() {
         {!reconLoading&&!(reconciliation.items||[]).length&&<p className="p-8 text-center text-sm text-slate-500">No material stock balances found for this access scope.</p>}
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-xs text-slate-500">Showing {reconciliation.count||0} of {reconciliation.total_count||0} stock balances. Summary counts above apply to this page. Wastage is an annotation because stock was already deducted at issue; unbatched opening / legacy stock is shown separately. This report never changes stock automatically.</p>
+        <p className="text-xs text-slate-500">Showing {reconciliation.count||0} of {reconciliation.total_count||0} stock balances. Summary counts above cover all visible balances. Wastage is an annotation because stock was already deducted at issue; unbatched opening / legacy stock is shown separately. This report never changes stock automatically.</p>
         <div className="flex items-center gap-2">
           <button onClick={()=>setReconPage(p=>Math.max(1,p-1))} disabled={reconLoading||!reconciliation.has_previous} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 disabled:opacity-40">Previous</button>
           <span className="text-sm tabular-nums text-slate-600">Page {reconciliation.total_pages?reconciliation.page:0} / {reconciliation.total_pages||0}</span>
@@ -193,6 +198,14 @@ export default function MaterialCosting() {
           })}</tbody>
         </table>
         {!openingItems.length&&<p className="p-8 text-center text-sm text-slate-500">No uncosted opening movements found.</p>}
+      </div>}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-xs text-slate-500">Showing {openingMeta.count||0} of {openingMeta.total_count||0} uncosted opening movements.</p>
+        <div className="flex items-center gap-2">
+          <button onClick={()=>setOpeningPage(p=>Math.max(1,p-1))} disabled={openingLoading||!openingMeta.has_previous} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 disabled:opacity-40">Previous</button>
+          <span className="text-sm tabular-nums text-slate-600">Page {openingMeta.total_pages?openingMeta.page:0} / {openingMeta.total_pages||0}</span>
+          <button onClick={()=>setOpeningPage(p=>p+1)} disabled={openingLoading||!openingMeta.has_next} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 disabled:opacity-40">Next</button>
+        </div>
       </div>}
     </section>}
     {tab==="staff"&&<section className="space-y-3">
