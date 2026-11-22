@@ -1045,6 +1045,47 @@ class StockReconciliationPaginationApiTests(TestCase):
                 self.assertEqual(response.status_code, 400)
                 self.assertIn("positive integer", response.json()["detail"])
 
+    def test_material_stock_api_paginates_and_keeps_filtered_totals(self):
+        self._create_balances(self.department, 205, "Stock API Store")
+        self.client.force_login(self.admin)
+        responses = [
+            self.client.get(f"/api/inventory/materials/stock/?page={page}")
+            for page in (1, 2, 3)
+        ]
+        for response in responses:
+            self.assertEqual(response.status_code, 200, response.content)
+            self.assertEqual(response.json()["total_count"], 205)
+            self.assertEqual(response.json()["total_quantity"], "0")
+        payloads = [response.json() for response in responses]
+        self.assertEqual([x["count"] for x in payloads], [100, 100, 5])
+        ids = [row["id"] for payload in payloads for row in payload["items"]]
+        self.assertEqual(len(ids), 205)
+        self.assertEqual(len(set(ids)), 205)
+
+    def test_material_movements_api_paginates_all_rows(self):
+        balances = self._create_balances(self.department, 105, "Movement API Store")
+        MaterialStockMovement.objects.bulk_create([
+            MaterialStockMovement(
+                balance=balance, movement_type=MaterialStockMovement.Type.OPENING,
+                quantity=Decimal("1"), balance_after=Decimal("1"),
+                reference=f"MOV-{index:03d}",
+            )
+            for index, balance in enumerate(balances)
+        ])
+        self.client.force_login(self.admin)
+        responses = [
+            self.client.get(f"/api/inventory/materials/movements/?page={page}")
+            for page in (1, 2)
+        ]
+        for response in responses:
+            self.assertEqual(response.status_code, 200, response.content)
+            self.assertEqual(response.json()["total_count"], 105)
+        payloads = [response.json() for response in responses]
+        self.assertEqual([x["count"] for x in payloads], [100, 5])
+        ids = [row["id"] for payload in payloads for row in payload["items"]]
+        self.assertEqual(len(ids), 105)
+        self.assertEqual(len(set(ids)), 105)
+
     def test_uncosted_opening_stock_paginates_without_omitting_records(self):
         balances = self._create_balances(self.department, 205, "Opening Page Store")
         MaterialStockMovement.objects.bulk_create([
