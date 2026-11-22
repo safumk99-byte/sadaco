@@ -270,7 +270,7 @@ class MaterialAndCompensationAuditAtomicityTests(TestCase):
         ):
             with self.assertRaises(RuntimeError):
                 self._post(
-                    f"/api/costing/staff-compensation/{staff.pk}/save/",
+                    f"/api/costing/staff/{staff.pk}/compensation/",
                     {
                         "payment_type": "monthly",
                         "monthly_salary": "18000",
