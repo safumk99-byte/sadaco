@@ -47,6 +47,17 @@ def material_stock_api(request):
         qs = qs.filter(Q(material__material_name__icontains=q) | Q(material__brand__icontains=q) | Q(material__variant__icontains=q) | Q(location__icontains=q))
     if department and _manager_department(request.user) is None:
         qs = qs.filter(department_id=department)
+    try:
+        page = int(request.GET.get("page", "1"))
+    except (TypeError, ValueError):
+        return JsonResponse({"detail": "Page must be a positive integer."}, status=400)
+    if page < 1:
+        return JsonResponse({"detail": "Page must be a positive integer."}, status=400)
+    page_size = 100
+    total = qs.count()
+    total_pages = (total + page_size - 1) // page_size
+    totals = qs.aggregate(total=Sum("quantity"))
+    start = (page - 1) * page_size
     rows = [{
         "id": x.id, "material_id": x.material_id, "material": x.material.material_name,
         "brand": x.material.brand, "thickness_mm": str(x.material.thickness_mm) if x.material.thickness_mm is not None else None,
@@ -57,9 +68,14 @@ def material_stock_api(request):
         "is_low_stock": x.minimum_quantity is not None and x.quantity <= x.minimum_quantity,
         "purchase_rate": str(x.material.purchase_rate) if x.material.purchase_rate is not None else None,
         "supplier": x.material.supplier_name,
-    } for x in qs]
-    totals = qs.aggregate(total=Sum("quantity"))
-    return JsonResponse({"items": rows, "total_quantity": str(totals["total"] or Decimal("0")), "can_manage": _manager_department(request.user) is None})
+    } for x in qs.order_by("department__name", "location", "material__material_name", "pk")[start:start + page_size]]
+    return JsonResponse({
+        "items": rows, "count": len(rows), "total_count": total,
+        "page": page, "page_size": page_size, "total_pages": total_pages,
+        "has_next": page < total_pages, "has_previous": page > 1 and total > 0,
+        "total_quantity": str(totals["total"] or Decimal("0")),
+        "can_manage": _manager_department(request.user) is None,
+    })
 
 
 @require_GET
@@ -265,7 +281,17 @@ def material_movements_api(request):
     material = request.GET.get("material", "").strip()
     if material:
         qs = qs.filter(balance__material_id=material)
-    return JsonResponse({"items": [{
+    try:
+        page = int(request.GET.get("page", "1"))
+    except (TypeError, ValueError):
+        return JsonResponse({"detail": "Page must be a positive integer."}, status=400)
+    if page < 1:
+        return JsonResponse({"detail": "Page must be a positive integer."}, status=400)
+    page_size = 100
+    total = qs.count()
+    total_pages = (total + page_size - 1) // page_size
+    start = (page - 1) * page_size
+    rows = [{
         "id": x.id, "material": x.balance.material.material_name, "brand": x.balance.material.brand,
         "department": x.balance.department.name, "location": x.balance.location,
         "type": x.movement_type, "type_label": x.get_movement_type_display(),
@@ -274,7 +300,12 @@ def material_movements_api(request):
         "employee": x.employee.user.get_full_name() if x.employee_id and x.employee.user_id else None,
         "reference": x.reference, "remarks": x.remarks, "created_by": x.created_by.get_full_name() if x.created_by else None,
         "created_at": x.created_at.isoformat(),
-    } for x in qs[:500]]})
+    } for x in qs.order_by("-created_at", "-pk")[start:start + page_size]]
+    return JsonResponse({
+        "items": rows, "count": len(rows), "total_count": total,
+        "page": page, "page_size": page_size, "total_pages": total_pages,
+        "has_next": page < total_pages, "has_previous": page > 1 and total > 0,
+    })
 
 
 @require_POST
