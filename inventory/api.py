@@ -164,25 +164,45 @@ def material_stock_reconciliation_api(request):
 def uncosted_opening_stock_api(request):
     if _manager_department(request.user) is not None:
         return JsonResponse({"detail": "Only Founder/Admin can review and cost opening stock."}, status=403)
+    try:
+        page = int(request.GET.get("page", "1"))
+    except (TypeError, ValueError):
+        return JsonResponse({"detail": "Page must be a positive integer."}, status=400)
+    if page < 1:
+        return JsonResponse({"detail": "Page must be a positive integer."}, status=400)
+    page_size = 100
     rows = MaterialStockMovement.objects.filter(
         movement_type=MaterialStockMovement.Type.OPENING,
         opening_cost_lot__isnull=True,
     ).select_related("balance__material", "balance__department", "created_by").order_by(
         "created_at", "pk"
-    )[:500]
-    return JsonResponse({"items": [{
-        "movement_id": row.pk,
-        "balance_id": row.balance_id,
-        "material": str(row.balance.material),
-        "department": row.balance.department.name,
-        "location": row.balance.location,
-        "quantity": str(row.quantity),
-        "balance_after": str(row.balance_after),
-        "reference": row.reference,
-        "remarks": row.remarks,
-        "created_by": row.created_by.username if row.created_by_id else None,
-        "created_at": row.created_at.isoformat(),
-    } for row in rows]})
+    )
+    total = rows.count()
+    total_pages = (total + page_size - 1) // page_size
+    start = (page - 1) * page_size
+    items = rows[start:start + page_size]
+    return JsonResponse({
+        "items": [{
+            "movement_id": row.pk,
+            "balance_id": row.balance_id,
+            "material": str(row.balance.material),
+            "department": row.balance.department.name,
+            "location": row.balance.location,
+            "quantity": str(row.quantity),
+            "balance_after": str(row.balance_after),
+            "reference": row.reference,
+            "remarks": row.remarks,
+            "created_by": row.created_by.username if row.created_by_id else None,
+            "created_at": row.created_at.isoformat(),
+        } for row in items],
+        "count": min(page_size, max(total - start, 0)),
+        "total_count": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": total_pages,
+        "has_next": page < total_pages,
+        "has_previous": page > 1 and total > 0,
+    })
 
 
 @require_POST
