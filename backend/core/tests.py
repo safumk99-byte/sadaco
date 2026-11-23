@@ -100,4 +100,4 @@ class EnquiryAPITests(TestCase):
 
     def test_unauthenticated_api_request_is_denied(self):
         response = self.client.get("/api/enquiries/")
-        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.status_code, 403)
