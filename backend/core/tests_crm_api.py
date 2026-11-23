@@ -166,3 +166,56 @@ class CRMActionAPITests(TestCase):
         self.assertFalse(
             AuditEvent.objects.filter(entity_id=other_follow_up.pk).exists()
         )
+    def test_enquiry_status_cannot_be_set_or_changed_directly(self):
+        create_response = self.client.post(
+            "/api/enquiries/",
+            {
+                "enquiry_number": "CRM-ACTION-E4",
+                "customer": str(self.customer.pk),
+                "division": str(self.division.pk),
+                "source": "phone",
+                "requested_product_service": "Direct status attempt",
+                "status": "confirmed",
+            },
+            format="json",
+        )
+        self.assertEqual(create_response.status_code, 201)
+        self.assertEqual(create_response.data["status"], Enquiry.Status.NEW)
+
+        update_response = self.client.patch(
+            f"/api/enquiries/{self.enquiry.pk}/",
+            {"status": "lost"},
+            format="json",
+        )
+        self.assertEqual(update_response.status_code, 200)
+        self.enquiry.refresh_from_db()
+        self.assertEqual(self.enquiry.status, Enquiry.Status.NEW)
+        self.assertFalse(AuditEvent.objects.filter(entity_id=self.enquiry.pk).exists())
+
+    def test_followup_status_and_completion_time_are_read_only(self):
+        create_response = self.client.post(
+            "/api/follow-ups/",
+            {
+                "enquiry": str(self.enquiry.pk),
+                "due_at": (timezone.now() + timezone.timedelta(days=2)).isoformat(),
+                "status": "completed",
+                "completed_at": timezone.now().isoformat(),
+            },
+            format="json",
+        )
+        self.assertEqual(create_response.status_code, 201)
+        created = FollowUp.objects.get(pk=create_response.data["id"])
+        self.assertEqual(created.status, FollowUp.Status.OPEN)
+        self.assertIsNone(created.completed_at)
+
+        update_response = self.client.patch(
+            f"/api/follow-ups/{self.follow_up.pk}/",
+            {"status": "completed", "completed_at": timezone.now().isoformat()},
+            format="json",
+        )
+        self.assertEqual(update_response.status_code, 200)
+        self.follow_up.refresh_from_db()
+        self.assertEqual(self.follow_up.status, FollowUp.Status.OPEN)
+        self.assertIsNone(self.follow_up.completed_at)
+        self.assertFalse(AuditEvent.objects.filter(entity_id=self.follow_up.pk).exists())
+
