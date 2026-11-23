@@ -37,10 +37,14 @@ jobs:
         run: |
           python manage.py makemigrations core
           python manage.py migrate --noinput
+          python manage.py makemigrations --check --dry-run
+      - name: Run automated tests
+        run: python manage.py test
       - name: Commit generated migration to PR branch
         if: github.event_name == 'pull_request'
         working-directory: .
         run: |
+          find backend -type d -name __pycache__ -prune -exec rm -rf {} +
           if [ -n "$(git status --porcelain backend/core/migrations)" ]; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
