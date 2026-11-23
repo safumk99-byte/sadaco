@@ -12,7 +12,7 @@ class CustomerSerializer(serializers.ModelSerializer):
             "email", "address", "location", "customer_type", "notes", "is_active",
             "created_at", "updated_at",
         ]
-        read_only_fields = ["id", "created_at", "updated_at"]
+        read_only_fields = ["id", "status", "completed_at", "created_at", "updated_at"]
 
 
 class EnquirySerializer(serializers.ModelSerializer):
@@ -23,7 +23,7 @@ class EnquirySerializer(serializers.ModelSerializer):
             "requested_product_service", "assigned_to", "follow_up_at", "status",
             "notes", "created_by", "created_at", "updated_at",
         ]
-        read_only_fields = ["id", "created_by", "created_at", "updated_at"]
+        read_only_fields = ["id", "created_by", "created_at", "updated_at", "status"]
 
     def validate(self, attrs):
         profile = active_staff_profile(self.context["request"].user)
