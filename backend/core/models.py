@@ -420,9 +420,18 @@ class DesignRevision(UUIDModel, TimeStampedModel):
 
     def save(self, *args, **kwargs):
         if self.pk:
-            old = type(self).objects.filter(pk=self.pk).only("locked_at").first()
-            if old and old.locked_at and self.status != "approved":
-                raise ValidationError("An approved design revision is locked; create a new revision.")
+            previous = type(self).objects.filter(pk=self.pk).first()
+            if previous and previous.locked_at:
+                changed = [
+                    field.name for field in self._meta.concrete_fields
+                    if getattr(previous, field.attname) != getattr(self, field.attname)
+                    and field.name != "updated_at"
+                ]
+                if changed:
+                    raise ValidationError(
+                        "An approved design revision is immutable; create a new revision. "
+                        f"Changed fields: {', '.join(changed)}"
+                    )
         super().save(*args, **kwargs)
 
 
