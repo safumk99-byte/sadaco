@@ -486,6 +486,8 @@ class DesignRevisionFile(UUIDModel):
     objects = DesignRevisionFileManager()
 
     class Meta:
+        base_manager_name = "objects"
+        default_manager_name = "objects"
         constraints = [models.UniqueConstraint(fields=["design_revision", "stored_file"], name="uq_design_revision_file")]
 
     def _assert_revision_unlocked(self):
