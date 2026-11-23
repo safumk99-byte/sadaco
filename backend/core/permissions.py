@@ -8,10 +8,6 @@ from .models import StaffRole
 class IsFounderOrScopedDivisionMember(BasePermission):
     message = "You do not have access to this division."
 
-    def authenticate_header(self, request):
-        # Provide an authentication challenge so unauthenticated denials return HTTP 401.
-        return "Basic"
-
     def has_permission(self, request, view):
         user = request.user
         if not user or not user.is_authenticated:
