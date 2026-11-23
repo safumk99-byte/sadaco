@@ -101,3 +101,16 @@ class EnquiryAPITests(TestCase):
     def test_unauthenticated_api_request_is_denied(self):
         response = self.client.get("/api/enquiries/")
         self.assertEqual(response.status_code, 403)
+
+    def test_authenticated_user_without_staff_profile_is_denied(self):
+        user = get_user_model().objects.create_user(username="no-staff", password="password123")
+        self.client.force_authenticate(user)
+        response = self.client.get("/api/enquiries/")
+        self.assertEqual(response.status_code, 403)
+
+    def test_inactive_staff_is_denied(self):
+        self.staff_a.employment_status = "inactive"
+        self.staff_a.save()
+        self.client.force_authenticate(self.user_a)
+        response = self.client.get("/api/enquiries/")
+        self.assertEqual(response.status_code, 403)
