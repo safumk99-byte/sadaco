@@ -114,3 +114,29 @@ class EnquiryAPITests(TestCase):
         self.client.force_authenticate(self.user_a)
         response = self.client.get("/api/enquiries/")
         self.assertEqual(response.status_code, 403)
+
+    def test_enquiry_cannot_assign_staff_from_other_division(self):
+        self.client.force_authenticate(self.user_a)
+        response = self.client.post("/api/enquiries/", {
+            "enquiry_number": "ENQ-CROSS", "customer": str(self.customer.id),
+            "division": str(self.division_a.id), "source": "phone",
+            "requested_product_service": "Design",
+            "assigned_to": str(self.staff_b.id),
+        }, format="json")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("assigned_to", response.data)
+
+    def test_followup_cannot_assign_staff_from_other_division(self):
+        enquiry = Enquiry.objects.create(
+            enquiry_number="ENQ-FOLLOW", customer=self.customer,
+            division=self.division_a, source=Enquiry.Source.PHONE,
+            requested_product_service="Design", created_by=self.staff_a,
+        )
+        self.client.force_authenticate(self.user_a)
+        response = self.client.post("/api/follow-ups/", {
+            "enquiry": str(enquiry.id),
+            "assigned_to": str(self.staff_b.id),
+            "due_at": (timezone.now() + timezone.timedelta(days=1)).isoformat(),
+        }, format="json")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("assigned_to", response.data)
