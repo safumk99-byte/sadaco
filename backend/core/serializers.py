@@ -1,5 +1,3 @@
-from django.db.models import Q
-from django.utils import timezone
 from rest_framework import serializers
 
 from .models import Customer, Enquiry, FollowUp
@@ -33,6 +31,9 @@ class EnquirySerializer(serializers.ModelSerializer):
         customer = attrs.get("customer", getattr(self.instance, "customer", None))
         if division and not is_founder(profile) and not profile.divisions.filter(pk=division.pk).exists():
             raise serializers.ValidationError({"division": "You are not assigned to this division."})
+        assigned_to = attrs.get("assigned_to", getattr(self.instance, "assigned_to", None))
+        if assigned_to and division and not assigned_to.divisions.filter(pk=division.pk).exists():
+            raise serializers.ValidationError({"assigned_to": "Assignee must belong to the enquiry division."})
         if customer and division:
             if self.instance and (
                 self.instance.customer_id != customer.id or self.instance.division_id != division.id
@@ -52,6 +53,9 @@ class FollowUpSerializer(serializers.ModelSerializer):
         enquiry = attrs.get("enquiry", getattr(self.instance, "enquiry", None))
         if enquiry and not is_founder(profile) and not profile.divisions.filter(pk=enquiry.division_id).exists():
             raise serializers.ValidationError({"enquiry": "You do not have access to this enquiry's division."})
+        assigned_to = attrs.get("assigned_to", getattr(self.instance, "assigned_to", None))
+        if assigned_to and enquiry and not assigned_to.divisions.filter(pk=enquiry.division_id).exists():
+            raise serializers.ValidationError({"assigned_to": "Assignee must belong to the enquiry division."})
         if self.instance and enquiry and self.instance.enquiry_id != enquiry.id:
             raise serializers.ValidationError({"enquiry": "A follow-up cannot be moved to another enquiry."})
         return attrs
