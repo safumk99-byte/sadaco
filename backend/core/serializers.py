@@ -46,7 +46,7 @@ class FollowUpSerializer(serializers.ModelSerializer):
     class Meta:
         model = FollowUp
         fields = ["id", "enquiry", "assigned_to", "due_at", "status", "note", "completed_at", "created_at", "updated_at"]
-        read_only_fields = ["id", "created_at", "updated_at"]
+        read_only_fields = ["id", "status", "completed_at", "created_at", "updated_at"]
 
     def validate(self, attrs):
         profile = active_staff_profile(self.context["request"].user)
