@@ -10,6 +10,9 @@ on:
       - "backend/**"
       - ".github/workflows/backend-ci.yml"
 
+permissions:
+  contents: write
+
 jobs:
   django-check:
     runs-on: ubuntu-latest
@@ -18,6 +21,9 @@ jobs:
         working-directory: backend
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -27,7 +33,18 @@ jobs:
         run: pip install -r requirements.txt
       - name: Django system check
         run: python manage.py check
-      - name: Generate and apply temporary CI migrations
+      - name: Generate and apply initial migrations
         run: |
           python manage.py makemigrations core
           python manage.py migrate --noinput
+      - name: Commit generated migration to PR branch
+        if: github.event_name == 'pull_request'
+        working-directory: .
+        run: |
+          if [ -n "$(git status --porcelain backend/core/migrations)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add backend/core/migrations
+            git commit -m "chore: add generated Phase 1 initial migration"
+            git push origin HEAD:${{ github.head_ref }}
+          fi
