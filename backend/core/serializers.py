@@ -1,6 +1,9 @@
+from django.db.models import Q
+from django.utils import timezone
 from rest_framework import serializers
 
 from .models import Customer, Enquiry, FollowUp
+from .permissions import active_staff_profile, is_founder
 
 
 class CustomerSerializer(serializers.ModelSerializer):
@@ -25,18 +28,15 @@ class EnquirySerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "created_by", "created_at", "updated_at"]
 
     def validate(self, attrs):
-        request = self.context["request"]
-        profile = request.user.staff_profile
+        profile = active_staff_profile(self.context["request"].user)
         division = attrs.get("division", getattr(self.instance, "division", None))
         customer = attrs.get("customer", getattr(self.instance, "customer", None))
-        if division and not profile.role_assignments.filter(
-            role__code__in=["founder", "super_admin"],
-            division__isnull=True,
-            valid_until__isnull=True,
-        ).exists() and not profile.divisions.filter(pk=division.pk).exists():
+        if division and not is_founder(profile) and not profile.divisions.filter(pk=division.pk).exists():
             raise serializers.ValidationError({"division": "You are not assigned to this division."})
-        if self.instance and customer and division:
-            if self.instance.customer_id != customer.id or self.instance.division_id != division.id:
+        if customer and division:
+            if self.instance and (
+                self.instance.customer_id != customer.id or self.instance.division_id != division.id
+            ):
                 raise serializers.ValidationError("Customer and division cannot be changed after enquiry creation.")
         return attrs
 
@@ -47,11 +47,11 @@ class FollowUpSerializer(serializers.ModelSerializer):
         fields = ["id", "enquiry", "assigned_to", "due_at", "status", "note", "completed_at", "created_at", "updated_at"]
         read_only_fields = ["id", "created_at", "updated_at"]
 
-    def validate_enquiry(self, enquiry):
-        profile = self.context["request"].user.staff_profile
-        is_founder = profile.role_assignments.filter(
-            role__code__in=["founder", "super_admin"], division__isnull=True, valid_until__isnull=True
-        ).exists()
-        if not is_founder and not profile.divisions.filter(pk=enquiry.division_id).exists():
-            raise serializers.ValidationError("You do not have access to this enquiry's division.")
-        return enquiry
+    def validate(self, attrs):
+        profile = active_staff_profile(self.context["request"].user)
+        enquiry = attrs.get("enquiry", getattr(self.instance, "enquiry", None))
+        if enquiry and not is_founder(profile) and not profile.divisions.filter(pk=enquiry.division_id).exists():
+            raise serializers.ValidationError({"enquiry": "You do not have access to this enquiry's division."})
+        if self.instance and enquiry and self.instance.enquiry_id != enquiry.id:
+            raise serializers.ValidationError({"enquiry": "A follow-up cannot be moved to another enquiry."})
+        return attrs
