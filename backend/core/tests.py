@@ -8,7 +8,7 @@ from rest_framework.test import APIClient
 
 from .models import (
     Customer, DesignRecord, DesignRevision, Division, Enquiry, JobCard,
-    SalesOrder, StaffDivision, StaffProfile,
+    SalesOrder, StaffDivision, StaffProfile, StoredFile, DesignRevisionFile,
 )
 
 
@@ -42,6 +42,51 @@ class DomainModelTests(TestCase):
         )
         with self.assertRaises(ValidationError):
             job.full_clean()
+
+    def test_locked_revision_file_attachments_cannot_be_added_or_removed(self):
+        customer = Customer.objects.create(customer_code="C-003", display_name="Test Customer 3")
+        order = SalesOrder.objects.create(
+            order_number="SAD-2026-0003", customer=customer, division=self.division,
+            created_by=self.staff, subtotal=Decimal("100"), grand_total=Decimal("100"),
+            balance_due=Decimal("100"),
+        )
+        design = DesignRecord.objects.create(sales_order=order, title="Approved artwork")
+        revision = DesignRevision.objects.create(
+            design_record=design, revision_number=1, status="approved",
+            locked_at=timezone.now(), created_by=self.staff,
+        )
+        stored_file = StoredFile.objects.create(
+            storage_key="designs/approved-artwork.pdf",
+            original_name="approved-artwork.pdf",
+            mime_type="application/pdf",
+            byte_size=1024,
+            uploaded_by=self.staff,
+        )
+
+        with self.assertRaises(ValidationError):
+            revision.files.add(stored_file)
+        with self.assertRaises(ValidationError):
+            DesignRevisionFile.objects.create(
+                design_revision=revision, stored_file=stored_file
+            )
+
+        unlocked = DesignRevision.objects.create(
+            design_record=design, revision_number=2, status="pending",
+            created_by=self.staff,
+        )
+        unlocked.files.add(stored_file)
+        unlocked.locked_at = timezone.now()
+        unlocked.status = "approved"
+        unlocked.save()
+
+        with self.assertRaises(ValidationError):
+            unlocked.files.remove(stored_file)
+        with self.assertRaises(ValidationError):
+            unlocked.files.clear()
+        with self.assertRaises(ValidationError):
+            DesignRevisionFile.objects.filter(
+                design_revision=unlocked
+            ).delete()
 
     def test_approved_revision_is_immutable(self):
         customer = Customer.objects.create(customer_code="C-002", display_name="Test Customer 2")
