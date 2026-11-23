@@ -435,12 +435,74 @@ class DesignRevision(UUIDModel, TimeStampedModel):
         super().save(*args, **kwargs)
 
 
+class DesignRevisionFileQuerySet(models.QuerySet):
+    def _assert_revisions_unlocked(self, revision_ids=None):
+        locked = DesignRevision.objects.filter(locked_at__isnull=False)
+        if revision_ids is not None:
+            locked = locked.filter(pk__in=revision_ids)
+        if self.filter(design_revision__in=locked).exists():
+            raise ValidationError(
+                "Files attached to an approved design revision are immutable."
+            )
+
+    def delete(self):
+        self._assert_revisions_unlocked()
+        return super().delete()
+
+    def update(self, **kwargs):
+        self._assert_revisions_unlocked()
+        if "design_revision" in kwargs or "design_revision_id" in kwargs:
+            target_id = kwargs.get("design_revision_id", kwargs.get("design_revision"))
+            if target_id is not None and DesignRevision.objects.filter(
+                pk=target_id, locked_at__isnull=False
+            ).exists():
+                raise ValidationError(
+                    "Files cannot be attached to an approved design revision."
+                )
+        return super().update(**kwargs)
+
+    def bulk_create(self, objs, **kwargs):
+        revision_ids = {
+            obj.design_revision_id for obj in objs
+            if getattr(obj, "design_revision_id", None) is not None
+        }
+        if DesignRevision.objects.filter(
+            pk__in=revision_ids, locked_at__isnull=False
+        ).exists():
+            raise ValidationError(
+                "Files cannot be attached to an approved design revision."
+            )
+        return super().bulk_create(objs, **kwargs)
+
+
+class DesignRevisionFileManager(models.Manager.from_queryset(DesignRevisionFileQuerySet)):
+    pass
+
+
 class DesignRevisionFile(UUIDModel):
     design_revision = models.ForeignKey(DesignRevision, on_delete=models.PROTECT)
     stored_file = models.ForeignKey(StoredFile, on_delete=models.PROTECT)
 
+    objects = DesignRevisionFileManager()
+
     class Meta:
         constraints = [models.UniqueConstraint(fields=["design_revision", "stored_file"], name="uq_design_revision_file")]
+
+    def _assert_revision_unlocked(self):
+        if self.design_revision_id and DesignRevision.objects.filter(
+            pk=self.design_revision_id, locked_at__isnull=False
+        ).exists():
+            raise ValidationError(
+                "Files attached to an approved design revision are immutable."
+            )
+
+    def save(self, *args, **kwargs):
+        self._assert_revision_unlocked()
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        self._assert_revision_unlocked()
+        return super().delete(*args, **kwargs)
 
 
 class DesignApproval(UUIDModel):
