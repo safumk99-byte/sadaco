@@ -140,3 +140,60 @@ class EnquiryAPITests(TestCase):
         }, format="json")
         self.assertEqual(response.status_code, 400)
         self.assertIn("assigned_to", response.data)
+
+
+class CRMServiceTests(TestCase):
+    def setUp(self):
+        self.division = Division.objects.create(code="service-test", name="Service Test Division")
+        user = get_user_model().objects.create_user(username="crm-actor", password="password123")
+        self.actor = StaffProfile.objects.create(user=user, display_name="CRM Actor")
+        self.customer = Customer.objects.create(customer_code="CRM-001", display_name="CRM Customer")
+        self.enquiry = Enquiry.objects.create(
+            enquiry_number="CRM-ENQ-001", customer=self.customer,
+            division=self.division, source=Enquiry.Source.PHONE,
+            requested_product_service="Test work", created_by=self.actor,
+        )
+
+    def test_valid_enquiry_transition_creates_audit_event(self):
+        from .models import AuditEvent
+        from .services import transition_enquiry
+        updated = transition_enquiry(
+            enquiry_id=self.enquiry.id,
+            target_status=Enquiry.Status.CONTACTED,
+            actor=self.actor,
+            reason="Initial customer contact",
+        )
+        self.assertEqual(updated.status, Enquiry.Status.CONTACTED)
+        event = AuditEvent.objects.get(entity_id=self.enquiry.id)
+        self.assertEqual(event.action, "status_changed")
+        self.assertEqual(event.before_data["status"], Enquiry.Status.NEW)
+        self.assertEqual(event.after_data["status"], Enquiry.Status.CONTACTED)
+
+    def test_invalid_enquiry_transition_is_rejected_without_audit(self):
+        from django.core.exceptions import ValidationError
+        from .models import AuditEvent
+        from .services import transition_enquiry
+        with self.assertRaises(ValidationError):
+            transition_enquiry(
+                enquiry_id=self.enquiry.id,
+                target_status=Enquiry.Status.CONFIRMED,
+                actor=self.actor,
+            )
+        self.enquiry.refresh_from_db()
+        self.assertEqual(self.enquiry.status, Enquiry.Status.NEW)
+        self.assertFalse(AuditEvent.objects.exists())
+
+    def test_followup_can_only_be_completed_once(self):
+        from django.core.exceptions import ValidationError
+        from .models import AuditEvent, FollowUp
+        from .services import complete_follow_up
+        follow_up = FollowUp.objects.create(
+            enquiry=self.enquiry, due_at=timezone.now() + timezone.timedelta(days=1),
+        )
+        completed = complete_follow_up(follow_up_id=follow_up.id, actor=self.actor, note="Called customer")
+        self.assertEqual(completed.status, FollowUp.Status.COMPLETED)
+        self.assertIsNotNone(completed.completed_at)
+        self.assertEqual(AuditEvent.objects.filter(entity_id=follow_up.id).count(), 1)
+        with self.assertRaises(ValidationError):
+            complete_follow_up(follow_up_id=follow_up.id, actor=self.actor)
+        self.assertEqual(AuditEvent.objects.filter(entity_id=follow_up.id).count(), 1)
