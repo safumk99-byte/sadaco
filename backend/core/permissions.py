@@ -49,6 +49,10 @@ def has_permission(profile, permission_code, *, division_id=None, department_id=
         ).first()
         if division_id is None:
             return False
+    elif department_id and not Department.objects.filter(
+        pk=department_id, division_id=division_id
+    ).exists():
+        return False
 
     now = timezone.now()
     assignments = StaffRole.objects.filter(
