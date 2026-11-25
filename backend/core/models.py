@@ -852,9 +852,39 @@ class DesignApproval(UUIDModel):
 
     objects = DesignApprovalManager()
 
+    def clean(self):
+        errors = {}
+        if self.reviewer_type not in {"customer", "manager"}:
+            errors["reviewer_type"] = "Reviewer type must be customer or manager."
+        if self.decision not in {"approved", "revision_required"}:
+            errors["decision"] = "Decision must be approved or revision_required."
+        if not self.reviewed_by_id:
+            errors["reviewed_by"] = "An active Manager or Founder must record the approval."
+        if not self.reviewed_at:
+            errors["reviewed_at"] = "Approval timestamp is required."
+        if self.design_revision_id and self.reviewed_by_id:
+            actor = self.reviewed_by
+            from .permissions import has_active_role, is_founder
+
+            division_id = self.design_revision.design_record.sales_order.division_id
+            if actor.employment_status != "active" or not (
+                is_founder(actor)
+                or has_active_role(actor, "manager", division_id=division_id)
+            ):
+                errors["reviewed_by"] = "Only an active Manager or global Founder/Super Admin may record design approval."
+            if self.reviewer_type == "manager" and self.decision == "approved":
+                latest_customer_approval = self.design_revision.approvals.filter(
+                    reviewer_type="customer"
+                ).order_by("-reviewed_at", "-id").first()
+                if not latest_customer_approval or latest_customer_approval.decision != "approved":
+                    errors["decision"] = "Manager approval requires the latest customer decision to be approved."
+        if errors:
+            raise ValidationError(errors)
+
     def save(self, *args, **kwargs):
         if not self._state.adding:
             raise ValidationError("Design approval history is immutable; record a new decision.")
+        self.full_clean()
         super().save(*args, **kwargs)
 
     def delete(self, *args, **kwargs):
