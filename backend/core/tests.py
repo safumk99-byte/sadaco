@@ -86,12 +86,6 @@ class DomainModelTests(TestCase):
             with transaction.atomic():
                 stored_file.design_revisions.add(revision)
         with self.assertRaises(ValidationError):
-            with transaction.atomic():
-                stored_file.design_revisions.remove(revision)
-        with self.assertRaises(ValidationError):
-            with transaction.atomic():
-                stored_file.design_revisions.clear()
-        with self.assertRaises(ValidationError):
             DesignRevisionFile.objects.create(
                 design_revision=revision, stored_file=stored_file
             )
@@ -105,6 +99,12 @@ class DomainModelTests(TestCase):
         unlocked.status = "approved"
         unlocked.save()
 
+        with self.assertRaises(ValidationError):
+            with transaction.atomic():
+                stored_file.design_revisions.remove(unlocked)
+        with self.assertRaises(ValidationError):
+            with transaction.atomic():
+                stored_file.design_revisions.clear()
         with self.assertRaises(ValidationError):
             with transaction.atomic():
                 unlocked.files.remove(stored_file)
