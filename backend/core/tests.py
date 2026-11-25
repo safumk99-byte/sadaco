@@ -1,4 +1,5 @@
 from decimal import Decimal
+import uuid
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
@@ -266,6 +267,21 @@ class DomainModelTests(TestCase):
         revision = DesignRevision.objects.create(
             design_record=design, revision_number=1, status="submitted", created_by=self.staff,
         )
+        stored_file = StoredFile.objects.create(
+            storage_key="designs/db-guard-original.pdf",
+            original_name="db-guard-original.pdf",
+            mime_type="application/pdf",
+            byte_size=1024,
+            uploaded_by=self.staff,
+        )
+        replacement_file = StoredFile.objects.create(
+            storage_key="designs/db-guard-replacement.pdf",
+            original_name="db-guard-replacement.pdf",
+            mime_type="application/pdf",
+            byte_size=1024,
+            uploaded_by=self.staff,
+        )
+        revision.files.add(stored_file)
         with self.assertRaises(DatabaseError):
             with transaction.atomic():
                 with connection.cursor() as cursor:
@@ -285,6 +301,30 @@ class DomainModelTests(TestCase):
             revision_id=revision.pk, reviewer_type="manager",
             decision="approved", actor=self.staff,
         )
+        attachment = DesignRevisionFile.objects.get(
+            design_revision=revision, stored_file=stored_file
+        )
+        with self.assertRaises(DatabaseError):
+            with transaction.atomic():
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        "INSERT INTO core_designrevisionfile (id, design_revision_id, stored_file_id) VALUES (%s, %s, %s)",
+                        [uuid.uuid4().hex, revision.pk.hex, replacement_file.pk.hex],
+                    )
+        with self.assertRaises(DatabaseError):
+            with transaction.atomic():
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        "UPDATE core_designrevisionfile SET stored_file_id = %s WHERE id = %s",
+                        [replacement_file.pk.hex, attachment.pk.hex],
+                    )
+        with self.assertRaises(DatabaseError):
+            with transaction.atomic():
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        "DELETE FROM core_designrevisionfile WHERE id = %s",
+                        [attachment.pk.hex],
+                    )
         with self.assertRaises(DatabaseError):
             with transaction.atomic():
                 with connection.cursor() as cursor:
