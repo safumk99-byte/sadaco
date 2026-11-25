@@ -10,7 +10,8 @@ from rest_framework.test import APIClient
 
 from .models import (
     Customer, DesignRecord, DesignRevision, Division, Enquiry, JobCard,
-    SalesOrder, StaffDivision, StaffProfile, StoredFile, DesignRevisionFile, Role, StaffRole,
+    OrderAssignment, ProductionStage, ProductionUpdate, SalesOrder, StaffDivision,
+    StaffProfile, StaffTask, StoredFile, DesignRevisionFile, Role, StaffRole,
 )
 
 
@@ -145,6 +146,76 @@ class DomainModelTests(TestCase):
                         'UPDATE "core_jobcard" SET "approved_design_revision_id" = %s WHERE "id" = %s',
                         [unapproved_revision.pk, valid_job.pk],
                     )
+
+    def test_production_and_task_assignments_must_match_division(self):
+        other_division = Division.objects.create(code="cnc", name="SADACO CNC")
+        other_user = get_user_model().objects.create_user(
+            username="other-division-staff", password="test-password-123"
+        )
+        other_staff = StaffProfile.objects.create(
+            user=other_user, display_name="Other Division Staff"
+        )
+        StaffDivision.objects.create(staff=other_staff, division=other_division)
+
+        customer = Customer.objects.create(
+            customer_code="C-DIV-GUARD", display_name="Division Guard Customer"
+        )
+        order = SalesOrder.objects.create(
+            order_number="SAD-DIV-GUARD", customer=customer, division=self.division,
+            created_by=self.staff, subtotal=Decimal("100"), grand_total=Decimal("100"),
+            balance_due=Decimal("100"),
+        )
+        design = DesignRecord.objects.create(sales_order=order, title="Division guard design")
+        revision = DesignRevision.objects.create(
+            design_record=design, revision_number=1, status="pending", created_by=self.staff,
+        )
+        manager_role = Role.objects.create(code="manager", name="Manager")
+        StaffRole.objects.create(staff=self.staff, role=manager_role, division=self.division)
+        from .services import record_design_approval
+        record_design_approval(
+            revision_id=revision.pk, reviewer_type="customer",
+            decision="approved", actor=self.staff,
+        )
+        record_design_approval(
+            revision_id=revision.pk, reviewer_type="manager",
+            decision="approved", actor=self.staff,
+        )
+        revision.refresh_from_db()
+        job = JobCard.objects.create(
+            job_number="JOB-DIV-GUARD", sales_order=order,
+            approved_design_revision=revision, division=self.division,
+        )
+
+        with self.assertRaises(ValidationError):
+            DesignRecord(
+                sales_order=order, title="Wrong division assignee", assigned_to=other_staff
+            ).save()
+        with self.assertRaises(ValidationError):
+            OrderAssignment(
+                sales_order=order, staff=other_staff, assigned_by=self.staff,
+                assignment_type="production",
+            ).save()
+        with self.assertRaises(ValidationError):
+            ProductionStage(
+                job_card=job, stage_code="cutting", stage_name="Cutting",
+                sequence_number=1, assigned_to=other_staff,
+            ).save()
+
+        stage = ProductionStage.objects.create(
+            job_card=job, stage_code="polishing", stage_name="Polishing",
+            sequence_number=1,
+        )
+        with self.assertRaises(ValidationError):
+            ProductionUpdate(
+                production_stage=stage, staff=other_staff, status="in_progress"
+            ).save()
+        with self.assertRaises(ValidationError):
+            StaffTask(
+                task_number="TASK-DIV-GUARD", division=self.division,
+                sales_order=order, job_card=job, production_stage=stage,
+                assigned_to=other_staff, assigned_by=self.staff,
+                title="Cross-division task", priority="normal",
+            ).save()
 
     def test_locked_revision_file_attachments_cannot_be_added_or_removed(self):
         customer = Customer.objects.create(customer_code="C-003", display_name="Test Customer 3")
