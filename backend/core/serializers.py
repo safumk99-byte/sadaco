@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
 from .models import Customer, DesignApproval, DesignRevision, Enquiry, FollowUp
+from .models import staff_has_division_membership
 from .permissions import active_staff_profile, is_founder
 
 
@@ -32,7 +33,7 @@ class EnquirySerializer(serializers.ModelSerializer):
         if division and not is_founder(profile) and not profile.divisions.filter(pk=division.pk).exists():
             raise serializers.ValidationError({"division": "You are not assigned to this division."})
         assigned_to = attrs.get("assigned_to", getattr(self.instance, "assigned_to", None))
-        if assigned_to and division and not assigned_to.divisions.filter(pk=division.pk).exists():
+        if assigned_to and division and not staff_has_division_membership(assigned_to.pk, division.pk):
             raise serializers.ValidationError({"assigned_to": "Assignee must belong to the enquiry division."})
         if customer and division:
             if self.instance and (
@@ -54,7 +55,7 @@ class FollowUpSerializer(serializers.ModelSerializer):
         if enquiry and not is_founder(profile) and not profile.divisions.filter(pk=enquiry.division_id).exists():
             raise serializers.ValidationError({"enquiry": "You do not have access to this enquiry's division."})
         assigned_to = attrs.get("assigned_to", getattr(self.instance, "assigned_to", None))
-        if assigned_to and enquiry and not assigned_to.divisions.filter(pk=enquiry.division_id).exists():
+        if assigned_to and enquiry and not staff_has_division_membership(assigned_to.pk, enquiry.division_id):
             raise serializers.ValidationError({"assigned_to": "Assignee must belong to the enquiry division."})
         if self.instance and enquiry and self.instance.enquiry_id != enquiry.id:
             raise serializers.ValidationError({"enquiry": "A follow-up cannot be moved to another enquiry."})
