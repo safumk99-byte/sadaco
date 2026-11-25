@@ -174,14 +174,33 @@ class StaffDivision(UUIDModel):
         constraints = [models.UniqueConstraint(fields=["staff", "division"], name="uq_staff_division")]
 
 
-def staff_has_division_access(staff_id, division_id):
-    """Return whether staff is assigned to a division or holds a global admin role."""
+def staff_is_active(staff_id):
+    """Return whether a staff profile is currently active."""
+    return bool(
+        staff_id
+        and StaffProfile.objects.filter(
+            pk=staff_id, employment_status=StaffProfile.EmploymentStatus.ACTIVE
+        ).exists()
+    )
+
+
+def staff_has_division_membership(staff_id, division_id):
+    """Return whether active staff is explicitly assigned to a division."""
     if not staff_id or not division_id:
         return False
-    now = timezone.now()
     return StaffDivision.objects.filter(
-        staff_id=staff_id, division_id=division_id
-    ).exists() or StaffRole.objects.filter(
+        staff_id=staff_id,
+        division_id=division_id,
+        staff__employment_status=StaffProfile.EmploymentStatus.ACTIVE,
+    ).exists()
+
+
+def staff_has_division_access(staff_id, division_id):
+    """Return whether active staff is assigned to a division or holds a global admin role."""
+    if not staff_id or not division_id or not staff_is_active(staff_id):
+        return False
+    now = timezone.now()
+    return staff_has_division_membership(staff_id, division_id) or StaffRole.objects.filter(
         staff_id=staff_id,
         role__code__in=["founder", "super_admin"],
         division__isnull=True,
@@ -247,9 +266,7 @@ class Enquiry(UUIDModel, TimeStampedModel):
 
     def clean(self):
         errors = {}
-        if self.assigned_to_id and self.division_id and not StaffDivision.objects.filter(
-            staff_id=self.assigned_to_id, division_id=self.division_id
-        ).exists():
+        if self.assigned_to_id and self.division_id and not staff_has_division_membership(self.assigned_to_id, self.division_id):
             errors["assigned_to"] = "Assignee must belong to the enquiry division."
         if self.created_by_id and self.division_id and not staff_has_division_access(
             self.created_by_id, self.division_id
@@ -280,9 +297,7 @@ class FollowUp(UUIDModel, TimeStampedModel):
         indexes = [models.Index(fields=["status", "due_at"], name="ix_followup_status_due")]
 
     def clean(self):
-        if self.assigned_to_id and self.enquiry_id and not StaffDivision.objects.filter(
-            staff_id=self.assigned_to_id, division_id=self.enquiry.division_id
-        ).exists():
+        if self.assigned_to_id and self.enquiry_id and not staff_has_division_membership(self.assigned_to_id, self.enquiry.division_id):
             raise ValidationError({
                 "assigned_to": "Assignee must belong to the enquiry division."
             })
@@ -546,7 +561,7 @@ class OrderAssignment(UUIDModel):
             division_id = self.sales_order.division_id
             for field in ("staff", "assigned_by"):
                 staff_id = getattr(self, f"{field}_id")
-                if staff_id and not (staff_has_division_access(staff_id, division_id) if field == "assigned_by" else StaffDivision.objects.filter(staff_id=staff_id, division_id=division_id).exists()):
+                if staff_id and not (staff_has_division_access(staff_id, division_id) if field == "assigned_by" else staff_has_division_membership(staff_id, division_id)):
                     raise ValidationError({field: "Assigned staff must belong to the sales order division; assigner must belong or hold a global Founder/Super Admin role."})
 
     def save(self, *args, **kwargs):
@@ -583,9 +598,7 @@ class DesignRecord(UUIDModel, TimeStampedModel):
     assigned_to = models.ForeignKey(StaffProfile, on_delete=models.PROTECT, null=True, blank=True)
 
     def clean(self):
-        if self.assigned_to_id and self.sales_order_id and not StaffDivision.objects.filter(
-            staff_id=self.assigned_to_id, division_id=self.sales_order.division_id
-        ).exists():
+        if self.assigned_to_id and self.sales_order_id and not staff_has_division_membership(self.assigned_to_id, self.sales_order.division_id):
             raise ValidationError({"assigned_to": "Designer must belong to the sales order division."})
 
     def save(self, *args, **kwargs):
@@ -1001,9 +1014,7 @@ class ProductionStage(UUIDModel, TimeStampedModel):
         constraints = [models.UniqueConstraint(fields=["job_card", "sequence_number"], name="uq_stage_sequence")]
 
     def clean(self):
-        if self.assigned_to_id and self.job_card_id and not StaffDivision.objects.filter(
-            staff_id=self.assigned_to_id, division_id=self.job_card.division_id
-        ).exists():
+        if self.assigned_to_id and self.job_card_id and not staff_has_division_membership(self.assigned_to_id, self.job_card.division_id):
             raise ValidationError({"assigned_to": "Production assignee must belong to the job card division."})
 
     def save(self, *args, **kwargs):
@@ -1022,9 +1033,7 @@ class ProductionUpdate(UUIDModel):
     def clean(self):
         if self.staff_id and self.production_stage_id:
             division_id = self.production_stage.job_card.division_id
-            if not StaffDivision.objects.filter(
-                staff_id=self.staff_id, division_id=division_id
-            ).exists():
+            if not staff_has_division_membership(self.staff_id, division_id):
                 raise ValidationError({"staff": "Reporting staff member must belong to the job card division."})
 
     def save(self, *args, **kwargs):
@@ -1103,9 +1112,7 @@ class TaskUpdate(UUIDModel):
     recorded_at = models.DateTimeField(default=timezone.now)
 
     def clean(self):
-        if self.staff_task_id and self.reported_by_id and not StaffDivision.objects.filter(
-            staff_id=self.reported_by_id, division_id=self.staff_task.division_id
-        ).exists():
+        if self.staff_task_id and self.reported_by_id and not staff_has_division_membership(self.reported_by_id, self.staff_task.division_id):
             raise ValidationError({
                 "reported_by": "Task update reporter must belong to the staff task division."
             })
