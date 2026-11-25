@@ -109,9 +109,13 @@ class DesignRevisionViewSet(viewsets.ReadOnlyModelViewSet):
         ).prefetch_related("approvals")
         if not is_founder(profile):
             manager_division_ids = active_role_division_ids(profile, "manager")
+            designer_division_ids = active_role_division_ids(profile, "designer")
             queryset = queryset.filter(
-                Q(design_record__sales_order__division__in=profile.divisions.all())
-                | Q(design_record__sales_order__division_id__in=manager_division_ids)
+                Q(design_record__sales_order__division_id__in=manager_division_ids)
+                | Q(
+                    design_record__assigned_to=profile,
+                    design_record__sales_order__division_id__in=designer_division_ids,
+                )
             ).distinct()
         return queryset
 
