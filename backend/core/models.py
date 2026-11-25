@@ -4,6 +4,8 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import Q
+from django.db.models.signals import m2m_changed
+from django.dispatch import receiver
 from django.utils import timezone
 
 
@@ -505,6 +507,30 @@ class DesignRevisionFile(UUIDModel):
     def delete(self, *args, **kwargs):
         self._assert_revision_unlocked()
         return super().delete(*args, **kwargs)
+
+
+@receiver(m2m_changed, sender=DesignRevision.files.through)
+def protect_locked_revision_file_attachments(sender, instance, action, reverse, pk_set, **kwargs):
+    if action not in {"pre_add", "pre_remove", "pre_clear"}:
+        return
+
+    if reverse:
+        revision_ids = set(pk_set or [])
+        if action == "pre_clear":
+            revision_ids = set(
+                sender.objects.filter(stored_file=instance).values_list(
+                    "design_revision_id", flat=True
+                )
+            )
+    else:
+        revision_ids = {instance.pk}
+
+    if revision_ids and DesignRevision.objects.filter(
+        pk__in=revision_ids, locked_at__isnull=False
+    ).exists():
+        raise ValidationError(
+            "Files attached to an approved design revision are immutable."
+        )
 
 
 class DesignApproval(UUIDModel):
