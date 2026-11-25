@@ -1,17 +1,13 @@
 name: Backend CI
 
 on:
-  push:
-    paths:
-      - "backend/**"
-      - ".github/workflows/backend-ci.yml"
   pull_request:
     paths:
       - "backend/**"
       - ".github/workflows/backend-ci.yml"
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   django-check:
@@ -21,9 +17,6 @@ jobs:
         working-directory: backend
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.head_ref || github.ref_name }}
-          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -33,26 +26,12 @@ jobs:
         run: pip install -r requirements.txt
       - name: Django system check
         run: python manage.py check
-      - name: Generate and apply initial migrations
-        run: |
-          python manage.py makemigrations core
-          python manage.py migrate --noinput
-          python manage.py makemigrations --check --dry-run
-      - name: Run automated tests
+      - name: Check migration consistency
+        run: python manage.py makemigrations --check --dry-run
+      - name: Apply SQLite migrations
+        run: python manage.py migrate --noinput
+      - name: Run automated tests on SQLite
         run: python manage.py test
-
-      - name: Commit generated migration to PR branch
-        if: github.event_name == 'pull_request'
-        working-directory: .
-        run: |
-          find backend -type d -name __pycache__ -prune -exec rm -rf {} +
-          if [ -n "$(git status --porcelain backend/core/migrations)" ]; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add backend/core/migrations
-            git commit -m "chore: add generated Phase 1 initial migration"
-            git push origin HEAD:${{ github.head_ref }}
-          fi
 
   postgres-check:
     needs: django-check
@@ -80,8 +59,6 @@ jobs:
       DATABASE_URL: postgresql://sadaco_ci:sadaco_ci@127.0.0.1:5432/sadaco_ci
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.head_ref || github.ref_name }}
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -91,10 +68,9 @@ jobs:
         run: pip install -r requirements.txt
       - name: Django system check
         run: python manage.py check
+      - name: Check migration consistency
+        run: python manage.py makemigrations --check --dry-run
       - name: Apply PostgreSQL migrations
-        run: |
-          python manage.py migrate --noinput
-          python manage.py makemigrations --check --dry-run
+        run: python manage.py migrate --noinput
       - name: Run automated tests on PostgreSQL
         run: python manage.py test
-
