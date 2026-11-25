@@ -22,6 +22,49 @@ class DomainModelTests(TestCase):
         self.staff = StaffProfile.objects.create(user=self.user, display_name="Test Designer")
         StaffDivision.objects.create(staff=self.staff, division=self.division)
 
+    def test_global_founder_can_create_sales_order_without_staff_division_membership(self):
+        founder_user = get_user_model().objects.create_user(username="global-founder", password="test-password-123")
+        founder = StaffProfile.objects.create(user=founder_user, display_name="Global Founder")
+        founder_role = Role.objects.create(code="founder", name="Founder")
+        StaffRole.objects.create(staff=founder, role=founder_role)
+        customer = Customer.objects.create(customer_code="GLOBAL-FOUNDER-C", display_name="Founder Customer")
+
+        order = SalesOrder.objects.create(
+            order_number="SAD-GLOBAL-FOUNDER", customer=customer, division=self.division,
+            created_by=founder, subtotal=Decimal("100"), grand_total=Decimal("100"),
+            balance_due=Decimal("100"),
+        )
+        self.assertEqual(order.created_by_id, founder.pk)
+
+    def test_division_scoped_founder_is_not_global(self):
+        founder_user = get_user_model().objects.create_user(username="scoped-founder", password="test-password-123")
+        founder = StaffProfile.objects.create(user=founder_user, display_name="Scoped Founder")
+        founder_role = Role.objects.create(code="founder", name="Founder")
+        StaffRole.objects.create(staff=founder, role=founder_role, division=self.division)
+
+        from .permissions import is_founder
+        self.assertFalse(is_founder(founder))
+        customer = Customer.objects.create(customer_code="SCOPED-FOUNDER-C", display_name="Scoped Founder Customer")
+        with self.assertRaises(ValidationError):
+            SalesOrder.objects.create(
+                order_number="SAD-SCOPED-FOUNDER", customer=customer, division=self.division,
+                created_by=founder, subtotal=Decimal("100"), grand_total=Decimal("100"),
+                balance_due=Decimal("100"),
+            )
+
+    def test_global_founder_database_guard_allows_sales_order_creator(self):
+        founder_user = get_user_model().objects.create_user(username="global-founder-db", password="test-password-123")
+        founder = StaffProfile.objects.create(user=founder_user, display_name="Global Founder DB")
+        founder_role = Role.objects.create(code="super_admin", name="Super Admin")
+        StaffRole.objects.create(staff=founder, role=founder_role)
+        customer = Customer.objects.create(customer_code="GLOBAL-DB-C", display_name="Global DB Customer")
+        order = SalesOrder.objects.create(
+            order_number="SAD-GLOBAL-DB", customer=customer, division=self.division,
+            created_by=founder, subtotal=Decimal("100"), grand_total=Decimal("100"),
+            balance_due=Decimal("100"),
+        )
+        self.assertTrue(SalesOrder.objects.filter(pk=order.pk).exists())
+
     def test_department_name_is_unique_within_division(self):
         from .models import Department
         Department.objects.create(division=self.division, name="Design")
