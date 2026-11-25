@@ -16,6 +16,8 @@ def active_staff_profile(user):
 
 
 def is_founder(profile):
+    if profile is None or profile.employment_status != "active":
+        return False
     now = timezone.now()
     return StaffRole.objects.filter(
         staff=profile,
