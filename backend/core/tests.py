@@ -58,6 +58,32 @@ class DomainModelTests(TestCase):
         with self.assertRaises(ValidationError):
             job.save()
 
+    def test_job_card_bulk_create_rejects_unapproved_design_revision(self):
+        customer = Customer.objects.create(customer_code="C-BULK-001", display_name="Bulk Test Customer")
+        order = SalesOrder.objects.create(
+            order_number="SAD-BULK-0001", customer=customer, division=self.division,
+            created_by=self.staff, subtotal=Decimal("100"), grand_total=Decimal("100"),
+            balance_due=Decimal("100"),
+        )
+        design = DesignRecord.objects.create(sales_order=order, title="Unapproved artwork")
+        revision = DesignRevision.objects.create(
+            design_record=design, revision_number=1, status="submitted", created_by=self.staff,
+        )
+        job = JobCard(
+            job_number="JOB-BULK-001", sales_order=order,
+            approved_design_revision=revision, division=self.division,
+        )
+        with self.assertRaises(ValidationError):
+            JobCard.objects.bulk_create([job])
+        self.assertFalse(JobCard.objects.filter(job_number="JOB-BULK-001").exists())
+
+    def test_job_card_queryset_bulk_mutations_are_disabled(self):
+        job = JobCard(job_number="JOB-BULK-UPDATE", division=self.division)
+        with self.assertRaises(ValidationError):
+            JobCard.objects.filter(job_number="missing").update(status="released")
+        with self.assertRaises(ValidationError):
+            JobCard.objects.bulk_update([job], ["status"])
+
     def test_locked_revision_file_attachments_cannot_be_added_or_removed(self):
         customer = Customer.objects.create(customer_code="C-003", display_name="Test Customer 3")
         order = SalesOrder.objects.create(
@@ -389,6 +415,8 @@ class DesignApprovalServiceTests(TestCase):
             DesignApproval.objects.filter(pk=approval.pk).update(comments="Queryset tamper")
         with self.assertRaises(ValidationError):
             DesignApproval.objects.filter(pk=approval.pk).delete()
+        with self.assertRaises(ValidationError):
+            DesignApproval.objects.bulk_update([approval], ["comments"])
         with self.assertRaises(ValidationError):
             approval.delete()
         self.assertEqual(DesignApproval.objects.get(pk=approval.pk).comments, "Recorded decision")
