@@ -9,7 +9,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from .models import (
-    Customer, DesignRecord, DesignRevision, Division, Enquiry, JobCard,
+    Customer, DesignRecord, DesignRevision, Division, Enquiry, JobCard, Quotation,
     OrderAssignment, ProductionStage, ProductionUpdate, SalesOrder, StaffDivision,
     StaffProfile, StaffTask, StoredFile, DesignRevisionFile, Role, StaffRole,
 )
@@ -216,6 +216,59 @@ class DomainModelTests(TestCase):
                 assigned_to=other_staff, assigned_by=self.staff,
                 title="Cross-division task", priority="normal",
             ).save()
+
+    def test_quotation_and_sales_order_division_relationships_are_enforced(self):
+        other_division = Division.objects.create(code="quote-other", name="Quotation Other Division")
+        other_user = get_user_model().objects.create_user(
+            username="quotation-other-staff", password="test-password-123"
+        )
+        other_staff = StaffProfile.objects.create(
+            user=other_user, display_name="Quotation Other Staff"
+        )
+        StaffDivision.objects.create(staff=other_staff, division=other_division)
+        customer = Customer.objects.create(
+            customer_code="C-QUOTE-SCOPE", display_name="Quotation Scope Customer"
+        )
+        enquiry = Enquiry.objects.create(
+            enquiry_number="ENQ-QUOTE-SCOPE", customer=customer,
+            division=self.division, source=Enquiry.Source.DIRECT,
+            requested_product_service="CNC signage", created_by=self.staff,
+        )
+        quotation = Quotation.objects.create(
+            quotation_number="QUO-SCOPE-001", customer=customer,
+            enquiry=enquiry, division=self.division, prepared_by=self.staff,
+            subtotal=Decimal("100"), total_amount=Decimal("100"),
+        )
+        order = SalesOrder.objects.create(
+            order_number="SAD-QUOTE-SCOPE", customer=customer,
+            division=self.division, quotation=quotation, created_by=self.staff,
+            subtotal=Decimal("100"), grand_total=Decimal("100"),
+            balance_due=Decimal("100"),
+        )
+
+        with self.assertRaises(ValidationError):
+            Quotation(
+                quotation_number="QUO-SCOPE-BAD-STAFF", customer=customer,
+                division=self.division, prepared_by=other_staff,
+            ).save()
+        with self.assertRaises(ValidationError):
+            SalesOrder(
+                order_number="SAD-QUOTE-SCOPE-BAD", customer=customer,
+                division=other_division, quotation=quotation, created_by=other_staff,
+            ).save()
+
+        for table, column, value, row_id in [
+            ("core_quotation", "division_id", other_division.pk, quotation.pk),
+            ("core_salesorder", "division_id", other_division.pk, order.pk),
+        ]:
+            with self.subTest(table=table):
+                with self.assertRaises(DatabaseError):
+                    with transaction.atomic():
+                        with connection.cursor() as cursor:
+                            cursor.execute(
+                                f'UPDATE "{table}" SET "{column}" = %s WHERE "id" = %s',
+                                [value, row_id],
+                            )
 
     def test_database_guards_reject_raw_cross_division_staff_assignments(self):
         other_division = Division.objects.create(code="decor", name="SADACO Decor Co")
