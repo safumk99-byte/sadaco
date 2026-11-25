@@ -159,3 +159,68 @@ def active_role_division_ids(profile, role_code):
         ).values_list("division_id", flat=True)
     )
     return sorted(division_ids)
+
+
+
+def permission_scope_division_ids(profile, permission_code):
+    """Return divisions covered by an active configured grant; None means global scope."""
+    if profile is None or profile.employment_status != "active" or not permission_code:
+        return []
+    if is_founder(profile):
+        return None
+    now = timezone.now()
+    assignments = StaffRole.objects.filter(
+        staff=profile,
+        role__permissions__code=permission_code,
+        valid_from__lte=now,
+    ).filter(Q(valid_until__isnull=True) | Q(valid_until__gt=now))
+    if assignments.filter(division__isnull=True, department__isnull=True).exists():
+        return None
+    division_ids = set(
+        assignments.filter(division__isnull=False).values_list("division_id", flat=True)
+    )
+    division_ids.update(
+        assignments.filter(department__isnull=False).values_list(
+            "department__division_id", flat=True
+        )
+    )
+    return sorted(division_ids)
+
+
+class HasConfiguredRolePermission(BasePermission):
+    """Fail-closed DRF permission backed by RolePermission and StaffRole scope."""
+
+    message = "Your active role does not grant this action."
+
+    def _permission_code(self, view):
+        return getattr(view, "permission_codes", {}).get(getattr(view, "action", None))
+
+    def has_permission(self, request, view):
+        profile = active_staff_profile(request.user)
+        code = self._permission_code(view)
+        if profile is None or not code:
+            return False
+        if is_founder(profile):
+            return True
+        now = timezone.now()
+        return StaffRole.objects.filter(
+            staff=profile,
+            role__permissions__code=code,
+            valid_from__lte=now,
+        ).filter(Q(valid_until__isnull=True) | Q(valid_until__gt=now)).exists()
+
+    def has_object_permission(self, request, view, obj):
+        profile = active_staff_profile(request.user)
+        code = self._permission_code(view)
+        if profile is None or not code:
+            return False
+        if is_founder(profile):
+            return True
+        division_id = getattr(obj, "division_id", None)
+        if division_id is None and hasattr(obj, "enquiry"):
+            division_id = obj.enquiry.division_id
+        if division_id is None and hasattr(obj, "orders"):
+            return False
+        return bool(division_id and has_permission(
+            profile, code, division_id=division_id
+        ))
