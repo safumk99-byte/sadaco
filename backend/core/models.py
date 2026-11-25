@@ -477,7 +477,7 @@ class DesignRevision(UUIDModel, TimeStampedModel):
         constraints = [models.UniqueConstraint(fields=["design_record", "revision_number"], name="uq_design_revision_number")]
 
     def save(self, *args, **kwargs):
-        if not self.pk and self.locked_at is not None:
+        if self._state.adding and self.locked_at is not None:
             raise ValidationError(
                 "A design revision must be created unlocked and approved through the workflow."
             )
