@@ -444,6 +444,10 @@ class DesignRevisionQuerySet(models.QuerySet):
             )
         return super().bulk_update(objs, fields, batch_size=batch_size)
 
+    def delete(self):
+        self._assert_unlocked()
+        return super().delete()
+
 
 class DesignRevisionManager(models.Manager.from_queryset(DesignRevisionQuerySet)):
     pass
@@ -480,6 +484,15 @@ class DesignRevision(UUIDModel, TimeStampedModel):
                         f"Changed fields: {', '.join(changed)}"
                     )
         super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        if self.pk and type(self).objects.filter(
+            pk=self.pk, locked_at__isnull=False
+        ).exists():
+            raise ValidationError(
+                "An approved design revision is immutable; create a new revision."
+            )
+        return super().delete(*args, **kwargs)
 
 
 class DesignRevisionFileQuerySet(models.QuerySet):
