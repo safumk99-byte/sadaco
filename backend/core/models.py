@@ -577,8 +577,9 @@ class DesignRevisionFileQuerySet(models.QuerySet):
         return super().update(**kwargs)
 
     def bulk_create(self, objs, **kwargs):
+        objects = list(objs)
         revision_ids = {
-            obj.design_revision_id for obj in objs
+            obj.design_revision_id for obj in objects
             if getattr(obj, "design_revision_id", None) is not None
         }
         if DesignRevision.objects.filter(
@@ -587,7 +588,28 @@ class DesignRevisionFileQuerySet(models.QuerySet):
             raise ValidationError(
                 "Files cannot be attached to an approved design revision."
             )
-        return super().bulk_create(objs, **kwargs)
+        return super().bulk_create(objects, **kwargs)
+
+    def bulk_update(self, objs, fields, batch_size=None):
+        objects = list(objs)
+        attachment_ids = [obj.pk for obj in objects if obj.pk is not None]
+        locked_revisions = DesignRevision.objects.filter(locked_at__isnull=False)
+        if self.filter(
+            pk__in=attachment_ids, design_revision__in=locked_revisions
+        ).exists():
+            raise ValidationError(
+                "Files attached to an approved design revision are immutable."
+            )
+        if "design_revision" in fields:
+            target_revision_ids = {
+                obj.design_revision_id for obj in objects
+                if obj.design_revision_id is not None
+            }
+            if locked_revisions.filter(pk__in=target_revision_ids).exists():
+                raise ValidationError(
+                    "Files cannot be attached to an approved design revision."
+                )
+        return super().bulk_update(objects, fields, batch_size=batch_size)
 
 
 class DesignRevisionFileManager(models.Manager.from_queryset(DesignRevisionFileQuerySet)):
