@@ -40,6 +40,50 @@ jobs:
           python manage.py makemigrations --check --dry-run
       - name: Run automated tests
         run: python manage.py test
+
+  postgres-check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: sadaco_ci
+          POSTGRES_USER: sadaco_ci
+          POSTGRES_PASSWORD: sadaco_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U sadaco_ci -d sadaco_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      DATABASE_URL: postgresql://sadaco_ci:sadaco_ci@127.0.0.1:5432/sadaco_ci
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Django system check
+        run: python manage.py check
+      - name: Apply PostgreSQL migrations
+        run: |
+          python manage.py migrate --noinput
+          python manage.py makemigrations --check --dry-run
+      - name: Run automated tests on PostgreSQL
+        run: python manage.py test
+
       - name: Commit generated migration to PR branch
         if: github.event_name == 'pull_request'
         working-directory: .
