@@ -40,6 +40,27 @@ class Department(UUIDModel, TimeStampedModel):
     description = models.TextField(blank=True)
     is_active = models.BooleanField(default=True)
 
+    def clean(self):
+        if not self._state.adding and self.pk:
+            previous_division_id = (
+                Department.objects.filter(pk=self.pk)
+                .values_list("division_id", flat=True)
+                .first()
+            )
+            if previous_division_id and previous_division_id != self.division_id:
+                if StaffRole.objects.filter(department_id=self.pk).exists():
+                    raise ValidationError({
+                        "division": "A department linked to staff roles cannot be moved to another division."
+                    })
+                if StaffDepartment.objects.filter(department_id=self.pk).exists():
+                    raise ValidationError({
+                        "division": "A department linked to staff members cannot be moved to another division."
+                    })
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
     class Meta:
         ordering = ["division__name", "name"]
         constraints = [models.UniqueConstraint(fields=["division", "name"], name="uq_department_division_name")]
