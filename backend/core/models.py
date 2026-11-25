@@ -102,7 +102,26 @@ class StaffRole(UUIDModel, TimeStampedModel):
     class Meta:
         constraints = [
             models.CheckConstraint(condition=Q(valid_until__isnull=True) | Q(valid_until__gt=models.F("valid_from")), name="ck_staff_role_valid_period"),
-            models.UniqueConstraint(fields=["staff", "role", "division", "department"], condition=Q(valid_until__isnull=True), name="uq_active_staff_role_scope"),
+            models.UniqueConstraint(
+                fields=["staff", "role"],
+                condition=Q(valid_until__isnull=True, division__isnull=True, department__isnull=True),
+                name="uq_staff_role_global",
+            ),
+            models.UniqueConstraint(
+                fields=["staff", "role", "division"],
+                condition=Q(valid_until__isnull=True, division__isnull=False, department__isnull=True),
+                name="uq_staff_role_division",
+            ),
+            models.UniqueConstraint(
+                fields=["staff", "role", "department"],
+                condition=Q(valid_until__isnull=True, division__isnull=True, department__isnull=False),
+                name="uq_staff_role_dept",
+            ),
+            models.UniqueConstraint(
+                fields=["staff", "role", "division", "department"],
+                condition=Q(valid_until__isnull=True, division__isnull=False, department__isnull=False),
+                name="uq_staff_role_div_dept",
+            ),
         ]
 
 
