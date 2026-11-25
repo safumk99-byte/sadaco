@@ -11,7 +11,7 @@ from rest_framework.test import APIClient
 from .models import (
     ApprovalRequest, Customer, CustomerCommunication, DesignRecord, DesignRevision, Division, Enquiry, FollowUp, JobCard, OrderStatusEvent, Quotation,
     OrderAssignment, ProductionStage, ProductionUpdate, SalesOrder, StaffDivision,
-    StaffProfile, StaffTask, TaskUpdate, StoredFile, DesignRevisionFile, Role, StaffRole,
+    StaffProfile, StaffTask, TaskUpdate, StoredFile, DesignRevisionFile, Role, StaffRole, Department, StaffDepartment,
 )
 
 
@@ -1535,4 +1535,72 @@ class AuditEventImmutabilityTests(TestCase):
                     cursor.execute(
                         "DELETE FROM core_auditevent WHERE id = %s",
                         [self.event.pk.hex],
+                    )
+
+
+
+class DepartmentDivisionImmutabilityTests(TestCase):
+    def setUp(self):
+        self.division_a = Division.objects.create(
+            code="dept-lock-a", name="Department Lock Division A"
+        )
+        self.division_b = Division.objects.create(
+            code="dept-lock-b", name="Department Lock Division B"
+        )
+        self.department = Department.objects.create(
+            division=self.division_a, name="Linked Department"
+        )
+        user = get_user_model().objects.create_user(
+            username="department-lock-staff", password="test-password-123"
+        )
+        self.staff = StaffProfile.objects.create(
+            user=user, display_name="Department Lock Staff"
+        )
+
+    def test_department_model_rejects_division_change_when_staff_role_exists(self):
+        role = Role.objects.create(code="dept-lock-manager", name="Department Manager")
+        StaffRole.objects.create(
+            staff=self.staff,
+            role=role,
+            department=self.department,
+        )
+        self.department.division = self.division_b
+        with self.assertRaises(ValidationError):
+            self.department.save()
+
+    def test_department_model_rejects_division_change_when_staff_membership_exists(self):
+        StaffDepartment.objects.create(
+            staff=self.staff,
+            department=self.department,
+        )
+        self.department.division = self.division_b
+        with self.assertRaises(ValidationError):
+            self.department.save()
+
+    def test_database_guard_rejects_division_change_with_staff_role_link(self):
+        role = Role.objects.create(code="dept-lock-db-role", name="Department DB Role")
+        StaffRole.objects.create(
+            staff=self.staff,
+            role=role,
+            department=self.department,
+        )
+        with self.assertRaises(DatabaseError):
+            with transaction.atomic():
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        "UPDATE core_department SET division_id = %s WHERE id = %s",
+                        [self.division_b.pk.hex, self.department.pk.hex],
+                    )
+
+    def test_database_guard_rejects_division_change_with_staff_membership_link(self):
+        StaffDepartment.objects.create(
+            staff=self.staff,
+            department=self.department,
+        )
+        with self.assertRaises(DatabaseError):
+            with transaction.atomic():
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        "UPDATE core_department SET division_id = %s WHERE id = %s",
+                        [self.division_b.pk.hex, self.department.pk.hex],
                     )
