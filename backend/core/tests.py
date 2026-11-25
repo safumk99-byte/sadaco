@@ -97,7 +97,7 @@ class DomainModelTests(TestCase):
             created_by=self.staff,
         )
         from .services import record_design_approval
-        manager_role = Role.objects.create(code="manager-files", name="Manager")
+        manager_role = Role.objects.create(code="manager", name="Manager")
         StaffRole.objects.create(staff=self.staff, role=manager_role, division=self.division)
         record_design_approval(
             revision_id=revision.pk, reviewer_type="customer",
@@ -185,7 +185,7 @@ class DomainModelTests(TestCase):
                 status="approved", locked_at=timezone.now()
             )
         revision.refresh_from_db()
-        manager_role = Role.objects.create(code="manager-lock", name="Manager")
+        manager_role = Role.objects.create(code="manager", name="Manager")
         StaffRole.objects.create(staff=self.staff, role=manager_role, division=self.division)
         from .services import record_design_approval
         record_design_approval(
@@ -244,7 +244,7 @@ class DomainModelTests(TestCase):
                         ["approved", timezone.now(), revision.pk.hex],
                     )
 
-        manager_role = Role.objects.create(code="manager-db-guard", name="Manager")
+        manager_role = Role.objects.create(code="manager", name="Manager")
         StaffRole.objects.create(staff=self.staff, role=manager_role, division=self.division)
         from .services import record_design_approval
         record_design_approval(
