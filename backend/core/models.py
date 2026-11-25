@@ -862,6 +862,8 @@ class DesignApproval(UUIDModel):
             errors["reviewed_by"] = "An active Manager or Founder must record the approval."
         if not self.reviewed_at:
             errors["reviewed_at"] = "Approval timestamp is required."
+        if self.design_revision_id and self.design_revision.locked_at is not None:
+            errors["design_revision"] = "No further approvals can be added after a design revision is locked."
         if self.design_revision_id and self.reviewed_by_id:
             actor = self.reviewed_by
             from .permissions import has_active_role, is_founder
