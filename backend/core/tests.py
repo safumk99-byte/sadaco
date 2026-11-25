@@ -96,9 +96,18 @@ class DomainModelTests(TestCase):
             design_record=design, revision_number=1, status="pending",
             created_by=self.staff,
         )
-        revision.status = "approved"
-        revision.locked_at = timezone.now()
-        revision.save()
+        from .services import record_design_approval
+        manager_role = Role.objects.create(code="manager-files", name="Manager")
+        StaffRole.objects.create(staff=self.staff, role=manager_role, division=self.division)
+        record_design_approval(
+            revision_id=revision.pk, reviewer_type="customer",
+            decision="approved", actor=self.staff,
+        )
+        record_design_approval(
+            revision_id=revision.pk, reviewer_type="manager",
+            decision="approved", actor=self.staff,
+        )
+        revision.refresh_from_db()
         stored_file = StoredFile.objects.create(
             storage_key="designs/approved-artwork.pdf",
             original_name="approved-artwork.pdf",
@@ -123,9 +132,15 @@ class DomainModelTests(TestCase):
             created_by=self.staff,
         )
         unlocked.files.add(stored_file)
-        unlocked.locked_at = timezone.now()
-        unlocked.status = "approved"
-        unlocked.save()
+        record_design_approval(
+            revision_id=unlocked.pk, reviewer_type="customer",
+            decision="approved", actor=self.staff,
+        )
+        record_design_approval(
+            revision_id=unlocked.pk, reviewer_type="manager",
+            decision="approved", actor=self.staff,
+        )
+        unlocked.refresh_from_db()
 
         with self.assertRaises(ValidationError):
             with transaction.atomic():
@@ -163,7 +178,25 @@ class DomainModelTests(TestCase):
         )
         revision.status = "approved"
         revision.locked_at = timezone.now()
-        revision.save()
+        with self.assertRaises(ValidationError):
+            revision.save()
+        with self.assertRaises(ValidationError):
+            DesignRevision.objects.filter(pk=revision.pk).update(
+                status="approved", locked_at=timezone.now()
+            )
+        revision.refresh_from_db()
+        manager_role = Role.objects.create(code="manager-lock", name="Manager")
+        StaffRole.objects.create(staff=self.staff, role=manager_role, division=self.division)
+        from .services import record_design_approval
+        record_design_approval(
+            revision_id=revision.pk, reviewer_type="customer",
+            decision="approved", actor=self.staff,
+        )
+        record_design_approval(
+            revision_id=revision.pk, reviewer_type="manager",
+            decision="approved", actor=self.staff,
+        )
+        revision.refresh_from_db()
         revision.change_summary = "Edited after approval"
         with self.assertRaises(ValidationError):
             revision.save()
@@ -174,6 +207,8 @@ class DomainModelTests(TestCase):
         revision.change_summary = "Bulk update bypass attempt"
         with self.assertRaises(ValidationError):
             DesignRevision.objects.bulk_update([revision], ["change_summary"])
+        with self.assertRaises(ValidationError):
+            DesignRevision.objects.bulk_update([revision], ["status", "locked_at"])
         with self.assertRaises(ValidationError):
             DesignRevision.objects.filter(pk=revision.pk).delete()
         with self.assertRaises(ValidationError):
@@ -188,7 +223,56 @@ class DomainModelTests(TestCase):
             )])
 
 
+        self.assertEqual(DesignRevision.objects.get(pk=revision.pk).change_summary, "")
+
+    def test_database_rejects_raw_sql_lock_without_approval_and_mutation_after_lock(self):
+        customer = Customer.objects.create(customer_code="C-DB-GUARD", display_name="DB Guard Customer")
+        order = SalesOrder.objects.create(
+            order_number="SAD-DB-GUARD", customer=customer, division=self.division,
+            created_by=self.staff, subtotal=Decimal("100"), grand_total=Decimal("100"),
+            balance_due=Decimal("100"),
+        )
+        design = DesignRecord.objects.create(sales_order=order, title="DB Guard Design")
+        revision = DesignRevision.objects.create(
+            design_record=design, revision_number=1, status="submitted", created_by=self.staff,
+        )
+        with self.assertRaises(DatabaseError):
+            with transaction.atomic():
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        "UPDATE core_designrevision SET status = %s, locked_at = %s WHERE id = %s",
+                        ["approved", timezone.now(), revision.pk.hex],
+                    )
+
+        manager_role = Role.objects.create(code="manager-db-guard", name="Manager")
+        StaffRole.objects.create(staff=self.staff, role=manager_role, division=self.division)
+        from .services import record_design_approval
+        record_design_approval(
+            revision_id=revision.pk, reviewer_type="customer",
+            decision="approved", actor=self.staff,
+        )
+        record_design_approval(
+            revision_id=revision.pk, reviewer_type="manager",
+            decision="approved", actor=self.staff,
+        )
+        with self.assertRaises(DatabaseError):
+            with transaction.atomic():
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        "UPDATE core_designrevision SET change_summary = %s WHERE id = %s",
+                        ["Raw SQL mutation", revision.pk.hex],
+                    )
+        with self.assertRaises(DatabaseError):
+            with transaction.atomic():
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        "DELETE FROM core_designrevision WHERE id = %s",
+                        [revision.pk.hex],
+                    )
+
+
 class EnquiryAPITests(TestCase):
+
     def setUp(self):
         self.client = APIClient()
         self.division_a = Division.objects.create(code="creatives", name="SADACO Creatives")
