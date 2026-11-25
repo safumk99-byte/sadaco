@@ -44,3 +44,16 @@ class IsFounderOrScopedDivisionMember(IsActiveStaff):
         if division_id is None and hasattr(obj, "enquiry"):
             division_id = obj.enquiry.division_id
         return bool(division_id and profile.divisions.filter(pk=division_id).exists())
+
+
+def has_active_role(profile, role_code, *, division_id=None):
+    if profile is None or profile.employment_status != "active":
+        return False
+    assignments = StaffRole.objects.filter(
+        staff=profile,
+        role__code=role_code,
+        valid_from__lte=timezone.now(),
+    ).filter(Q(valid_until__isnull=True) | Q(valid_until__gt=timezone.now()))
+    if division_id is not None:
+        assignments = assignments.filter(Q(division__isnull=True) | Q(division_id=division_id))
+    return assignments.exists()
