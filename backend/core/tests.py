@@ -1068,6 +1068,19 @@ class DesignApprovalAPITests(TestCase):
         self.assertEqual(self.revision.approvals.count(), 0)
 
 
+    def test_unassigned_same_division_staff_cannot_read_design_revision(self):
+        outsider_user = get_user_model().objects.create_user(
+            username="approval-api-same-division-outsider", password="password123"
+        )
+        outsider = StaffProfile.objects.create(
+            user=outsider_user, display_name="Unassigned Same Division Staff"
+        )
+        StaffDivision.objects.create(staff=outsider, division=self.division)
+        self.client.force_authenticate(outsider_user)
+        response = self.client.get(f"/api/design-revisions/{self.revision.pk}/")
+        self.assertEqual(response.status_code, 404)
+
+
 
 class CRMRelationshipScopeTests(TestCase):
     def setUp(self):
