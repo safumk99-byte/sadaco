@@ -65,9 +65,12 @@ class DomainModelTests(TestCase):
         )
         design = DesignRecord.objects.create(sales_order=order, title="Approved artwork")
         revision = DesignRevision.objects.create(
-            design_record=design, revision_number=1, status="approved",
-            locked_at=timezone.now(), created_by=self.staff,
+            design_record=design, revision_number=1, status="pending",
+            created_by=self.staff,
         )
+        revision.status = "approved"
+        revision.locked_at = timezone.now()
+        revision.save()
         stored_file = StoredFile.objects.create(
             storage_key="designs/approved-artwork.pdf",
             original_name="approved-artwork.pdf",
@@ -115,6 +118,11 @@ class DomainModelTests(TestCase):
             balance_due=Decimal("500"),
         )
         design = DesignRecord.objects.create(sales_order=order, title="Logo")
+        with self.assertRaises(ValidationError):
+            DesignRevision.objects.create(
+                design_record=design, revision_number=99, status="approved",
+                locked_at=timezone.now(), created_by=self.staff,
+            )
         revision = DesignRevision.objects.create(
             design_record=design, revision_number=1, status="approved",
             locked_at=timezone.now(), created_by=self.staff,
