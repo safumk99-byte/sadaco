@@ -423,6 +423,32 @@ class StoredFile(UUIDModel):
     is_private = models.BooleanField(default=True)
 
 
+class DesignRevisionQuerySet(models.QuerySet):
+    def _assert_unlocked(self):
+        if self.filter(locked_at__isnull=False).exists():
+            raise ValidationError(
+                "An approved design revision is immutable; create a new revision."
+            )
+
+    def update(self, **kwargs):
+        self._assert_unlocked()
+        return super().update(**kwargs)
+
+    def bulk_update(self, objs, fields, batch_size=None):
+        revision_ids = [obj.pk for obj in objs if obj.pk is not None]
+        if DesignRevision.objects.filter(
+            pk__in=revision_ids, locked_at__isnull=False
+        ).exists():
+            raise ValidationError(
+                "An approved design revision is immutable; create a new revision."
+            )
+        return super().bulk_update(objs, fields, batch_size=batch_size)
+
+
+class DesignRevisionManager(models.Manager.from_queryset(DesignRevisionQuerySet)):
+    pass
+
+
 class DesignRevision(UUIDModel, TimeStampedModel):
     design_record = models.ForeignKey(DesignRecord, on_delete=models.PROTECT, related_name="revisions")
     revision_number = models.PositiveIntegerField()
@@ -433,6 +459,8 @@ class DesignRevision(UUIDModel, TimeStampedModel):
     locked_at = models.DateTimeField(null=True, blank=True)
     created_by = models.ForeignKey(StaffProfile, on_delete=models.PROTECT)
     files = models.ManyToManyField(StoredFile, through="DesignRevisionFile", related_name="design_revisions")
+
+    objects = DesignRevisionManager()
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=["design_record", "revision_number"], name="uq_design_revision_number")]
