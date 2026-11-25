@@ -9,7 +9,7 @@ from rest_framework.test import APIClient
 
 from .models import (
     Customer, DesignRecord, DesignRevision, Division, Enquiry, JobCard,
-    SalesOrder, StaffDivision, StaffProfile, StoredFile, DesignRevisionFile,
+    SalesOrder, StaffDivision, StaffProfile, StoredFile, DesignRevisionFile, Role, StaffRole,
 )
 
 
@@ -25,6 +25,18 @@ class DomainModelTests(TestCase):
         Department.objects.create(division=self.division, name="Design")
         with self.assertRaises(Exception):
             Department.objects.create(division=self.division, name="Design")
+
+    def test_active_staff_role_scope_is_unique_when_nullable_scope_fields_are_empty(self):
+        role = Role.objects.create(code="manager-test", name="Manager")
+        StaffRole.objects.create(staff=self.staff, role=role)
+        with self.assertRaises(Exception):
+            StaffRole.objects.create(staff=self.staff, role=role)
+
+    def test_active_staff_role_is_unique_per_division_scope(self):
+        role = Role.objects.create(code="designer-test", name="Designer")
+        StaffRole.objects.create(staff=self.staff, role=role, division=self.division)
+        with self.assertRaises(Exception):
+            StaffRole.objects.create(staff=self.staff, role=role, division=self.division)
 
     def test_job_card_requires_approved_locked_design_revision(self):
         customer = Customer.objects.create(customer_code="C-001", display_name="Test Customer")
