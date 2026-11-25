@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import Customer, Enquiry, FollowUp
+from .models import Customer, DesignApproval, DesignRevision, Enquiry, FollowUp
 from .permissions import active_staff_profile, is_founder
 
 
@@ -59,3 +59,30 @@ class FollowUpSerializer(serializers.ModelSerializer):
         if self.instance and enquiry and self.instance.enquiry_id != enquiry.id:
             raise serializers.ValidationError({"enquiry": "A follow-up cannot be moved to another enquiry."})
         return attrs
+
+
+
+class DesignApprovalReadSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DesignApproval
+        fields = ["id", "reviewer_type", "decision", "reviewed_by", "reviewed_at", "comments"]
+        read_only_fields = fields
+
+
+class DesignApprovalSubmissionSerializer(serializers.Serializer):
+    reviewer_type = serializers.ChoiceField(choices=["customer", "manager"])
+    decision = serializers.ChoiceField(choices=["approved", "revision_required"])
+    comments = serializers.CharField(required=False, allow_blank=True, max_length=10000)
+
+
+class DesignRevisionSerializer(serializers.ModelSerializer):
+    approvals = DesignApprovalReadSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = DesignRevision
+        fields = [
+            "id", "design_record", "revision_number", "status", "dimensions",
+            "change_summary", "submitted_at", "locked_at", "created_by",
+            "approvals", "created_at", "updated_at",
+        ]
+        read_only_fields = fields
