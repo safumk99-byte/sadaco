@@ -85,6 +85,67 @@ class DomainModelTests(TestCase):
         with self.assertRaises(ValidationError):
             JobCard.objects.bulk_update([job], ["status"])
 
+    def test_job_card_database_guard_blocks_invalid_raw_insert_and_update(self):
+        customer = Customer.objects.create(customer_code="C-DB-GUARD", display_name="DB Guard Customer")
+        order = SalesOrder.objects.create(
+            order_number="SAD-DB-GUARD", customer=customer, division=self.division,
+            created_by=self.staff, subtotal=Decimal("100"), grand_total=Decimal("100"),
+            balance_due=Decimal("100"),
+        )
+        design = DesignRecord.objects.create(sales_order=order, title="DB guard artwork")
+        approved_revision = DesignRevision.objects.create(
+            design_record=design, revision_number=1, status="pending", created_by=self.staff,
+        )
+        unapproved_revision = DesignRevision.objects.create(
+            design_record=design, revision_number=2, status="submitted", created_by=self.staff,
+        )
+
+        manager_role = Role.objects.create(code="db-guard-manager", name="DB Guard Manager")
+        StaffRole.objects.create(staff=self.staff, role=manager_role, division=self.division)
+        from .services import record_design_approval
+        record_design_approval(
+            revision_id=approved_revision.pk, reviewer_type="customer",
+            decision="approved", actor=self.staff,
+        )
+        record_design_approval(
+            revision_id=approved_revision.pk, reviewer_type="manager",
+            decision="approved", actor=self.staff,
+        )
+        approved_revision.refresh_from_db()
+        self.assertEqual(approved_revision.status, "approved")
+        self.assertIsNotNone(approved_revision.locked_at)
+
+        invalid_job_id = uuid.uuid4()
+        now = timezone.now()
+        insert_sql = (
+            'INSERT INTO "core_jobcard" '
+            '("id", "created_at", "updated_at", "job_number", "sales_order_id", '
+            '"approved_design_revision_id", "division_id", "status", "planned_start", '
+            '"planned_completion", "actual_start", "actual_completion", "requirements", "notes") '
+            'VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)'
+        )
+        insert_values = (
+            invalid_job_id, now, now, "JOB-RAW-INVALID", order.pk,
+            unapproved_revision.pk, self.division.pk, "pending",
+            None, None, None, None, "", "",
+        )
+        with self.assertRaises(DatabaseError):
+            with transaction.atomic():
+                with connection.cursor() as cursor:
+                    cursor.execute(insert_sql, insert_values)
+
+        valid_job = JobCard.objects.create(
+            job_number="JOB-DB-GUARD-VALID", sales_order=order,
+            approved_design_revision=approved_revision, division=self.division,
+        )
+        with self.assertRaises(DatabaseError):
+            with transaction.atomic():
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        'UPDATE "core_jobcard" SET "approved_design_revision_id" = %s WHERE "id" = %s',
+                        [unapproved_revision.pk, valid_job.pk],
+                    )
+
     def test_locked_revision_file_attachments_cannot_be_added_or_removed(self):
         customer = Customer.objects.create(customer_code="C-003", display_name="Test Customer 3")
         order = SalesOrder.objects.create(
