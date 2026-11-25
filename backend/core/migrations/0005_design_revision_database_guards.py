@@ -38,6 +38,30 @@ def install_design_revision_guards(apps, schema_editor):
             "AND a.reviewer_type = 'manager' AND a.decision = 'approved')) "
             "BEGIN SELECT RAISE(ABORT, 'Customer and Manager approvals are required'); END"
         )
+        attachment_table = connection.ops.quote_name("core_designrevisionfile")
+        schema_editor.execute(
+            f"CREATE TRIGGER IF NOT EXISTS core_designrevisionfile_reject_locked_insert "
+            f"BEFORE INSERT ON {attachment_table} "
+            "WHEN EXISTS (SELECT 1 FROM core_designrevision r "
+            "WHERE r.id = NEW.design_revision_id AND r.locked_at IS NOT NULL) "
+            "BEGIN SELECT RAISE(ABORT, 'Files cannot be attached to an approved design revision'); END"
+        )
+        schema_editor.execute(
+            f"CREATE TRIGGER IF NOT EXISTS core_designrevisionfile_reject_locked_update "
+            f"BEFORE UPDATE ON {attachment_table} "
+            "WHEN EXISTS (SELECT 1 FROM core_designrevision r "
+            "WHERE r.id = OLD.design_revision_id AND r.locked_at IS NOT NULL) "
+            "OR EXISTS (SELECT 1 FROM core_designrevision r "
+            "WHERE r.id = NEW.design_revision_id AND r.locked_at IS NOT NULL) "
+            "BEGIN SELECT RAISE(ABORT, 'Files attached to an approved design revision are immutable'); END"
+        )
+        schema_editor.execute(
+            f"CREATE TRIGGER IF NOT EXISTS core_designrevisionfile_reject_locked_delete "
+            f"BEFORE DELETE ON {attachment_table} "
+            "WHEN EXISTS (SELECT 1 FROM core_designrevision r "
+            "WHERE r.id = OLD.design_revision_id AND r.locked_at IS NOT NULL) "
+            "BEGIN SELECT RAISE(ABORT, 'Files attached to an approved design revision cannot be removed'); END"
+        )
     elif vendor == "postgresql":
         schema_editor.execute(
             """
@@ -92,6 +116,45 @@ def install_design_revision_guards(apps, schema_editor):
             f"BEFORE INSERT OR UPDATE OR DELETE ON {table} "
             "FOR EACH ROW EXECUTE FUNCTION core_guard_designrevision_mutation()"
         )
+        attachment_table = connection.ops.quote_name("core_designrevisionfile")
+        schema_editor.execute(
+            """
+            CREATE OR REPLACE FUNCTION core_guard_designrevisionfile_mutation()
+            RETURNS trigger AS $
+            BEGIN
+                IF TG_OP = 'DELETE' THEN
+                    IF EXISTS (SELECT 1 FROM core_designrevision r
+                               WHERE r.id = OLD.design_revision_id AND r.locked_at IS NOT NULL) THEN
+                        RAISE EXCEPTION 'Files attached to an approved design revision cannot be removed';
+                    END IF;
+                    RETURN OLD;
+                ELSIF TG_OP = 'UPDATE' THEN
+                    IF EXISTS (SELECT 1 FROM core_designrevision r
+                               WHERE r.id = OLD.design_revision_id AND r.locked_at IS NOT NULL)
+                       OR EXISTS (SELECT 1 FROM core_designrevision r
+                                  WHERE r.id = NEW.design_revision_id AND r.locked_at IS NOT NULL) THEN
+                        RAISE EXCEPTION 'Files attached to an approved design revision are immutable';
+                    END IF;
+                    RETURN NEW;
+                ELSE
+                    IF EXISTS (SELECT 1 FROM core_designrevision r
+                               WHERE r.id = NEW.design_revision_id AND r.locked_at IS NOT NULL) THEN
+                        RAISE EXCEPTION 'Files cannot be attached to an approved design revision';
+                    END IF;
+                    RETURN NEW;
+                END IF;
+            END;
+            $ LANGUAGE plpgsql;
+            """
+        )
+        schema_editor.execute(
+            f"DROP TRIGGER IF EXISTS core_designrevisionfile_guard ON {attachment_table}"
+        )
+        schema_editor.execute(
+            f"CREATE TRIGGER core_designrevisionfile_guard "
+            f"BEFORE INSERT OR UPDATE OR DELETE ON {attachment_table} "
+            "FOR EACH ROW EXECUTE FUNCTION core_guard_designrevisionfile_mutation()"
+        )
 
 
 def remove_design_revision_guards(apps, schema_editor):
@@ -104,9 +167,18 @@ def remove_design_revision_guards(apps, schema_editor):
         schema_editor.execute("DROP TRIGGER IF EXISTS core_designrevision_immutable_update")
         schema_editor.execute("DROP TRIGGER IF EXISTS core_designrevision_immutable_delete")
         schema_editor.execute("DROP TRIGGER IF EXISTS core_designrevision_require_approval_lock")
+        schema_editor.execute("DROP TRIGGER IF EXISTS core_designrevisionfile_reject_locked_insert")
+        schema_editor.execute("DROP TRIGGER IF EXISTS core_designrevisionfile_reject_locked_update")
+        schema_editor.execute("DROP TRIGGER IF EXISTS core_designrevisionfile_reject_locked_delete")
     elif vendor == "postgresql":
         schema_editor.execute(
             f"DROP TRIGGER IF EXISTS core_designrevision_guard ON {table}"
+        )
+        schema_editor.execute(
+            f"DROP TRIGGER IF EXISTS core_designrevisionfile_guard ON {connection.ops.quote_name('core_designrevisionfile')}"
+        )
+        schema_editor.execute(
+            "DROP FUNCTION IF EXISTS core_guard_designrevisionfile_mutation()"
         )
         schema_editor.execute(
             "DROP FUNCTION IF EXISTS core_guard_designrevision_mutation()"
