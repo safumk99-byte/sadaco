@@ -862,6 +862,7 @@ class DesignApprovalAPITests(TestCase):
         self.manager = StaffProfile.objects.create(user=self.manager_user, display_name="API Manager")
         manager_role = Role.objects.create(code="manager", name="Manager")
         StaffRole.objects.create(staff=self.manager, role=manager_role, division=self.division)
+        StaffDivision.objects.create(staff=self.manager, division=self.division)
         self.designer_user = User.objects.create_user(username="approval-api-designer", password="password123")
         self.designer = StaffProfile.objects.create(user=self.designer_user, display_name="API Designer")
         StaffDivision.objects.create(staff=self.designer, division=self.division)
