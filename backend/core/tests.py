@@ -748,6 +748,8 @@ class DesignApprovalServiceTests(TestCase):
         self.manager = StaffProfile.objects.create(user=self.manager_user, display_name="Approval Manager")
         self.designer_user = User.objects.create_user(username="approval-designer", password="test-password-123")
         self.designer = StaffProfile.objects.create(user=self.designer_user, display_name="Approval Designer")
+        StaffDivision.objects.create(staff=self.manager, division=self.division)
+        StaffDivision.objects.create(staff=self.designer, division=self.division)
         manager_role = Role.objects.create(code="manager", name="Manager")
         StaffRole.objects.create(staff=self.manager, role=manager_role, division=self.division)
         customer = Customer.objects.create(customer_code="APR-001", display_name="Approval Customer")
