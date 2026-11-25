@@ -57,22 +57,44 @@ def has_active_role(profile, role_code, *, division_id=None):
         valid_from__lte=timezone.now(),
     ).filter(Q(valid_until__isnull=True) | Q(valid_until__gt=timezone.now()))
     if division_id is not None:
-        assignments = assignments.filter(Q(division__isnull=True) | Q(division_id=division_id))
+        assignments = assignments.filter(
+            Q(division__isnull=True, department__isnull=True)
+            | Q(division_id=division_id, department__isnull=True)
+            | (
+                Q(department__division_id=division_id)
+                & (Q(division__isnull=True) | Q(division_id=division_id))
+            )
+        )
     return assignments.exists()
-
 
 
 def active_role_division_ids(profile, role_code):
     if profile is None or profile.employment_status != "active":
         return []
     now = timezone.now()
-    return list(
-        StaffRole.objects.filter(
-            staff=profile,
-            role__code=role_code,
+    assignments = StaffRole.objects.filter(
+        staff=profile,
+        role__code=role_code,
+        valid_from__lte=now,
+    ).filter(Q(valid_until__isnull=True) | Q(valid_until__gt=now))
+
+    division_ids = set(
+        assignments.filter(
             division__isnull=False,
-            valid_from__lte=now,
-        ).filter(
-            Q(valid_until__isnull=True) | Q(valid_until__gt=now)
+            department__isnull=True,
         ).values_list("division_id", flat=True)
     )
+    division_ids.update(
+        assignments.filter(
+            division__isnull=True,
+            department__isnull=False,
+        ).values_list("department__division_id", flat=True)
+    )
+    division_ids.update(
+        assignments.filter(
+            division__isnull=False,
+            department__isnull=False,
+            division_id=F("department__division_id"),
+        ).values_list("division_id", flat=True)
+    )
+    return sorted(division_ids)
