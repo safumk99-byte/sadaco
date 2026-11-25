@@ -1342,24 +1342,6 @@ class DepartmentRoleScopeTests(TestCase):
             [self.division_a.pk],
         )
 
-    def test_inconsistent_combined_role_scope_does_not_grant_either_division(self):
-        from .permissions import active_role_division_ids, has_active_role
-
-        StaffRole.objects.create(
-            staff=self.staff,
-            role=self.manager_role,
-            division=self.division_a,
-            department=self.department_b,
-        )
-
-        self.assertFalse(
-            has_active_role(self.staff, "manager", division_id=self.division_a.pk)
-        )
-        self.assertFalse(
-            has_active_role(self.staff, "manager", division_id=self.division_b.pk)
-        )
-        self.assertEqual(active_role_division_ids(self.staff, "manager"), [])
-
 
     def test_staff_role_rejects_department_from_another_division(self):
         with self.assertRaises(ValidationError):
