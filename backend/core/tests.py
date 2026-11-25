@@ -2,7 +2,7 @@ from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
-from django.db import transaction
+from django.db import DatabaseError, connection, transaction
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
@@ -419,6 +419,22 @@ class DesignApprovalServiceTests(TestCase):
             DesignApproval.objects.bulk_update([approval], ["comments"])
         with self.assertRaises(ValidationError):
             approval.delete()
+        self.assertEqual(DesignApproval.objects.get(pk=approval.pk).comments, "Recorded decision")
+
+        with self.assertRaises(DatabaseError):
+            with transaction.atomic():
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        "UPDATE core_designapproval SET comments = %s WHERE id = %s",
+                        ["Raw SQL tamper", str(approval.pk)],
+                    )
+        with self.assertRaises(DatabaseError):
+            with transaction.atomic():
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        "DELETE FROM core_designapproval WHERE id = %s",
+                        [str(approval.pk)],
+                    )
         self.assertEqual(DesignApproval.objects.get(pk=approval.pk).comments, "Recorded decision")
 
 
