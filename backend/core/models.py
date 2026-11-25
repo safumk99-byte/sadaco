@@ -280,6 +280,25 @@ class CustomerCommunication(UUIDModel):
     external_reference = models.CharField(max_length=255, blank=True)
     recorded_by = models.ForeignKey(StaffProfile, on_delete=models.PROTECT)
 
+    def clean(self):
+        errors = {}
+        if self.enquiry_id and self.division_id:
+            enquiry = self.enquiry
+            if enquiry.division_id != self.division_id:
+                errors["enquiry"] = "Enquiry must belong to the communication division."
+            if enquiry.customer_id != self.customer_id:
+                errors["customer"] = "Customer must match the selected enquiry."
+        if self.recorded_by_id and self.division_id and not staff_has_division_access(
+            self.recorded_by_id, self.division_id
+        ):
+            errors["recorded_by"] = "Recorder must belong to the communication division or hold a global Founder/Super Admin role."
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
 
 class ApprovalRequest(UUIDModel, TimeStampedModel):
     class Status(models.TextChoices):
@@ -303,6 +322,21 @@ class ApprovalRequest(UUIDModel, TimeStampedModel):
 
     class Meta:
         indexes = [models.Index(fields=["division", "status", "requested_at"], name="ix_approval_div_status")]
+
+    def clean(self):
+        errors = {}
+        for field in ("requested_by", "decided_by"):
+            staff_id = getattr(self, f"{field}_id")
+            if staff_id and self.division_id and not staff_has_division_access(
+                staff_id, self.division_id
+            ):
+                errors[field] = "Staff member must belong to the approval division or hold a global Founder/Super Admin role."
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
 
 
 class Quotation(UUIDModel, TimeStampedModel):
