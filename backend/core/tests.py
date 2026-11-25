@@ -1657,6 +1657,13 @@ class ActiveStaffReferenceGuardTests(TestCase):
             user=active_user, display_name="Active Guard Staff"
         )
         StaffDivision.objects.create(staff=self.active_staff, division=self.division)
+        api_role = Role.objects.create(code="active-guard-crm", name="Active Guard CRM")
+        StaffRole.objects.create(staff=self.active_staff, role=api_role, division=self.division)
+        for code in ["crm.enquiry.create", "crm.followup.create"]:
+            permission = Permission.objects.create(
+                code=code, description=f"Active staff guard test grant: {code}"
+            )
+            RolePermission.objects.create(role=api_role, permission=permission)
 
         inactive_user = User.objects.create_user(
             username="inactive-staff-guard-user", password="test-password-123"
