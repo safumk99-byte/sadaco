@@ -372,3 +372,79 @@ class DesignApprovalServiceTests(TestCase):
                 decision="approved", actor=self.designer,
             )
         self.assertFalse(self.revision.approvals.exists())
+
+
+class DesignApprovalAPITests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.division = Division.objects.create(code="approval-api", name="Approval API Division")
+        User = get_user_model()
+        self.manager_user = User.objects.create_user(username="approval-api-manager", password="password123")
+        self.manager = StaffProfile.objects.create(user=self.manager_user, display_name="API Manager")
+        manager_role = Role.objects.create(code="manager", name="Manager")
+        StaffRole.objects.create(staff=self.manager, role=manager_role, division=self.division)
+        self.designer_user = User.objects.create_user(username="approval-api-designer", password="password123")
+        self.designer = StaffProfile.objects.create(user=self.designer_user, display_name="API Designer")
+        StaffDivision.objects.create(staff=self.designer, division=self.division)
+        customer = Customer.objects.create(customer_code="APR-API-001", display_name="API Approval Customer")
+        order = SalesOrder.objects.create(
+            order_number="SAD-APPROVAL-API-001", customer=customer, division=self.division,
+            created_by=self.manager, subtotal=Decimal("100"), grand_total=Decimal("100"),
+            balance_due=Decimal("100"),
+        )
+        design = DesignRecord.objects.create(sales_order=order, title="API Approval Artwork")
+        self.revision = DesignRevision.objects.create(
+            design_record=design, revision_number=1, status="submitted", created_by=self.designer,
+        )
+        self.approval_url = f"/api/design-revisions/{self.revision.pk}/approval/"
+
+    def test_customer_and_manager_approval_api_flow_locks_revision(self):
+        from .models import AuditEvent
+        self.client.force_authenticate(self.manager_user)
+        customer_response = self.client.post(self.approval_url, {
+            "reviewer_type": "customer",
+            "decision": "approved",
+            "comments": "Customer approved the final artwork",
+        }, format="json")
+        self.assertEqual(customer_response.status_code, 201)
+        manager_response = self.client.post(self.approval_url, {
+            "reviewer_type": "manager",
+            "decision": "approved",
+            "comments": "Confirmed for production",
+        }, format="json")
+        self.assertEqual(manager_response.status_code, 201)
+        self.revision.refresh_from_db()
+        self.assertEqual(self.revision.status, "approved")
+        self.assertIsNotNone(self.revision.locked_at)
+        detail = self.client.get(f"/api/design-revisions/{self.revision.pk}/")
+        self.assertEqual(detail.status_code, 200)
+        self.assertEqual(len(detail.data["approvals"]), 2)
+        self.assertEqual(AuditEvent.objects.filter(entity_id=self.revision.pk).count(), 2)
+
+    def test_design_revision_api_is_read_only(self):
+        self.client.force_authenticate(self.manager_user)
+        response = self.client.patch(
+            f"/api/design-revisions/{self.revision.pk}/",
+            {"change_summary": "Attempted edit"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 405)
+
+    def test_staff_outside_division_cannot_read_or_approve_revision(self):
+        other_division = Division.objects.create(code="approval-api-other", name="Other API Division")
+        other_user = get_user_model().objects.create_user(username="approval-api-outsider", password="password123")
+        other_staff = StaffProfile.objects.create(user=other_user, display_name="Outside Staff")
+        StaffDivision.objects.create(staff=other_staff, division=other_division)
+        self.client.force_authenticate(other_user)
+        response = self.client.post(self.approval_url, {
+            "reviewer_type": "customer", "decision": "approved",
+        }, format="json")
+        self.assertEqual(response.status_code, 404)
+
+    def test_designer_cannot_record_customer_or_manager_approval(self):
+        self.client.force_authenticate(self.designer_user)
+        response = self.client.post(self.approval_url, {
+            "reviewer_type": "customer", "decision": "approved",
+        }, format="json")
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(self.revision.approvals.count(), 0)
