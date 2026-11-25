@@ -55,6 +55,8 @@ class DomainModelTests(TestCase):
         )
         with self.assertRaises(ValidationError):
             job.full_clean()
+        with self.assertRaises(ValidationError):
+            job.save()
 
     def test_locked_revision_file_attachments_cannot_be_added_or_removed(self):
         customer = Customer.objects.create(customer_code="C-003", display_name="Test Customer 3")
@@ -372,6 +374,24 @@ class DesignApprovalServiceTests(TestCase):
                 decision="approved", actor=self.designer,
             )
         self.assertFalse(self.revision.approvals.exists())
+
+    def test_design_approval_history_cannot_be_edited_or_deleted(self):
+        from .models import DesignApproval
+        from .services import record_design_approval
+        approval = record_design_approval(
+            revision_id=self.revision.pk, reviewer_type="customer",
+            decision="approved", actor=self.manager, comments="Recorded decision",
+        )
+        approval.comments = "Tampered history"
+        with self.assertRaises(ValidationError):
+            approval.save()
+        with self.assertRaises(ValidationError):
+            DesignApproval.objects.filter(pk=approval.pk).update(comments="Queryset tamper")
+        with self.assertRaises(ValidationError):
+            DesignApproval.objects.filter(pk=approval.pk).delete()
+        with self.assertRaises(ValidationError):
+            approval.delete()
+        self.assertEqual(DesignApproval.objects.get(pk=approval.pk).comments, "Recorded decision")
 
 
 class DesignApprovalAPITests(TestCase):
