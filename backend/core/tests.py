@@ -100,7 +100,7 @@ class DomainModelTests(TestCase):
             design_record=design, revision_number=2, status="submitted", created_by=self.staff,
         )
 
-        manager_role = Role.objects.create(code="db-guard-manager", name="DB Guard Manager")
+        manager_role = Role.objects.create(code="manager", name="Manager")
         StaffRole.objects.create(staff=self.staff, role=manager_role, division=self.division)
         from .services import record_design_approval
         record_design_approval(
