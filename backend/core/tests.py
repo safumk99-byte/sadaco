@@ -426,14 +426,14 @@ class DesignApprovalServiceTests(TestCase):
                 with connection.cursor() as cursor:
                     cursor.execute(
                         "UPDATE core_designapproval SET comments = %s WHERE id = %s",
-                        ["Raw SQL tamper", str(approval.pk)],
+                        ["Raw SQL tamper", approval.pk.hex],
                     )
         with self.assertRaises(DatabaseError):
             with transaction.atomic():
                 with connection.cursor() as cursor:
                     cursor.execute(
                         "DELETE FROM core_designapproval WHERE id = %s",
-                        [str(approval.pk)],
+                        [approval.pk.hex],
                     )
         self.assertEqual(DesignApproval.objects.get(pk=approval.pk).comments, "Recorded decision")
 
