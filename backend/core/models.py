@@ -530,6 +530,18 @@ class OrderStatusEvent(UUIDModel):
     changed_at = models.DateTimeField(default=timezone.now)
     reason = models.TextField(blank=True)
 
+    def clean(self):
+        if self.sales_order_id and self.changed_by_id and not staff_has_division_access(
+            self.changed_by_id, self.sales_order.division_id
+        ):
+            raise ValidationError({
+                "changed_by": "Status actor must belong to the sales order division or hold a global Founder/Super Admin role."
+            })
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
 
 class DesignRecord(UUIDModel, TimeStampedModel):
     sales_order = models.ForeignKey(SalesOrder, on_delete=models.PROTECT, related_name="design_records")
@@ -1025,6 +1037,18 @@ class TaskUpdate(UUIDModel):
     note = models.TextField(blank=True)
     evidence_file = models.ForeignKey(StoredFile, on_delete=models.PROTECT, null=True, blank=True)
     recorded_at = models.DateTimeField(default=timezone.now)
+
+    def clean(self):
+        if self.staff_task_id and self.reported_by_id and not StaffDivision.objects.filter(
+            staff_id=self.reported_by_id, division_id=self.staff_task.division_id
+        ).exists():
+            raise ValidationError({
+                "reported_by": "Task update reporter must belong to the staff task division."
+            })
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
 
 
 class AuditEvent(UUIDModel):
