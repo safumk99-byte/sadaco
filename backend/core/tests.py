@@ -1690,6 +1690,36 @@ class ActiveStaffReferenceGuardTests(TestCase):
                 requested_by=self.inactive_staff,
             )
 
+    def test_crm_api_rejects_inactive_assignees_with_validation_response(self):
+        client = APIClient()
+        client.force_authenticate(self.active_staff.user)
+        enquiry_response = client.post(
+            "/api/enquiries/",
+            {
+                "enquiry_number": "INACTIVE-API-ASSIGNEE",
+                "customer": str(self.customer.pk),
+                "division": str(self.division.pk),
+                "source": Enquiry.Source.DIRECT,
+                "requested_product_service": "Inactive assignee test",
+                "assigned_to": str(self.inactive_staff.pk),
+            },
+            format="json",
+        )
+        self.assertEqual(enquiry_response.status_code, 400)
+        self.assertIn("assigned_to", enquiry_response.data)
+
+        follow_up_response = client.post(
+            "/api/follow-ups/",
+            {
+                "enquiry": str(self.enquiry.pk),
+                "assigned_to": str(self.inactive_staff.pk),
+                "due_at": timezone.now().isoformat(),
+            },
+            format="json",
+        )
+        self.assertEqual(follow_up_response.status_code, 400)
+        self.assertIn("assigned_to", follow_up_response.data)
+
     def test_global_founder_role_does_not_restore_access_for_inactive_staff(self):
         founder_role = Role.objects.create(code="founder", name="Founder")
         self.inactive_staff.employment_status = StaffProfile.EmploymentStatus.ACTIVE
