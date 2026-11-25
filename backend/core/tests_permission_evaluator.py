@@ -58,6 +58,14 @@ class ScopedRolePermissionTests(TestCase):
         )
         self.assertFalse(
             has_permission(
+                self.staff,
+                "crm.enquiry.read",
+                division_id=self.other_division.pk,
+                department_id=self.department.pk,
+            )
+        )
+        self.assertFalse(
+            has_permission(
                 self.staff, "crm.enquiry.read", division_id=self.other_division.pk
             )
         )
