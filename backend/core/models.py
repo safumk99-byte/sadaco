@@ -601,6 +601,21 @@ def protect_locked_revision_file_attachments(sender, instance, action, reverse, 
         )
 
 
+class DesignApprovalQuerySet(models.QuerySet):
+    def update(self, **kwargs):
+        raise ValidationError("Design approval history is immutable.")
+
+    def bulk_update(self, objs, fields, batch_size=None):
+        raise ValidationError("Design approval history is immutable.")
+
+    def delete(self):
+        raise ValidationError("Design approval history cannot be deleted.")
+
+
+class DesignApprovalManager(models.Manager.from_queryset(DesignApprovalQuerySet)):
+    pass
+
+
 class DesignApproval(UUIDModel):
     design_revision = models.ForeignKey(DesignRevision, on_delete=models.PROTECT, related_name="approvals")
     reviewer_type = models.CharField(max_length=30)
@@ -608,6 +623,16 @@ class DesignApproval(UUIDModel):
     reviewed_by = models.ForeignKey(StaffProfile, on_delete=models.PROTECT, null=True, blank=True)
     reviewed_at = models.DateTimeField(null=True, blank=True)
     comments = models.TextField(blank=True)
+
+    objects = DesignApprovalManager()
+
+    def save(self, *args, **kwargs):
+        if not self._state.adding:
+            raise ValidationError("Design approval history is immutable; record a new decision.")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("Design approval history cannot be deleted.")
 
 
 class JobCard(UUIDModel, TimeStampedModel):
@@ -630,6 +655,12 @@ class JobCard(UUIDModel, TimeStampedModel):
                 raise ValidationError("Design revision must belong to the same order as the job card.")
             if revision.status != "approved" or not revision.locked_at:
                 raise ValidationError("A job card requires a locked, approved design revision.")
+            if revision.design_record.sales_order.division_id != self.division_id:
+                raise ValidationError("Job card division must match the sales order division.")
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
 
 
 class ProductionStage(UUIDModel, TimeStampedModel):
