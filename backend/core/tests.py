@@ -11,7 +11,7 @@ from rest_framework.test import APIClient
 from .models import (
     ApprovalRequest, Customer, CustomerCommunication, DesignRecord, DesignRevision, Division, Enquiry, FollowUp, JobCard, OrderStatusEvent, Quotation,
     OrderAssignment, ProductionStage, ProductionUpdate, SalesOrder, StaffDivision,
-    StaffProfile, StaffTask, TaskUpdate, StoredFile, DesignRevisionFile, Role, StaffRole, Department, StaffDepartment,
+    StaffProfile, StaffTask, TaskUpdate, StoredFile, DesignRevisionFile, Role, Permission, RolePermission, StaffRole, Department, StaffDepartment,
 )
 
 
@@ -746,6 +746,19 @@ class EnquiryAPITests(TestCase):
         self.staff_b = StaffProfile.objects.create(user=self.user_b, display_name="Staff B")
         StaffDivision.objects.create(staff=self.staff_a, division=self.division_a)
         StaffDivision.objects.create(staff=self.staff_b, division=self.division_b)
+        manager_role = Role.objects.create(code="crm-manager", name="CRM Manager")
+        StaffRole.objects.create(staff=self.staff_a, role=manager_role, division=self.division_a)
+        crm_codes = [
+            "crm.enquiry.view", "crm.enquiry.create", "crm.enquiry.update",
+            "crm.enquiry.delete", "crm.enquiry.transition",
+            "crm.followup.view", "crm.followup.create", "crm.followup.update",
+            "crm.followup.delete", "crm.followup.complete",
+            "crm.customer.view", "crm.customer.create", "crm.customer.update",
+            "crm.customer.delete",
+        ]
+        for code in crm_codes:
+            permission = Permission.objects.create(code=code, description=f"Test grant for {code}")
+            RolePermission.objects.create(role=manager_role, permission=permission)
         self.customer = Customer.objects.create(customer_code="C-100", display_name="Customer")
 
     def test_staff_only_sees_enquiries_in_assigned_division(self):
@@ -773,6 +786,14 @@ class EnquiryAPITests(TestCase):
         self.assertEqual(response.status_code, 400)
 
     def test_unauthenticated_api_request_is_denied(self):
+        response = self.client.get("/api/enquiries/")
+        self.assertEqual(response.status_code, 403)
+
+    def test_staff_without_configured_crm_permission_is_denied(self):
+        user = get_user_model().objects.create_user(username="no-crm-grant", password="password123")
+        staff = StaffProfile.objects.create(user=user, display_name="No CRM Grant")
+        StaffDivision.objects.create(staff=staff, division=self.division_a)
+        self.client.force_authenticate(user)
         response = self.client.get("/api/enquiries/")
         self.assertEqual(response.status_code, 403)
 
