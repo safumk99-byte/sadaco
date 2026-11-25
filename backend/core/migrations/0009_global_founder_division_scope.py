@@ -177,8 +177,8 @@ def install_global_founder_scope_guards(apps, schema_editor):
                         WHERE sr.staff_id = NEW.assigned_by_id
                           AND r.code IN ('founder', 'super_admin')
                           AND sr.division_id IS NULL AND sr.department_id IS NULL
-                          AND sr.valid_from <= CURRENT_TIMESTAMP
-                          AND (sr.valid_until IS NULL OR sr.valid_until > CURRENT_TIMESTAMP)
+                          AND sr.valid_from <= clock_timestamp()
+                          AND (sr.valid_until IS NULL OR sr.valid_until > clock_timestamp())
                        ) THEN
                         RAISE EXCEPTION 'Assigner must belong to the division or hold a global Founder/Super Admin role';
                     END IF;
@@ -219,8 +219,8 @@ def install_global_founder_scope_guards(apps, schema_editor):
                             WHERE sr.staff_id = NEW.assigned_by_id
                               AND r.code IN ('founder', 'super_admin')
                               AND sr.division_id IS NULL AND sr.department_id IS NULL
-                              AND sr.valid_from <= CURRENT_TIMESTAMP
-                              AND (sr.valid_until IS NULL OR sr.valid_until > CURRENT_TIMESTAMP))
+                              AND sr.valid_from <= clock_timestamp()
+                              AND (sr.valid_until IS NULL OR sr.valid_until > clock_timestamp()))
                     ) THEN RAISE EXCEPTION 'Cross-division task assignment or inconsistent task relationship'; END IF;
                 END IF;
                 RETURN NEW;
@@ -241,16 +241,16 @@ def install_global_founder_scope_guards(apps, schema_editor):
                         AND NOT EXISTS (SELECT 1 FROM core_staffrole sr JOIN core_role r ON r.id = sr.role_id
                             WHERE sr.staff_id = NEW.prepared_by_id AND r.code IN ('founder', 'super_admin')
                               AND sr.division_id IS NULL AND sr.department_id IS NULL
-                              AND sr.valid_from <= CURRENT_TIMESTAMP
-                              AND (sr.valid_until IS NULL OR sr.valid_until > CURRENT_TIMESTAMP))
+                              AND sr.valid_from <= clock_timestamp()
+                              AND (sr.valid_until IS NULL OR sr.valid_until > clock_timestamp()))
                     ) OR (NEW.approved_by_id IS NOT NULL AND
                         NOT EXISTS (SELECT 1 FROM core_staffdivision
                             WHERE staff_id = NEW.approved_by_id AND division_id = NEW.division_id)
                         AND NOT EXISTS (SELECT 1 FROM core_staffrole sr JOIN core_role r ON r.id = sr.role_id
                             WHERE sr.staff_id = NEW.approved_by_id AND r.code IN ('founder', 'super_admin')
                               AND sr.division_id IS NULL AND sr.department_id IS NULL
-                              AND sr.valid_from <= CURRENT_TIMESTAMP
-                              AND (sr.valid_until IS NULL OR sr.valid_until > CURRENT_TIMESTAMP))
+                              AND sr.valid_from <= clock_timestamp()
+                              AND (sr.valid_until IS NULL OR sr.valid_until > clock_timestamp()))
                     ) THEN RAISE EXCEPTION 'Quotation division, enquiry, customer, or staff relationship is invalid'; END IF;
                 ELSIF TG_TABLE_NAME = 'core_salesorder' THEN
                     IF (NEW.quotation_id IS NOT NULL AND NOT EXISTS (
@@ -262,8 +262,8 @@ def install_global_founder_scope_guards(apps, schema_editor):
                         AND NOT EXISTS (SELECT 1 FROM core_staffrole sr JOIN core_role r ON r.id = sr.role_id
                             WHERE sr.staff_id = NEW.created_by_id AND r.code IN ('founder', 'super_admin')
                               AND sr.division_id IS NULL AND sr.department_id IS NULL
-                              AND sr.valid_from <= CURRENT_TIMESTAMP
-                              AND (sr.valid_until IS NULL OR sr.valid_until > CURRENT_TIMESTAMP))
+                              AND sr.valid_from <= clock_timestamp()
+                              AND (sr.valid_until IS NULL OR sr.valid_until > clock_timestamp()))
                     ) THEN RAISE EXCEPTION 'Sales order division, quotation, customer, or creator relationship is invalid'; END IF;
                 END IF;
                 RETURN NEW;
