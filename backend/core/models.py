@@ -1088,7 +1088,7 @@ class StaffTask(UUIDModel, TimeStampedModel):
                 raise ValidationError({"production_stage": "Production stage must belong to the task division."})
         for field in ("assigned_to", "assigned_by"):
             staff_id = getattr(self, f"{field}_id")
-            if staff_id and not (staff_has_division_access(staff_id, self.division_id) if field == "assigned_by" else StaffDivision.objects.filter(staff_id=staff_id, division_id=self.division_id).exists()):
+            if staff_id and not (staff_has_division_access(staff_id, self.division_id) if field == "assigned_by" else staff_has_division_membership(staff_id, self.division_id)):
                 raise ValidationError({field: "Assigned staff must belong to the task division; assigner must belong or hold a global Founder/Super Admin role."})
 
     def save(self, *args, **kwargs):
