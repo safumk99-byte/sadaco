@@ -9,7 +9,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from .models import (
-    Customer, DesignRecord, DesignRevision, Division, Enquiry, FollowUp, JobCard, Quotation,
+    ApprovalRequest, Customer, CustomerCommunication, DesignRecord, DesignRevision, Division, Enquiry, FollowUp, JobCard, Quotation,
     OrderAssignment, ProductionStage, ProductionUpdate, SalesOrder, StaffDivision,
     StaffProfile, StaffTask, StoredFile, DesignRevisionFile, Role, StaffRole,
 )
@@ -1062,3 +1062,140 @@ class DesignApprovalAPITests(TestCase):
         }, format="json")
         self.assertEqual(response.status_code, 400)
         self.assertEqual(self.revision.approvals.count(), 0)
+
+
+
+class CRMRelationshipScopeTests(TestCase):
+    def setUp(self):
+        self.division = Division.objects.create(code="crm-scope", name="CRM Scope Division")
+        self.other_division = Division.objects.create(code="crm-other", name="CRM Other Division")
+        User = get_user_model()
+        self.user = User.objects.create_user(username="crm-scope-staff", password="test-password-123")
+        self.staff = StaffProfile.objects.create(user=self.user, display_name="CRM Scope Staff")
+        StaffDivision.objects.create(staff=self.staff, division=self.division)
+        self.other_user = User.objects.create_user(username="crm-outsider", password="test-password-123")
+        self.outsider = StaffProfile.objects.create(user=self.other_user, display_name="CRM Outsider")
+        StaffDivision.objects.create(staff=self.outsider, division=self.other_division)
+        self.customer = Customer.objects.create(
+            customer_code="CRM-SCOPE-CUSTOMER", display_name="CRM Scope Customer"
+        )
+        self.other_customer = Customer.objects.create(
+            customer_code="CRM-OTHER-CUSTOMER", display_name="CRM Other Customer"
+        )
+        self.enquiry = Enquiry.objects.create(
+            enquiry_number="CRM-SCOPE-ENQUIRY", customer=self.customer,
+            division=self.division, source=Enquiry.Source.DIRECT,
+            requested_product_service="CNC signage", created_by=self.staff,
+        )
+        self.other_enquiry = Enquiry.objects.create(
+            enquiry_number="CRM-OTHER-ENQUIRY", customer=self.other_customer,
+            division=self.other_division, source=Enquiry.Source.DIRECT,
+            requested_product_service="Decor panel", created_by=self.outsider,
+        )
+
+    def test_customer_communication_model_scope_is_enforced(self):
+        with self.assertRaises(ValidationError):
+            CustomerCommunication.objects.create(
+                customer=self.customer, enquiry=self.other_enquiry,
+                division=self.division, channel=CustomerCommunication.Channel.PHONE,
+                summary="Wrong enquiry division", recorded_by=self.staff,
+            )
+        with self.assertRaises(ValidationError):
+            CustomerCommunication.objects.create(
+                customer=self.other_customer, enquiry=self.enquiry,
+                division=self.division, channel=CustomerCommunication.Channel.PHONE,
+                summary="Wrong enquiry customer", recorded_by=self.staff,
+            )
+        with self.assertRaises(ValidationError):
+            CustomerCommunication.objects.create(
+                customer=self.customer, enquiry=self.enquiry,
+                division=self.division, channel=CustomerCommunication.Channel.PHONE,
+                summary="Wrong recorder", recorded_by=self.outsider,
+            )
+        communication = CustomerCommunication.objects.create(
+            customer=self.customer, enquiry=self.enquiry, division=self.division,
+            channel=CustomerCommunication.Channel.PHONE,
+            summary="Valid customer call", recorded_by=self.staff,
+        )
+        self.assertEqual(communication.pk, CustomerCommunication.objects.get(pk=communication.pk).pk)
+
+    def test_approval_request_model_scope_is_enforced(self):
+        with self.assertRaises(ValidationError):
+            ApprovalRequest.objects.create(
+                division=self.division, entity_type="quotation", entity_id=uuid.uuid4(),
+                approval_type="discount", requested_by=self.outsider,
+            )
+        with self.assertRaises(ValidationError):
+            ApprovalRequest.objects.create(
+                division=self.division, entity_type="quotation", entity_id=uuid.uuid4(),
+                approval_type="discount", requested_by=self.staff, decided_by=self.outsider,
+            )
+        request = ApprovalRequest.objects.create(
+            division=self.division, entity_type="quotation", entity_id=uuid.uuid4(),
+            approval_type="discount", requested_by=self.staff, decided_by=self.staff,
+        )
+        self.assertEqual(request.pk, ApprovalRequest.objects.get(pk=request.pk).pk)
+
+    def test_customer_communication_database_guards_reject_invalid_insert_and_update(self):
+        now = timezone.now()
+        with self.assertRaises(DatabaseError):
+            with transaction.atomic():
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        "INSERT INTO core_customercommunication "
+                        "(id, customer_id, enquiry_id, division_id, channel, direction, occurred_at, summary, external_reference, recorded_by_id) "
+                        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                        [uuid.uuid4().hex, self.customer.pk.hex, self.other_enquiry.pk.hex,
+                         self.division.pk.hex, "phone", "", now, "Invalid insert", "", self.staff.pk.hex],
+                    )
+
+        communication = CustomerCommunication.objects.create(
+            customer=self.customer, enquiry=self.enquiry, division=self.division,
+            channel=CustomerCommunication.Channel.PHONE,
+            summary="Valid communication", recorded_by=self.staff,
+        )
+        for column, value in [
+            ("recorded_by_id", self.outsider.pk.hex),
+            ("enquiry_id", self.other_enquiry.pk.hex),
+            ("customer_id", self.other_customer.pk.hex),
+        ]:
+            with self.subTest(operation="update", column=column):
+                with self.assertRaises(DatabaseError):
+                    with transaction.atomic():
+                        with connection.cursor() as cursor:
+                            cursor.execute(
+                                f"UPDATE core_customercommunication SET {column} = %s WHERE id = %s",
+                                [value, communication.pk.hex],
+                            )
+
+    def test_approval_request_database_guards_reject_invalid_insert_and_update(self):
+        now = timezone.now()
+        with self.assertRaises(DatabaseError):
+            with transaction.atomic():
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        "INSERT INTO core_approvalrequest "
+                        "(id, created_at, updated_at, division_id, entity_type, entity_id, approval_type, status, "
+                        "requested_by_id, decided_by_id, requested_at, decided_at, reason, decision_note, requested_value) "
+                        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                        [uuid.uuid4().hex, now, now, self.division.pk.hex, "quotation",
+                         uuid.uuid4().hex, "discount", "pending", self.outsider.pk.hex,
+                         None, now, None, "", "", None],
+                    )
+
+        request = ApprovalRequest.objects.create(
+            division=self.division, entity_type="quotation", entity_id=uuid.uuid4(),
+            approval_type="discount", requested_by=self.staff,
+        )
+        for column, value in [
+            ("requested_by_id", self.outsider.pk.hex),
+            ("decided_by_id", self.outsider.pk.hex),
+        ]:
+            with self.subTest(column=column):
+                with self.assertRaises(DatabaseError):
+                    with transaction.atomic():
+                        with connection.cursor() as cursor:
+                            cursor.execute(
+                                f"UPDATE core_approvalrequest SET {column} = %s WHERE id = %s",
+                                [value, request.pk.hex],
+                            )
