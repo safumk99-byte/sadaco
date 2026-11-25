@@ -2,6 +2,7 @@ from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
+from django.db import transaction
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
@@ -64,7 +65,8 @@ class DomainModelTests(TestCase):
         )
 
         with self.assertRaises(ValidationError):
-            revision.files.add(stored_file)
+            with transaction.atomic():
+                revision.files.add(stored_file)
         with self.assertRaises(ValidationError):
             DesignRevisionFile.objects.create(
                 design_revision=revision, stored_file=stored_file
@@ -80,9 +82,11 @@ class DomainModelTests(TestCase):
         unlocked.save()
 
         with self.assertRaises(ValidationError):
-            unlocked.files.remove(stored_file)
+            with transaction.atomic():
+                unlocked.files.remove(stored_file)
         with self.assertRaises(ValidationError):
-            unlocked.files.clear()
+            with transaction.atomic():
+                unlocked.files.clear()
         with self.assertRaises(ValidationError):
             DesignRevisionFile.objects.filter(
                 design_revision=unlocked
