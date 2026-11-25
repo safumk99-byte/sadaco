@@ -213,6 +213,23 @@ class Enquiry(UUIDModel, TimeStampedModel):
             models.Index(fields=["assigned_to", "follow_up_at"], name="ix_enquiry_owner_followup"),
         ]
 
+    def clean(self):
+        errors = {}
+        if self.assigned_to_id and self.division_id and not StaffDivision.objects.filter(
+            staff_id=self.assigned_to_id, division_id=self.division_id
+        ).exists():
+            errors["assigned_to"] = "Assignee must belong to the enquiry division."
+        if self.created_by_id and self.division_id and not staff_has_division_access(
+            self.created_by_id, self.division_id
+        ):
+            errors["created_by"] = "Creator must belong to the enquiry division or hold a global Founder/Super Admin role."
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
 
 class FollowUp(UUIDModel, TimeStampedModel):
     class Status(models.TextChoices):
@@ -229,6 +246,18 @@ class FollowUp(UUIDModel, TimeStampedModel):
 
     class Meta:
         indexes = [models.Index(fields=["status", "due_at"], name="ix_followup_status_due")]
+
+    def clean(self):
+        if self.assigned_to_id and self.enquiry_id and not StaffDivision.objects.filter(
+            staff_id=self.assigned_to_id, division_id=self.enquiry.division_id
+        ).exists():
+            raise ValidationError({
+                "assigned_to": "Assignee must belong to the enquiry division."
+            })
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
 
 
 class CustomerCommunication(UUIDModel):
