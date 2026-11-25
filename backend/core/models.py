@@ -444,6 +444,13 @@ class DesignRevisionQuerySet(models.QuerySet):
             )
         return super().bulk_update(objs, fields, batch_size=batch_size)
 
+    def bulk_create(self, objs, **kwargs):
+        if any(obj.locked_at is not None for obj in objs):
+            raise ValidationError(
+                "Create a design revision first, then lock it through the approval workflow."
+            )
+        return super().bulk_create(objs, **kwargs)
+
     def delete(self):
         self._assert_unlocked()
         return super().delete()
