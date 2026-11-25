@@ -6,10 +6,10 @@ from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from .models import Customer, Enquiry, FollowUp
+from .models import Customer, DesignRevision, Enquiry, FollowUp
 from .permissions import IsActiveStaff, IsFounderOrScopedDivisionMember, active_staff_profile, is_founder
-from .serializers import CustomerSerializer, EnquirySerializer, FollowUpSerializer
-from .services import complete_follow_up, transition_enquiry
+from .serializers import (\n    CustomerSerializer, DesignApprovalReadSerializer, DesignApprovalSubmissionSerializer,\n    DesignRevisionSerializer, EnquirySerializer, FollowUpSerializer,\n)
+from .services import complete_follow_up, record_design_approval, transition_enquiry
 
 
 @require_GET
@@ -90,3 +90,41 @@ class FollowUpViewSet(viewsets.ModelViewSet):
         except ValidationError as exc:
             raise serializers.ValidationError(getattr(exc, "message_dict", exc.messages))
         return Response(self.get_serializer(updated).data, status=status.HTTP_200_OK)
+
+
+
+class DesignRevisionViewSet(viewsets.ReadOnlyModelViewSet):
+    serializer_class = DesignRevisionSerializer
+    permission_classes = [IsActiveStaff]
+
+    def get_queryset(self):
+        profile = active_staff_profile(self.request.user)
+        if profile is None:
+            return DesignRevision.objects.none()
+        queryset = DesignRevision.objects.select_related(
+            "design_record", "design_record__sales_order", "created_by"
+        ).prefetch_related("approvals")
+        if not is_founder(profile):
+            queryset = queryset.filter(
+                design_record__sales_order__division__in=profile.divisions.all()
+            )
+        return queryset
+
+    @action(detail=True, methods=["post"], url_path="approval")
+    def approval(self, request, pk=None):
+        revision = self.get_object()
+        input_serializer = DesignApprovalSubmissionSerializer(data=request.data)
+        input_serializer.is_valid(raise_exception=True)
+        try:
+            approval = record_design_approval(
+                revision_id=revision.pk,
+                actor=request.user.staff_profile,
+                **input_serializer.validated_data,
+            )
+        except ValidationError as exc:
+            detail = getattr(exc, "message_dict", None) or exc.messages
+            raise serializers.ValidationError(detail)
+        return Response(
+            DesignApprovalReadSerializer(approval).data,
+            status=status.HTTP_201_CREATED,
+        )
