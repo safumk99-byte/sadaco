@@ -142,6 +142,22 @@ class StaffDivision(UUIDModel):
         constraints = [models.UniqueConstraint(fields=["staff", "division"], name="uq_staff_division")]
 
 
+def staff_has_division_access(staff_id, division_id):
+    """Return whether staff is assigned to a division or holds a global admin role."""
+    if not staff_id or not division_id:
+        return False
+    now = timezone.now()
+    return StaffDivision.objects.filter(
+        staff_id=staff_id, division_id=division_id
+    ).exists() or StaffRole.objects.filter(
+        staff_id=staff_id,
+        role__code__in=["founder", "super_admin"],
+        division__isnull=True,
+        department__isnull=True,
+        valid_from__lte=now,
+    ).filter(Q(valid_until__isnull=True) | Q(valid_until__gt=now)).exists()
+
+
 class Customer(UUIDModel, TimeStampedModel):
     customer_code = models.CharField(max_length=40, unique=True)
     display_name = models.CharField(max_length=180)
@@ -305,10 +321,8 @@ class Quotation(UUIDModel, TimeStampedModel):
                 errors["customer"] = "Customer must match the selected enquiry."
         for field in ("prepared_by", "approved_by"):
             staff_id = getattr(self, f"{field}_id")
-            if staff_id and self.division_id and not StaffDivision.objects.filter(
-                staff_id=staff_id, division_id=self.division_id
-            ).exists():
-                errors[field] = "Staff member must belong to the quotation division."
+            if staff_id and self.division_id and not staff_has_division_access(staff_id, self.division_id):
+                errors[field] = "Staff member must belong to the quotation division or hold a global Founder/Super Admin role."
         if errors:
             raise ValidationError(errors)
 
@@ -396,10 +410,8 @@ class SalesOrder(UUIDModel, TimeStampedModel):
                 errors["quotation"] = "Quotation must belong to the sales order division."
             if quotation.customer_id != self.customer_id:
                 errors["customer"] = "Customer must match the selected quotation."
-        if self.created_by_id and self.division_id and not StaffDivision.objects.filter(
-            staff_id=self.created_by_id, division_id=self.division_id
-        ).exists():
-            errors["created_by"] = "Order creator must belong to the sales order division."
+        if self.created_by_id and self.division_id and not staff_has_division_access(self.created_by_id, self.division_id):
+            errors["created_by"] = "Order creator must belong to the sales order division or hold a global Founder/Super Admin role."
         if errors:
             raise ValidationError(errors)
 
@@ -439,10 +451,8 @@ class OrderAssignment(UUIDModel):
             division_id = self.sales_order.division_id
             for field in ("staff", "assigned_by"):
                 staff_id = getattr(self, f"{field}_id")
-                if staff_id and not StaffDivision.objects.filter(
-                    staff_id=staff_id, division_id=division_id
-                ).exists():
-                    raise ValidationError({field: "Staff member must belong to the sales order division."})
+                if staff_id and not (staff_has_division_access(staff_id, division_id) if field == "assigned_by" else StaffDivision.objects.filter(staff_id=staff_id, division_id=division_id).exists()):
+                    raise ValidationError({field: "Assigned staff must belong to the sales order division; assigner must belong or hold a global Founder/Super Admin role."})
 
     def save(self, *args, **kwargs):
         self.full_clean()
@@ -930,10 +940,8 @@ class StaffTask(UUIDModel, TimeStampedModel):
                 raise ValidationError({"production_stage": "Production stage must belong to the task division."})
         for field in ("assigned_to", "assigned_by"):
             staff_id = getattr(self, f"{field}_id")
-            if staff_id and not StaffDivision.objects.filter(
-                staff_id=staff_id, division_id=self.division_id
-            ).exists():
-                raise ValidationError({field: "Staff member must belong to the task division."})
+            if staff_id and not (staff_has_division_access(staff_id, self.division_id) if field == "assigned_by" else StaffDivision.objects.filter(staff_id=staff_id, division_id=self.division_id).exists()):
+                raise ValidationError({field: "Assigned staff must belong to the task division; assigner must belong or hold a global Founder/Super Admin role."})
 
     def save(self, *args, **kwargs):
         self.full_clean()
