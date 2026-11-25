@@ -432,6 +432,10 @@ class DesignRevisionQuerySet(models.QuerySet):
 
     def update(self, **kwargs):
         self._assert_unlocked()
+        if "locked_at" in kwargs or kwargs.get("status") == "approved":
+            raise ValidationError(
+                "Design revisions can only be approved through the approval workflow."
+            )
         return super().update(**kwargs)
 
     def bulk_update(self, objs, fields, batch_size=None):
@@ -442,14 +446,19 @@ class DesignRevisionQuerySet(models.QuerySet):
             raise ValidationError(
                 "An approved design revision is immutable; create a new revision."
             )
+        if {"locked_at", "status"}.intersection(fields):
+            raise ValidationError(
+                "Design revision approval fields must be changed through the approval workflow."
+            )
         return super().bulk_update(objs, fields, batch_size=batch_size)
 
     def bulk_create(self, objs, **kwargs):
-        if any(obj.locked_at is not None for obj in objs):
+        objects = list(objs)
+        if any(obj.locked_at is not None or obj.status == "approved" for obj in objects):
             raise ValidationError(
-                "Create a design revision first, then lock it through the approval workflow."
+                "Create a design revision first, then approve it through the approval workflow."
             )
-        return super().bulk_create(objs, **kwargs)
+        return super().bulk_create(objects, **kwargs)
 
     def delete(self):
         self._assert_unlocked()
@@ -477,7 +486,7 @@ class DesignRevision(UUIDModel, TimeStampedModel):
         constraints = [models.UniqueConstraint(fields=["design_record", "revision_number"], name="uq_design_revision_number")]
 
     def save(self, *args, **kwargs):
-        if self._state.adding and self.locked_at is not None:
+        if self._state.adding and (self.locked_at is not None or self.status == "approved"):
             raise ValidationError(
                 "A design revision must be created unlocked and approved through the workflow."
             )
@@ -494,7 +503,42 @@ class DesignRevision(UUIDModel, TimeStampedModel):
                         "An approved design revision is immutable; create a new revision. "
                         f"Changed fields: {', '.join(changed)}"
                     )
+            if previous and previous.locked_at is None and (
+                self.locked_at is not None or self.status == "approved"
+            ):
+                if not getattr(self, "_approval_workflow_update", False):
+                    raise ValidationError(
+                        "Design revisions can only be approved through the approval workflow."
+                    )
+                if not self.approvals.filter(
+                    reviewer_type="customer", decision="approved"
+                ).exists() or not self.approvals.filter(
+                    reviewer_type="manager", decision="approved"
+                ).exists():
+                    raise ValidationError(
+                        "Customer and Manager approvals are required before locking a revision."
+                    )
         super().save(*args, **kwargs)
+
+    def lock_after_approval(self, manager_approval):
+        if (
+            manager_approval.design_revision_id != self.pk
+            or manager_approval.reviewer_type != "manager"
+            or manager_approval.decision != "approved"
+            or not self.approvals.filter(
+                reviewer_type="customer", decision="approved"
+            ).exists()
+        ):
+            raise ValidationError(
+                "A valid Manager approval and prior customer approval are required."
+            )
+        self.status = "approved"
+        self.locked_at = manager_approval.reviewed_at or timezone.now()
+        self._approval_workflow_update = True
+        try:
+            self.save(update_fields=["status", "locked_at", "updated_at"])
+        finally:
+            del self._approval_workflow_update
 
     def delete(self, *args, **kwargs):
         if self.pk and type(self).objects.filter(
