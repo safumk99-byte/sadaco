@@ -1382,3 +1382,115 @@ class DepartmentRoleScopeTests(TestCase):
                         "UPDATE core_staffrole SET division_id = %s WHERE id = %s",
                         [self.division_b.pk, assignment.pk],
                     )
+
+
+
+class DesignApprovalActorScopeTests(TestCase):
+    def setUp(self):
+        self.division = Division.objects.create(
+            code="approval-scope", name="Approval Scope Division"
+        )
+        manager_user = get_user_model().objects.create_user(
+            username="approval-scope-manager", password="test-password-123"
+        )
+        outsider_user = get_user_model().objects.create_user(
+            username="approval-scope-outsider", password="test-password-123"
+        )
+        self.manager = StaffProfile.objects.create(
+            user=manager_user, display_name="Approval Scope Manager"
+        )
+        self.outsider = StaffProfile.objects.create(
+            user=outsider_user, display_name="Approval Scope Outsider"
+        )
+        StaffDivision.objects.create(staff=self.manager, division=self.division)
+        manager_role = Role.objects.create(code="manager", name="Manager")
+        StaffRole.objects.create(
+            staff=self.manager, role=manager_role, division=self.division
+        )
+        customer = Customer.objects.create(
+            customer_code="APPROVAL-SCOPE-C", display_name="Approval Scope Customer"
+        )
+        order = SalesOrder.objects.create(
+            order_number="APPROVAL-SCOPE-O", customer=customer,
+            division=self.division, created_by=self.manager,
+            subtotal=Decimal("100"), grand_total=Decimal("100"),
+            balance_due=Decimal("100"),
+        )
+        design = DesignRecord.objects.create(
+            sales_order=order, title="Approval Scope Design"
+        )
+        self.revision = DesignRevision.objects.create(
+            design_record=design, revision_number=1,
+            status="pending", created_by=self.manager,
+        )
+
+    def test_model_rejects_approval_by_staff_without_manager_or_global_founder_role(self):
+        from .models import DesignApproval
+
+        with self.assertRaises(ValidationError):
+            DesignApproval.objects.create(
+                design_revision=self.revision,
+                reviewer_type="customer",
+                decision="approved",
+                reviewed_by=self.outsider,
+                reviewed_at=timezone.now(),
+            )
+
+    def test_model_requires_customer_approval_before_manager_approval(self):
+        from .models import DesignApproval
+
+        with self.assertRaises(ValidationError):
+            DesignApproval.objects.create(
+                design_revision=self.revision,
+                reviewer_type="manager",
+                decision="approved",
+                reviewed_by=self.manager,
+                reviewed_at=timezone.now(),
+            )
+
+    def test_database_guard_rejects_unauthorized_actor_and_manager_approval_out_of_order(self):
+        now = timezone.now()
+        from .models import DesignApproval
+
+        cases = [
+            (self.outsider, "customer", "approved"),
+            (self.manager, "manager", "approved"),
+            (self.manager, "unexpected", "approved"),
+        ]
+        for actor, reviewer_type, decision in cases:
+            with self.subTest(actor=actor.display_name, reviewer_type=reviewer_type):
+                with self.assertRaises(DatabaseError):
+                    with transaction.atomic():
+                        with connection.cursor() as cursor:
+                            cursor.execute(
+                                "INSERT INTO core_designapproval "
+                                "(id, design_revision_id, reviewer_type, decision, "
+                                "reviewed_by_id, reviewed_at, comments) "
+                                "VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                                [
+                                    uuid.uuid4(), self.revision.pk, reviewer_type,
+                                    decision, actor.pk, now, "Raw SQL bypass attempt",
+                                ],
+                            )
+
+    def test_service_records_customer_then_manager_approval(self):
+        from .services import record_design_approval
+
+        customer_approval = record_design_approval(
+            revision_id=self.revision.pk,
+            reviewer_type="customer",
+            decision="approved",
+            actor=self.manager,
+        )
+        manager_approval = record_design_approval(
+            revision_id=self.revision.pk,
+            reviewer_type="manager",
+            decision="approved",
+            actor=self.manager,
+        )
+
+        self.assertEqual(customer_approval.reviewer_type, "customer")
+        self.assertEqual(manager_approval.reviewer_type, "manager")
+        self.revision.refresh_from_db()
+        self.assertEqual(self.revision.status, "approved")
+        self.assertIsNotNone(self.revision.locked_at)
