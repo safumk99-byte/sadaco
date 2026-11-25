@@ -13,6 +13,7 @@ from .models import (
     FollowUp,
     StaffDivision,
     StaffProfile,
+    Role, Permission, RolePermission, StaffRole,
 )
 
 
@@ -42,6 +43,17 @@ class CRMActionAPITests(TestCase):
         StaffDivision.objects.create(
             staff=self.other_staff, division=self.other_division
         )
+        manager_role = Role.objects.create(code="crm-actions-manager", name="CRM Actions Manager")
+        StaffRole.objects.create(staff=self.staff, role=manager_role, division=self.division)
+        for code in [
+            "crm.enquiry.view", "crm.enquiry.create", "crm.enquiry.update",
+            "crm.enquiry.transition", "crm.followup.view", "crm.followup.create",
+            "crm.followup.update", "crm.followup.complete",
+        ]:
+            permission = Permission.objects.create(
+                code=code, description=f"CRM API test grant: {code}"
+            )
+            RolePermission.objects.create(role=manager_role, permission=permission)
         self.customer = Customer.objects.create(
             customer_code="CRM-ACTION-C1", display_name="CRM Action Customer"
         )
