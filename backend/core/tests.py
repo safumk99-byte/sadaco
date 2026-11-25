@@ -1494,3 +1494,45 @@ class DesignApprovalActorScopeTests(TestCase):
         self.revision.refresh_from_db()
         self.assertEqual(self.revision.status, "approved")
         self.assertIsNotNone(self.revision.locked_at)
+
+
+
+class AuditEventImmutabilityTests(TestCase):
+    def setUp(self):
+        from .models import AuditEvent
+
+        self.event = AuditEvent.objects.create(
+            entity_type="test_entity",
+            entity_id=uuid.uuid4(),
+            action="created",
+            after_data={"status": "new"},
+        )
+
+    def test_model_rejects_audit_event_update_and_delete(self):
+        from .models import AuditEvent
+
+        self.event.action = "tampered"
+        with self.assertRaises(ValidationError):
+            self.event.save()
+        with self.assertRaises(ValidationError):
+            self.event.delete()
+        with self.assertRaises(ValidationError):
+            AuditEvent.objects.filter(pk=self.event.pk).update(action="tampered")
+        with self.assertRaises(ValidationError):
+            AuditEvent.objects.filter(pk=self.event.pk).delete()
+
+    def test_database_rejects_raw_sql_audit_event_update_and_delete(self):
+        with self.assertRaises(DatabaseError):
+            with transaction.atomic():
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        "UPDATE core_auditevent SET action = %s WHERE id = %s",
+                        ["tampered", self.event.pk.hex],
+                    )
+        with self.assertRaises(DatabaseError):
+            with transaction.atomic():
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        "DELETE FROM core_auditevent WHERE id = %s",
+                        [self.event.pk.hex],
+                    )
