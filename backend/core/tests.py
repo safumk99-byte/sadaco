@@ -126,6 +126,10 @@ class DomainModelTests(TestCase):
         revision.change_summary = "Bulk update bypass attempt"
         with self.assertRaises(ValidationError):
             DesignRevision.objects.bulk_update([revision], ["change_summary"])
+        with self.assertRaises(ValidationError):
+            DesignRevision.objects.filter(pk=revision.pk).delete()
+        with self.assertRaises(ValidationError):
+            revision.delete()
 
 
 class EnquiryAPITests(TestCase):
