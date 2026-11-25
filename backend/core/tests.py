@@ -119,6 +119,13 @@ class DomainModelTests(TestCase):
         revision.change_summary = "Edited after approval"
         with self.assertRaises(ValidationError):
             revision.save()
+        with self.assertRaises(ValidationError):
+            DesignRevision.objects.filter(pk=revision.pk).update(
+                change_summary="Queryset bypass attempt"
+            )
+        revision.change_summary = "Bulk update bypass attempt"
+        with self.assertRaises(ValidationError):
+            DesignRevision.objects.bulk_update([revision], ["change_summary"])
 
 
 class EnquiryAPITests(TestCase):
