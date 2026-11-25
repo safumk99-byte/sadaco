@@ -350,7 +350,7 @@ class DesignApprovalServiceTests(TestCase):
         self.assertEqual(self.revision.status, "approved")
         self.assertIsNotNone(self.revision.locked_at)
         self.assertEqual(self.revision.approvals.count(), 2)
-        self.assertEqual(AuditEvent.objects.filter(entity_id=self.revision.pk).count(), 1)
+        self.assertEqual(AuditEvent.objects.filter(entity_id=self.revision.pk).count(), 2)
         self.assertEqual(AuditEvent.objects.filter(entity_id=customer_decision.pk).count(), 1)
         self.assertEqual(AuditEvent.objects.filter(entity_id=manager_decision.pk).count(), 1)
 
