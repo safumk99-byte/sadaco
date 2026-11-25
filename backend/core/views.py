@@ -7,7 +7,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from .models import Customer, DesignRevision, Enquiry, FollowUp
-from .permissions import IsActiveStaff, IsFounderOrScopedDivisionMember, active_staff_profile, is_founder
+from .permissions import IsActiveStaff, IsFounderOrScopedDivisionMember, active_role_division_ids, active_staff_profile, is_founder
 from .serializers import (
     CustomerSerializer, DesignApprovalReadSerializer, DesignApprovalSubmissionSerializer,
     DesignRevisionSerializer, EnquirySerializer, FollowUpSerializer,
@@ -108,9 +108,11 @@ class DesignRevisionViewSet(viewsets.ReadOnlyModelViewSet):
             "design_record", "design_record__sales_order", "created_by"
         ).prefetch_related("approvals")
         if not is_founder(profile):
+            manager_division_ids = active_role_division_ids(profile, "manager")
             queryset = queryset.filter(
-                design_record__sales_order__division__in=profile.divisions.all()
-            )
+                Q(design_record__sales_order__division__in=profile.divisions.all())
+                | Q(design_record__sales_order__division_id__in=manager_division_ids)
+            ).distinct()
         return queryset
 
     @action(detail=True, methods=["post"], url_path="approval")
