@@ -55,6 +55,7 @@ jobs:
           fi
 
   postgres-check:
+    needs: django-check
     runs-on: ubuntu-latest
     permissions:
       contents: read
