@@ -20,6 +20,8 @@ def is_founder(profile):
     return StaffRole.objects.filter(
         staff=profile,
         role__code__in=["founder", "super_admin"],
+        division__isnull=True,
+        department__isnull=True,
         valid_from__lte=now,
     ).filter(Q(valid_until__isnull=True) | Q(valid_until__gt=now)).exists()
 
