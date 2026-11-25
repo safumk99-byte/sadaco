@@ -1294,3 +1294,68 @@ class OrderTaskActorScopeTests(TestCase):
                         "UPDATE core_taskupdate SET reported_by_id = %s WHERE id = %s",
                         [self.outsider.pk.hex, update.pk.hex],
                     )
+
+
+
+class DepartmentRoleScopeTests(TestCase):
+    def setUp(self):
+        from .models import Department
+        self.division_a = Division.objects.create(
+            code="role-scope-a", name="Role Scope Division A"
+        )
+        self.division_b = Division.objects.create(
+            code="role-scope-b", name="Role Scope Division B"
+        )
+        self.department_a = Department.objects.create(
+            division=self.division_a, name="Design"
+        )
+        self.department_b = Department.objects.create(
+            division=self.division_b, name="Design"
+        )
+        user = get_user_model().objects.create_user(
+            username="department-role-user", password="test-password-123"
+        )
+        self.staff = StaffProfile.objects.create(
+            user=user, display_name="Department Role User"
+        )
+        self.manager_role = Role.objects.create(
+            code="manager", name="Manager"
+        )
+
+    def test_department_scoped_manager_is_limited_to_its_department_division(self):
+        from .permissions import active_role_division_ids, has_active_role
+
+        StaffRole.objects.create(
+            staff=self.staff,
+            role=self.manager_role,
+            department=self.department_a,
+        )
+
+        self.assertTrue(
+            has_active_role(self.staff, "manager", division_id=self.division_a.pk)
+        )
+        self.assertFalse(
+            has_active_role(self.staff, "manager", division_id=self.division_b.pk)
+        )
+        self.assertEqual(
+            active_role_division_ids(self.staff, "manager"),
+            [self.division_a.pk],
+        )
+
+    def test_inconsistent_combined_role_scope_does_not_grant_either_division(self):
+        from .permissions import active_role_division_ids, has_active_role
+
+        StaffRole.objects.create(
+            staff=self.staff,
+            role=self.manager_role,
+            division=self.division_a,
+            department=self.department_b,
+        )
+
+        self.assertFalse(
+            has_active_role(self.staff, "manager", division_id=self.division_a.pk)
+        )
+        self.assertFalse(
+            has_active_role(self.staff, "manager", division_id=self.division_b.pk)
+        )
+        self.assertEqual(active_role_division_ids(self.staff, "manager"), [])
