@@ -99,6 +99,17 @@ class StaffRole(UUIDModel, TimeStampedModel):
     valid_until = models.DateTimeField(null=True, blank=True)
     granted_by = models.ForeignKey(StaffProfile, on_delete=models.PROTECT, null=True, blank=True, related_name="granted_roles")
 
+    def clean(self):
+        if self.department_id and self.division_id:
+            if self.department.division_id != self.division_id:
+                raise ValidationError({
+                    "department": "The selected department must belong to the selected division."
+                })
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
     class Meta:
         constraints = [
             models.CheckConstraint(condition=Q(valid_until__isnull=True) | Q(valid_until__gt=models.F("valid_from")), name="ck_staff_role_valid_period"),
