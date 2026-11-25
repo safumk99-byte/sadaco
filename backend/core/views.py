@@ -7,7 +7,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from .models import Customer, DesignRevision, Enquiry, FollowUp
-from .permissions import IsActiveStaff, IsFounderOrScopedDivisionMember, active_role_division_ids, active_staff_profile, is_founder
+from .permissions import (HasConfiguredRolePermission, IsActiveStaff, IsFounderOrScopedDivisionMember, active_role_division_ids, active_staff_profile, is_founder, permission_scope_division_ids)
 from .serializers import (
     CustomerSerializer, DesignApprovalReadSerializer, DesignApprovalSubmissionSerializer,
     DesignRevisionSerializer, EnquirySerializer, FollowUpSerializer,
@@ -22,15 +22,24 @@ def health(request):
 
 class CustomerViewSet(viewsets.ModelViewSet):
     serializer_class = CustomerSerializer
-    permission_classes = [IsActiveStaff]
+    permission_classes = [HasConfiguredRolePermission]
+    permission_codes = {
+        "list": "crm.customer.view", "retrieve": "crm.customer.view",
+        "create": "crm.customer.create", "update": "crm.customer.update",
+        "partial_update": "crm.customer.update", "destroy": "crm.customer.delete",
+    }
 
     def get_queryset(self):
         profile = active_staff_profile(self.request.user)
         if profile is None:
             return Customer.objects.none()
-        if is_founder(profile):
+        division_ids = permission_scope_division_ids(
+            profile, self.permission_codes.get(self.action)
+        )
+        if division_ids is None:
             return Customer.objects.all()
-        division_ids = profile.divisions.values_list("id", flat=True)
+        if not division_ids:
+            return Customer.objects.none()
         return Customer.objects.filter(
             Q(enquiries__division_id__in=division_ids) | Q(orders__division_id__in=division_ids)
         ).distinct()
@@ -38,15 +47,24 @@ class CustomerViewSet(viewsets.ModelViewSet):
 
 class EnquiryViewSet(viewsets.ModelViewSet):
     serializer_class = EnquirySerializer
-    permission_classes = [IsFounderOrScopedDivisionMember]
+    permission_classes = [HasConfiguredRolePermission]
+    permission_codes = {
+        "list": "crm.enquiry.view", "retrieve": "crm.enquiry.view",
+        "create": "crm.enquiry.create", "update": "crm.enquiry.update",
+        "partial_update": "crm.enquiry.update", "destroy": "crm.enquiry.delete",
+        "transition": "crm.enquiry.transition",
+    }
 
     def get_queryset(self):
         profile = active_staff_profile(self.request.user)
         if profile is None:
             return Enquiry.objects.none()
         qs = Enquiry.objects.select_related("customer", "division", "assigned_to", "created_by")
-        if not is_founder(profile):
-            qs = qs.filter(division__in=profile.divisions.all())
+        division_ids = permission_scope_division_ids(
+            profile, self.permission_codes.get(self.action)
+        )
+        if division_ids is not None:
+            qs = qs.filter(division_id__in=division_ids)
         return qs
 
     def perform_create(self, serializer):
@@ -70,15 +88,24 @@ class EnquiryViewSet(viewsets.ModelViewSet):
 
 class FollowUpViewSet(viewsets.ModelViewSet):
     serializer_class = FollowUpSerializer
-    permission_classes = [IsActiveStaff]
+    permission_classes = [HasConfiguredRolePermission]
+    permission_codes = {
+        "list": "crm.followup.view", "retrieve": "crm.followup.view",
+        "create": "crm.followup.create", "update": "crm.followup.update",
+        "partial_update": "crm.followup.update", "destroy": "crm.followup.delete",
+        "complete": "crm.followup.complete",
+    }
 
     def get_queryset(self):
         profile = active_staff_profile(self.request.user)
         if profile is None:
             return FollowUp.objects.none()
         qs = FollowUp.objects.select_related("enquiry", "assigned_to")
-        if not is_founder(profile):
-            qs = qs.filter(enquiry__division__in=profile.divisions.all())
+        division_ids = permission_scope_division_ids(
+            profile, self.permission_codes.get(self.action)
+        )
+        if division_ids is not None:
+            qs = qs.filter(enquiry__division_id__in=division_ids)
         return qs
 
     @action(detail=True, methods=["post"], url_path="complete")
