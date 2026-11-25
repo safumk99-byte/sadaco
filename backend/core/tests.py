@@ -297,3 +297,78 @@ class CRMServiceTests(TestCase):
         with self.assertRaises(ValidationError):
             complete_follow_up(follow_up_id=follow_up.id, actor=self.actor)
         self.assertEqual(AuditEvent.objects.filter(entity_id=follow_up.id).count(), 1)
+
+
+class DesignApprovalServiceTests(TestCase):
+    def setUp(self):
+        self.division = Division.objects.create(code="approval", name="Approval Division")
+        User = get_user_model()
+        self.manager_user = User.objects.create_user(username="approval-manager", password="test-password-123")
+        self.manager = StaffProfile.objects.create(user=self.manager_user, display_name="Approval Manager")
+        self.designer_user = User.objects.create_user(username="approval-designer", password="test-password-123")
+        self.designer = StaffProfile.objects.create(user=self.designer_user, display_name="Approval Designer")
+        manager_role = Role.objects.create(code="manager", name="Manager")
+        StaffRole.objects.create(staff=self.manager, role=manager_role, division=self.division)
+        customer = Customer.objects.create(customer_code="APR-001", display_name="Approval Customer")
+        order = SalesOrder.objects.create(
+            order_number="SAD-APPROVAL-001", customer=customer, division=self.division,
+            created_by=self.manager, subtotal=Decimal("100"), grand_total=Decimal("100"),
+            balance_due=Decimal("100"),
+        )
+        design = DesignRecord.objects.create(sales_order=order, title="Approval Artwork")
+        self.revision = DesignRevision.objects.create(
+            design_record=design, revision_number=1, status="submitted", created_by=self.designer,
+        )
+
+    def test_manager_confirmation_requires_customer_approval_first(self):
+        from .services import record_design_approval
+        with self.assertRaises(ValidationError):
+            record_design_approval(
+                revision_id=self.revision.pk, reviewer_type="manager",
+                decision="approved", actor=self.manager,
+            )
+        self.assertFalse(self.revision.approvals.exists())
+        self.revision.refresh_from_db()
+        self.assertIsNone(self.revision.locked_at)
+
+    def test_customer_approval_then_manager_confirmation_locks_revision_and_audits(self):
+        from .models import AuditEvent
+        from .services import record_design_approval
+        customer_decision = record_design_approval(
+            revision_id=self.revision.pk, reviewer_type="customer",
+            decision="approved", actor=self.manager, comments="Customer confirmed final artwork",
+        )
+        self.assertEqual(customer_decision.decision, "approved")
+        self.revision.refresh_from_db()
+        self.assertIsNone(self.revision.locked_at)
+        manager_decision = record_design_approval(
+            revision_id=self.revision.pk, reviewer_type="manager",
+            decision="approved", actor=self.manager, comments="Manager confirmed for production",
+        )
+        self.assertEqual(manager_decision.reviewer_type, "manager")
+        self.revision.refresh_from_db()
+        self.assertEqual(self.revision.status, "approved")
+        self.assertIsNotNone(self.revision.locked_at)
+        self.assertEqual(self.revision.approvals.count(), 2)
+        self.assertEqual(AuditEvent.objects.filter(entity_id=self.revision.pk).count(), 1)
+        self.assertEqual(AuditEvent.objects.filter(entity_id=customer_decision.pk).count(), 1)
+        self.assertEqual(AuditEvent.objects.filter(entity_id=manager_decision.pk).count(), 1)
+
+    def test_revision_required_decision_does_not_lock_revision(self):
+        from .services import record_design_approval
+        record_design_approval(
+            revision_id=self.revision.pk, reviewer_type="customer",
+            decision="revision_required", actor=self.manager, comments="Change requested",
+        )
+        self.revision.refresh_from_db()
+        self.assertEqual(self.revision.status, "revision_required")
+        self.assertIsNone(self.revision.locked_at)
+
+    def test_non_manager_cannot_record_design_approval(self):
+        from .services import record_design_approval
+        with self.assertRaises(ValidationError):
+            record_design_approval(
+                revision_id=self.revision.pk, reviewer_type="customer",
+                decision="approved", actor=self.designer,
+            )
+        self.assertFalse(self.revision.approvals.exists())
