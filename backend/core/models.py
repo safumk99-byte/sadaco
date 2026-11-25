@@ -635,6 +635,36 @@ class DesignApproval(UUIDModel):
         raise ValidationError("Design approval history cannot be deleted.")
 
 
+class JobCardQuerySet(models.QuerySet):
+    def update(self, **kwargs):
+        raise ValidationError(
+            "Job cards must be saved through model validation; queryset updates are disabled."
+        )
+
+    def bulk_update(self, objs, fields, batch_size=None):
+        raise ValidationError(
+            "Job cards must be saved through model validation; bulk updates are disabled."
+        )
+
+    def bulk_create(self, objs, batch_size=None, ignore_conflicts=False, update_conflicts=False,
+                    update_fields=None, unique_fields=None):
+        objects = list(objs)
+        for job_card in objects:
+            job_card.full_clean()
+        return super().bulk_create(
+            objects,
+            batch_size=batch_size,
+            ignore_conflicts=ignore_conflicts,
+            update_conflicts=update_conflicts,
+            update_fields=update_fields,
+            unique_fields=unique_fields,
+        )
+
+
+class JobCardManager(models.Manager.from_queryset(JobCardQuerySet)):
+    pass
+
+
 class JobCard(UUIDModel, TimeStampedModel):
     job_number = models.CharField(max_length=40, unique=True)
     sales_order = models.ForeignKey(SalesOrder, on_delete=models.PROTECT, related_name="job_cards")
@@ -648,7 +678,11 @@ class JobCard(UUIDModel, TimeStampedModel):
     requirements = models.TextField(blank=True)
     notes = models.TextField(blank=True)
 
+    objects = JobCardManager()
+
     def clean(self):
+        if not self.approved_design_revision_id or not self.sales_order_id or not self.division_id:
+            raise ValidationError("A job card requires a sales order, division, and approved design revision.")
         if self.approved_design_revision_id and self.sales_order_id:
             revision = self.approved_design_revision
             if revision.design_record.sales_order_id != self.sales_order_id:
