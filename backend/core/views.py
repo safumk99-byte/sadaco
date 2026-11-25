@@ -8,7 +8,10 @@ from rest_framework.response import Response
 
 from .models import Customer, DesignRevision, Enquiry, FollowUp
 from .permissions import IsActiveStaff, IsFounderOrScopedDivisionMember, active_staff_profile, is_founder
-from .serializers import (\n    CustomerSerializer, DesignApprovalReadSerializer, DesignApprovalSubmissionSerializer,\n    DesignRevisionSerializer, EnquirySerializer, FollowUpSerializer,\n)
+from .serializers import (
+    CustomerSerializer, DesignApprovalReadSerializer, DesignApprovalSubmissionSerializer,
+    DesignRevisionSerializer, EnquirySerializer, FollowUpSerializer,
+)
 from .services import complete_follow_up, record_design_approval, transition_enquiry
 
 
