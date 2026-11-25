@@ -1359,3 +1359,44 @@ class DepartmentRoleScopeTests(TestCase):
             has_active_role(self.staff, "manager", division_id=self.division_b.pk)
         )
         self.assertEqual(active_role_division_ids(self.staff, "manager"), [])
+
+
+    def test_staff_role_rejects_department_from_another_division(self):
+        with self.assertRaises(ValidationError):
+            StaffRole.objects.create(
+                staff=self.staff,
+                role=self.manager_role,
+                division=self.division_a,
+                department=self.department_b,
+            )
+
+    def test_staff_role_database_guard_rejects_mismatched_department_insert_and_update(self):
+        now = timezone.now()
+        invalid_id = uuid.uuid4()
+        with self.assertRaises(DatabaseError):
+            with transaction.atomic():
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        "INSERT INTO core_staffrole "
+                        "(id, created_at, updated_at, staff_id, role_id, division_id, "
+                        "department_id, valid_from, valid_until, granted_by_id) "
+                        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                        [
+                            invalid_id, now, now, self.staff.pk, self.manager_role.pk,
+                            self.division_a.pk, self.department_b.pk, now, None, None,
+                        ],
+                    )
+
+        assignment = StaffRole.objects.create(
+            staff=self.staff,
+            role=self.manager_role,
+            division=self.division_a,
+            department=self.department_a,
+        )
+        with self.assertRaises(DatabaseError):
+            with transaction.atomic():
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        "UPDATE core_staffrole SET division_id = %s WHERE id = %s",
+                        [self.division_b.pk, assignment.pk],
+                    )
