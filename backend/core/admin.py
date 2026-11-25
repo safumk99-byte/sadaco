@@ -9,8 +9,28 @@ for model in [
     models.ApprovalRequest, models.Quotation, models.QuotationItem,
     models.SalesOrder, models.OrderItem, models.OrderAssignment,
     models.OrderStatusEvent, models.DesignRecord, models.DesignRevision,
-    models.StoredFile, models.DesignRevisionFile, models.DesignApproval,
+    models.StoredFile, models.DesignRevisionFile,
     models.JobCard, models.ProductionStage, models.ProductionUpdate,
     models.StaffTask, models.TaskUpdate, models.AuditEvent,
 ]:
     admin.site.register(model)
+
+
+@admin.register(models.DesignApproval)
+class DesignApprovalAdmin(admin.ModelAdmin):
+    list_display = ("design_revision", "reviewer_type", "decision", "reviewed_by", "reviewed_at")
+    list_filter = ("reviewer_type", "decision")
+    search_fields = ("design_revision__design_record__title", "comments")
+    readonly_fields = (
+        "design_revision", "reviewer_type", "decision",
+        "reviewed_by", "reviewed_at", "comments",
+    )
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
