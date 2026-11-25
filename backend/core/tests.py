@@ -1604,3 +1604,127 @@ class DepartmentDivisionImmutabilityTests(TestCase):
                         "UPDATE core_department SET division_id = %s WHERE id = %s",
                         [self.division_b.pk.hex, self.department.pk.hex],
                     )
+
+
+class ActiveStaffReferenceGuardTests(TestCase):
+    def setUp(self):
+        self.division = Division.objects.create(
+            code="active-staff-guard", name="Active Staff Guard Division"
+        )
+        User = get_user_model()
+        active_user = User.objects.create_user(
+            username="active-staff-guard-user", password="test-password-123"
+        )
+        self.active_staff = StaffProfile.objects.create(
+            user=active_user, display_name="Active Guard Staff"
+        )
+        StaffDivision.objects.create(staff=self.active_staff, division=self.division)
+
+        inactive_user = User.objects.create_user(
+            username="inactive-staff-guard-user", password="test-password-123"
+        )
+        self.inactive_staff = StaffProfile.objects.create(
+            user=inactive_user,
+            display_name="Inactive Guard Staff",
+            employment_status=StaffProfile.EmploymentStatus.INACTIVE,
+        )
+        self.customer = Customer.objects.create(
+            customer_code="ACTIVE-GUARD-CUSTOMER",
+            display_name="Active Guard Customer",
+        )
+        self.enquiry = Enquiry.objects.create(
+            enquiry_number="ACTIVE-GUARD-ENQUIRY",
+            customer=self.customer,
+            division=self.division,
+            source=Enquiry.Source.DIRECT,
+            requested_product_service="Test service",
+            created_by=self.active_staff,
+        )
+        self.communication = CustomerCommunication.objects.create(
+            customer=self.customer,
+            enquiry=self.enquiry,
+            division=self.division,
+            channel=CustomerCommunication.Channel.PHONE,
+            summary="Initial active-staff communication",
+            recorded_by=self.active_staff,
+        )
+
+    def test_model_validation_rejects_inactive_staff_as_creator_assignee_and_actor(self):
+        with self.assertRaises(ValidationError):
+            Enquiry.objects.create(
+                enquiry_number="INACTIVE-GUARD-ENQUIRY",
+                customer=self.customer,
+                division=self.division,
+                source=Enquiry.Source.DIRECT,
+                requested_product_service="Should be rejected",
+                created_by=self.inactive_staff,
+            )
+
+        with self.assertRaises(ValidationError):
+            Enquiry.objects.create(
+                enquiry_number="INACTIVE-GUARD-ASSIGNEE",
+                customer=self.customer,
+                division=self.division,
+                source=Enquiry.Source.DIRECT,
+                requested_product_service="Should be rejected",
+                assigned_to=self.inactive_staff,
+                created_by=self.active_staff,
+            )
+
+        with self.assertRaises(ValidationError):
+            CustomerCommunication.objects.create(
+                customer=self.customer,
+                enquiry=self.enquiry,
+                division=self.division,
+                channel=CustomerCommunication.Channel.PHONE,
+                summary="Inactive actor",
+                recorded_by=self.inactive_staff,
+            )
+
+        with self.assertRaises(ValidationError):
+            ApprovalRequest.objects.create(
+                division=self.division,
+                entity_type="enquiry",
+                entity_id=self.enquiry.pk,
+                approval_type="test",
+                requested_by=self.inactive_staff,
+            )
+
+    def test_global_founder_role_does_not_restore_access_for_inactive_staff(self):
+        founder_role = Role.objects.create(code="founder", name="Founder")
+        StaffRole.objects.create(staff=self.inactive_staff, role=founder_role)
+
+        from .models import staff_has_division_access
+        self.assertFalse(
+            staff_has_division_access(self.inactive_staff.pk, self.division.pk)
+        )
+
+    def test_database_guards_reject_inactive_staff_references_on_insert_and_update(self):
+        with self.assertRaises(DatabaseError):
+            with transaction.atomic():
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        "UPDATE core_enquiry SET created_by_id = %s WHERE id = %s",
+                        [self.inactive_staff.pk.hex, self.enquiry.pk.hex],
+                    )
+
+        with self.assertRaises(DatabaseError):
+            with transaction.atomic():
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        "UPDATE core_customercommunication SET recorded_by_id = %s WHERE id = %s",
+                        [self.inactive_staff.pk.hex, self.communication.pk.hex],
+                    )
+
+        with self.assertRaises(DatabaseError):
+            with transaction.atomic():
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        "INSERT INTO core_staffdivision (id, staff_id, division_id) "
+                        "VALUES (%s, %s, %s)",
+                        [
+                            uuid.uuid4().hex,
+                            self.inactive_staff.pk.hex,
+                            self.division.pk.hex,
+                        ],
+                    )
