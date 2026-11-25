@@ -1094,6 +1094,21 @@ class TaskUpdate(UUIDModel):
         super().save(*args, **kwargs)
 
 
+class AuditEventQuerySet(models.QuerySet):
+    def update(self, **kwargs):
+        raise ValidationError("Audit events are immutable.")
+
+    def bulk_update(self, objs, fields, batch_size=None):
+        raise ValidationError("Audit events are immutable.")
+
+    def delete(self):
+        raise ValidationError("Audit events cannot be deleted.")
+
+
+class AuditEventManager(models.Manager.from_queryset(AuditEventQuerySet)):
+    pass
+
+
 class AuditEvent(UUIDModel):
     actor = models.ForeignKey(StaffProfile, on_delete=models.PROTECT, null=True, blank=True)
     entity_type = models.CharField(max_length=100)
@@ -1105,6 +1120,16 @@ class AuditEvent(UUIDModel):
     reason = models.TextField(blank=True)
     request_id = models.CharField(max_length=100, blank=True)
 
+    objects = AuditEventManager()
+
     class Meta:
         indexes = [models.Index(fields=["entity_type", "entity_id", "occurred_at"], name="ix_audit_entity_time")]
         ordering = ["-occurred_at"]
+
+    def save(self, *args, **kwargs):
+        if not self._state.adding:
+            raise ValidationError("Audit events are immutable.")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("Audit events cannot be deleted.")
