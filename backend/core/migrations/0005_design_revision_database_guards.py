@@ -120,7 +120,7 @@ def install_design_revision_guards(apps, schema_editor):
         schema_editor.execute(
             """
             CREATE OR REPLACE FUNCTION core_guard_designrevisionfile_mutation()
-            RETURNS trigger AS $
+            RETURNS trigger AS $$
             BEGIN
                 IF TG_OP = 'DELETE' THEN
                     IF EXISTS (SELECT 1 FROM core_designrevision r
@@ -144,7 +144,7 @@ def install_design_revision_guards(apps, schema_editor):
                     RETURN NEW;
                 END IF;
             END;
-            $ LANGUAGE plpgsql;
+            $$ LANGUAGE plpgsql;
             """
         )
         schema_editor.execute(
