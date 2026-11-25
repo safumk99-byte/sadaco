@@ -80,6 +80,9 @@ class DomainModelTests(TestCase):
             with transaction.atomic():
                 revision.files.add(stored_file)
         with self.assertRaises(ValidationError):
+            with transaction.atomic():
+                stored_file.design_revisions.add(revision)
+        with self.assertRaises(ValidationError):
             DesignRevisionFile.objects.create(
                 design_revision=revision, stored_file=stored_file
             )
