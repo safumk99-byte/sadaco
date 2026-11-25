@@ -821,6 +821,7 @@ class CRMServiceTests(TestCase):
         self.division = Division.objects.create(code="service-test", name="Service Test Division")
         user = get_user_model().objects.create_user(username="crm-actor", password="password123")
         self.actor = StaffProfile.objects.create(user=user, display_name="CRM Actor")
+        StaffDivision.objects.create(staff=self.actor, division=self.division)
         self.customer = Customer.objects.create(customer_code="CRM-001", display_name="CRM Customer")
         self.enquiry = Enquiry.objects.create(
             enquiry_number="CRM-ENQ-001", customer=self.customer,
