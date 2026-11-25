@@ -2,7 +2,7 @@ from django.db.models import F, Q
 from django.utils import timezone
 from rest_framework.permissions import BasePermission
 
-from .models import StaffRole
+from .models import Department, StaffRole
 
 
 def active_staff_profile(user):
@@ -26,6 +26,60 @@ def is_founder(profile):
         department__isnull=True,
         valid_from__lte=now,
     ).filter(Q(valid_until__isnull=True) | Q(valid_until__gt=now)).exists()
+
+
+def has_permission(profile, permission_code, *, division_id=None, department_id=None):
+    """Evaluate a configured permission against active role and organizational scope.
+
+    Missing permissions and out-of-scope assignments deny access. Active global
+    Founder/Super Admin roles retain their documented cross-division override.
+    """
+    if (
+        profile is None
+        or profile.employment_status != "active"
+        or not permission_code
+    ):
+        return False
+    if is_founder(profile):
+        return True
+
+    if department_id and not division_id:
+        division_id = Department.objects.filter(pk=department_id).values_list(
+            "division_id", flat=True
+        ).first()
+        if division_id is None:
+            return False
+
+    now = timezone.now()
+    assignments = StaffRole.objects.filter(
+        staff=profile,
+        role__permissions__code=permission_code,
+        valid_from__lte=now,
+    ).filter(Q(valid_until__isnull=True) | Q(valid_until__gt=now))
+
+    if division_id is None:
+        assignments = assignments.filter(
+            division__isnull=True, department__isnull=True
+        )
+    elif department_id is None:
+        assignments = assignments.filter(
+            Q(division__isnull=True, department__isnull=True)
+            | Q(division_id=division_id, department__isnull=True)
+            | (
+                Q(department__division_id=division_id)
+                & (Q(division__isnull=True) | Q(division_id=division_id))
+            )
+        )
+    else:
+        assignments = assignments.filter(
+            Q(division__isnull=True, department__isnull=True)
+            | Q(division_id=division_id, department__isnull=True)
+            | (
+                Q(department_id=department_id)
+                & (Q(division__isnull=True) | Q(division_id=division_id))
+            )
+        )
+    return assignments.exists()
 
 
 class IsActiveStaff(BasePermission):
@@ -53,11 +107,12 @@ class IsFounderOrScopedDivisionMember(IsActiveStaff):
 def has_active_role(profile, role_code, *, division_id=None):
     if profile is None or profile.employment_status != "active":
         return False
+    now = timezone.now()
     assignments = StaffRole.objects.filter(
         staff=profile,
         role__code=role_code,
-        valid_from__lte=timezone.now(),
-    ).filter(Q(valid_until__isnull=True) | Q(valid_until__gt=timezone.now()))
+        valid_from__lte=now,
+    ).filter(Q(valid_until__isnull=True) | Q(valid_until__gt=now))
     if division_id is not None:
         assignments = assignments.filter(
             Q(division__isnull=True, department__isnull=True)
