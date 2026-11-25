@@ -124,9 +124,12 @@ class DomainModelTests(TestCase):
                 locked_at=timezone.now(), created_by=self.staff,
             )
         revision = DesignRevision.objects.create(
-            design_record=design, revision_number=1, status="approved",
-            locked_at=timezone.now(), created_by=self.staff,
+            design_record=design, revision_number=1, status="draft",
+            created_by=self.staff,
         )
+        revision.status = "approved"
+        revision.locked_at = timezone.now()
+        revision.save()
         revision.change_summary = "Edited after approval"
         with self.assertRaises(ValidationError):
             revision.save()
