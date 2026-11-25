@@ -394,6 +394,20 @@ class OrderAssignment(UUIDModel):
     assigned_at = models.DateTimeField(default=timezone.now)
     unassigned_at = models.DateTimeField(null=True, blank=True)
 
+    def clean(self):
+        if self.sales_order_id:
+            division_id = self.sales_order.division_id
+            for field in ("staff", "assigned_by"):
+                staff_id = getattr(self, f"{field}_id")
+                if staff_id and not StaffDivision.objects.filter(
+                    staff_id=staff_id, division_id=division_id
+                ).exists():
+                    raise ValidationError({field: "Staff member must belong to the sales order division."})
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
 
 class OrderStatusEvent(UUIDModel):
     sales_order = models.ForeignKey(SalesOrder, on_delete=models.PROTECT, related_name="status_events")
@@ -410,6 +424,16 @@ class DesignRecord(UUIDModel, TimeStampedModel):
     instructions = models.TextField(blank=True)
     status = models.CharField(max_length=40, default="pending")
     assigned_to = models.ForeignKey(StaffProfile, on_delete=models.PROTECT, null=True, blank=True)
+
+    def clean(self):
+        if self.assigned_to_id and self.sales_order_id and not StaffDivision.objects.filter(
+            staff_id=self.assigned_to_id, division_id=self.sales_order.division_id
+        ).exists():
+            raise ValidationError({"assigned_to": "Designer must belong to the sales order division."})
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
 
 
 class StoredFile(UUIDModel):
@@ -787,6 +811,16 @@ class ProductionStage(UUIDModel, TimeStampedModel):
     class Meta:
         constraints = [models.UniqueConstraint(fields=["job_card", "sequence_number"], name="uq_stage_sequence")]
 
+    def clean(self):
+        if self.assigned_to_id and self.job_card_id and not StaffDivision.objects.filter(
+            staff_id=self.assigned_to_id, division_id=self.job_card.division_id
+        ).exists():
+            raise ValidationError({"assigned_to": "Production assignee must belong to the job card division."})
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
 
 class ProductionUpdate(UUIDModel):
     production_stage = models.ForeignKey(ProductionStage, on_delete=models.PROTECT, related_name="updates")
@@ -795,6 +829,18 @@ class ProductionUpdate(UUIDModel):
     note = models.TextField(blank=True)
     evidence_file = models.ForeignKey(StoredFile, on_delete=models.PROTECT, null=True, blank=True)
     recorded_at = models.DateTimeField(default=timezone.now)
+
+    def clean(self):
+        if self.staff_id and self.production_stage_id:
+            division_id = self.production_stage.job_card.division_id
+            if not StaffDivision.objects.filter(
+                staff_id=self.staff_id, division_id=division_id
+            ).exists():
+                raise ValidationError({"staff": "Reporting staff member must belong to the job card division."})
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
 
 
 class StaffTask(UUIDModel, TimeStampedModel):
@@ -823,6 +869,35 @@ class StaffTask(UUIDModel, TimeStampedModel):
 
     class Meta:
         indexes = [models.Index(fields=["assigned_to", "status", "deadline"], name="ix_task_owner_status_due")]
+
+    def clean(self):
+        related_order_id = None
+        if self.sales_order_id:
+            related_order_id = self.sales_order_id
+            if self.sales_order.division_id != self.division_id:
+                raise ValidationError({"sales_order": "Sales order must belong to the task division."})
+        if self.job_card_id:
+            if self.job_card.division_id != self.division_id:
+                raise ValidationError({"job_card": "Job card must belong to the task division."})
+            if related_order_id and self.job_card.sales_order_id != related_order_id:
+                raise ValidationError({"job_card": "Job card must belong to the selected sales order."})
+            related_order_id = self.job_card.sales_order_id
+        if self.production_stage_id:
+            stage = self.production_stage
+            if not self.job_card_id or stage.job_card_id != self.job_card_id:
+                raise ValidationError({"production_stage": "Production stage must belong to the selected job card."})
+            if stage.job_card.division_id != self.division_id:
+                raise ValidationError({"production_stage": "Production stage must belong to the task division."})
+        for field in ("assigned_to", "assigned_by"):
+            staff_id = getattr(self, f"{field}_id")
+            if staff_id and not StaffDivision.objects.filter(
+                staff_id=staff_id, division_id=self.division_id
+            ).exists():
+                raise ValidationError({field: "Staff member must belong to the task division."})
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
 
 
 class TaskUpdate(UUIDModel):
