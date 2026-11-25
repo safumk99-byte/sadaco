@@ -159,6 +159,36 @@ class DomainModelTests(TestCase):
                 design_revision=unlocked
             ).delete()
 
+        replacement_file = StoredFile.objects.create(
+            storage_key="designs/replacement.pdf",
+            original_name="replacement.pdf",
+            mime_type="application/pdf",
+            byte_size=2048,
+            uploaded_by=self.staff,
+        )
+        locked_attachment = DesignRevisionFile.objects.get(
+            design_revision=unlocked, stored_file=stored_file
+        )
+        locked_attachment.stored_file = replacement_file
+        with self.assertRaises(ValidationError):
+            DesignRevisionFile.objects.bulk_update(
+                [locked_attachment], ["stored_file"]
+            )
+
+        movable_revision = DesignRevision.objects.create(
+            design_record=design, revision_number=3, status="pending",
+            created_by=self.staff,
+        )
+        movable_revision.files.add(replacement_file)
+        movable_attachment = DesignRevisionFile.objects.get(
+            design_revision=movable_revision, stored_file=replacement_file
+        )
+        movable_attachment.design_revision = revision
+        with self.assertRaises(ValidationError):
+            DesignRevisionFile.objects.bulk_update(
+                [movable_attachment], ["design_revision"]
+            )
+
     def test_approved_revision_is_immutable(self):
         customer = Customer.objects.create(customer_code="C-002", display_name="Test Customer 2")
         order = SalesOrder.objects.create(
