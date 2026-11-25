@@ -295,6 +295,27 @@ class Quotation(UUIDModel, TimeStampedModel):
         ]
         indexes = [models.Index(fields=["division", "status", "issue_date"], name="ix_quote_div_status_date")]
 
+    def clean(self):
+        errors = {}
+        if self.enquiry_id:
+            enquiry = self.enquiry
+            if enquiry.division_id != self.division_id:
+                errors["enquiry"] = "Enquiry must belong to the quotation division."
+            if enquiry.customer_id != self.customer_id:
+                errors["customer"] = "Customer must match the selected enquiry."
+        for field in ("prepared_by", "approved_by"):
+            staff_id = getattr(self, f"{field}_id")
+            if staff_id and self.division_id and not StaffDivision.objects.filter(
+                staff_id=staff_id, division_id=self.division_id
+            ).exists():
+                errors[field] = "Staff member must belong to the quotation division."
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
 
 class QuotationItem(UUIDModel):
     quotation = models.ForeignKey(Quotation, on_delete=models.PROTECT, related_name="items")
@@ -366,6 +387,25 @@ class SalesOrder(UUIDModel, TimeStampedModel):
             models.Index(fields=["division", "status", "order_date"], name="ix_order_div_status_date"),
             models.Index(fields=["delivery_due_date"], name="ix_order_delivery_due"),
         ]
+
+    def clean(self):
+        errors = {}
+        if self.quotation_id:
+            quotation = self.quotation
+            if quotation.division_id != self.division_id:
+                errors["quotation"] = "Quotation must belong to the sales order division."
+            if quotation.customer_id != self.customer_id:
+                errors["customer"] = "Customer must match the selected quotation."
+        if self.created_by_id and self.division_id and not StaffDivision.objects.filter(
+            staff_id=self.created_by_id, division_id=self.division_id
+        ).exists():
+            errors["created_by"] = "Order creator must belong to the sales order division."
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
 
 
 class OrderItem(UUIDModel):
