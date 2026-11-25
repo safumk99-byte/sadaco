@@ -9,9 +9,9 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from .models import (
-    ApprovalRequest, Customer, CustomerCommunication, DesignRecord, DesignRevision, Division, Enquiry, FollowUp, JobCard, Quotation,
+    ApprovalRequest, Customer, CustomerCommunication, DesignRecord, DesignRevision, Division, Enquiry, FollowUp, JobCard, OrderStatusEvent, Quotation,
     OrderAssignment, ProductionStage, ProductionUpdate, SalesOrder, StaffDivision,
-    StaffProfile, StaffTask, StoredFile, DesignRevisionFile, Role, StaffRole,
+    StaffProfile, StaffTask, TaskUpdate, StoredFile, DesignRevisionFile, Role, StaffRole,
 )
 
 
@@ -1199,3 +1199,98 @@ class CRMRelationshipScopeTests(TestCase):
                                 f"UPDATE core_approvalrequest SET {column} = %s WHERE id = %s",
                                 [value, request.pk.hex],
                             )
+
+
+
+class OrderTaskActorScopeTests(TestCase):
+    def setUp(self):
+        self.division = Division.objects.create(code="order-task-scope", name="Order Task Scope")
+        self.other_division = Division.objects.create(code="order-task-other", name="Order Task Other")
+        User = get_user_model()
+        user = User.objects.create_user(username="order-task-member", password="test-password-123")
+        self.staff = StaffProfile.objects.create(user=user, display_name="Order Task Member")
+        StaffDivision.objects.create(staff=self.staff, division=self.division)
+        other_user = User.objects.create_user(username="order-task-outsider", password="test-password-123")
+        self.outsider = StaffProfile.objects.create(user=other_user, display_name="Order Task Outsider")
+        StaffDivision.objects.create(staff=self.outsider, division=self.other_division)
+        customer = Customer.objects.create(
+            customer_code="ORDER-TASK-CUSTOMER", display_name="Order Task Customer"
+        )
+        self.order = SalesOrder.objects.create(
+            order_number="ORDER-TASK-SCOPE-001", customer=customer,
+            division=self.division, created_by=self.staff,
+        )
+        self.task = StaffTask.objects.create(
+            task_number="ORDER-TASK-SCOPE-001", division=self.division,
+            sales_order=self.order, assigned_to=self.staff, assigned_by=self.staff,
+            title="Scope test task", priority="normal",
+        )
+
+    def test_order_status_event_model_scope_is_enforced(self):
+        with self.assertRaises(ValidationError):
+            OrderStatusEvent.objects.create(
+                sales_order=self.order, to_status="production", changed_by=self.outsider,
+            )
+        event = OrderStatusEvent.objects.create(
+            sales_order=self.order, to_status="production", changed_by=self.staff,
+        )
+        self.assertEqual(event.sales_order_id, self.order.pk)
+
+    def test_task_update_model_scope_is_enforced(self):
+        with self.assertRaises(ValidationError):
+            TaskUpdate.objects.create(
+                staff_task=self.task, reported_by=self.outsider,
+                update_type=TaskUpdate.UpdateType.PROGRESS, note="Out of division",
+            )
+        update = TaskUpdate.objects.create(
+            staff_task=self.task, reported_by=self.staff,
+            update_type=TaskUpdate.UpdateType.PROGRESS, note="Valid update",
+        )
+        self.assertEqual(update.staff_task_id, self.task.pk)
+
+    def test_order_status_event_database_guard_rejects_invalid_insert_and_update(self):
+        now = timezone.now()
+        with self.assertRaises(DatabaseError):
+            with transaction.atomic():
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        "INSERT INTO core_orderstatusevent "
+                        "(id, sales_order_id, from_status, to_status, changed_by_id, changed_at, reason) "
+                        "VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                        [uuid.uuid4().hex, self.order.pk.hex, "", "production",
+                         self.outsider.pk.hex, now, "Invalid actor"],
+                    )
+        event = OrderStatusEvent.objects.create(
+            sales_order=self.order, to_status="production", changed_by=self.staff,
+        )
+        with self.assertRaises(DatabaseError):
+            with transaction.atomic():
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        "UPDATE core_orderstatusevent SET changed_by_id = %s WHERE id = %s",
+                        [self.outsider.pk.hex, event.pk.hex],
+                    )
+
+    def test_task_update_database_guard_rejects_invalid_insert_and_update(self):
+        now = timezone.now()
+        with self.assertRaises(DatabaseError):
+            with transaction.atomic():
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        "INSERT INTO core_taskupdate "
+                        "(id, staff_task_id, reported_by_id, update_type, note, evidence_file_id, recorded_at) "
+                        "VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                        [uuid.uuid4().hex, self.task.pk.hex, self.outsider.pk.hex,
+                         "progress", "Invalid reporter", None, now],
+                    )
+        update = TaskUpdate.objects.create(
+            staff_task=self.task, reported_by=self.staff,
+            update_type=TaskUpdate.UpdateType.PROGRESS, note="Valid update",
+        )
+        with self.assertRaises(DatabaseError):
+            with transaction.atomic():
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        "UPDATE core_taskupdate SET reported_by_id = %s WHERE id = %s",
+                        [self.outsider.pk.hex, update.pk.hex],
+                    )
