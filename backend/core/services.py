@@ -2,7 +2,10 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
 
-from .models import AuditEvent, DesignApproval, DesignRevision, Enquiry, FollowUp
+from .models import (
+    AuditEvent, DesignApproval, DesignRevision, Enquiry, FollowUp,
+    staff_has_division_access,
+)
 from .permissions import has_active_role, is_founder
 
 
@@ -24,6 +27,15 @@ ENQUIRY_TRANSITIONS = {
 }
 
 
+def _require_division_access(actor, division_id, *, action):
+    """Enforce active staff and division scope at the service boundary."""
+    actor_id = getattr(actor, "pk", None)
+    if not staff_has_division_access(actor_id, division_id):
+        raise ValidationError(
+            f"Active staff with access to this division is required to {action}."
+        )
+
+
 def _audit(actor, entity, action, before, after, reason=""):
     AuditEvent.objects.create(
         actor=actor,
@@ -39,6 +51,7 @@ def _audit(actor, entity, action, before, after, reason=""):
 @transaction.atomic
 def transition_enquiry(*, enquiry_id, target_status, actor, reason=""):
     enquiry = Enquiry.objects.select_for_update().get(pk=enquiry_id)
+    _require_division_access(actor, enquiry.division_id, action="change enquiry status")
     if target_status not in Enquiry.Status.values:
         raise ValidationError({"status": "Unknown enquiry status."})
     allowed = ENQUIRY_TRANSITIONS.get(enquiry.status, set())
@@ -55,7 +68,10 @@ def transition_enquiry(*, enquiry_id, target_status, actor, reason=""):
 
 @transaction.atomic
 def complete_follow_up(*, follow_up_id, actor, note=None):
-    follow_up = FollowUp.objects.select_for_update().get(pk=follow_up_id)
+    follow_up = FollowUp.objects.select_for_update().select_related("enquiry").get(pk=follow_up_id)
+    _require_division_access(
+        actor, follow_up.enquiry.division_id, action="complete follow-up"
+    )
     if follow_up.status != FollowUp.Status.OPEN:
         raise ValidationError({"status": "Only open follow-ups can be completed."})
     before = {"status": follow_up.status, "completed_at": None}
