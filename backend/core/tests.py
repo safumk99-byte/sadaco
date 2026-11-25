@@ -130,6 +130,14 @@ class DomainModelTests(TestCase):
             DesignRevision.objects.filter(pk=revision.pk).delete()
         with self.assertRaises(ValidationError):
             revision.delete()
+        with self.assertRaises(ValidationError):
+            DesignRevision.objects.bulk_create([DesignRevision(
+                design_record=design,
+                revision_number=2,
+                status="approved",
+                locked_at=timezone.now(),
+                created_by=self.staff,
+            )])
 
 
 class EnquiryAPITests(TestCase):
