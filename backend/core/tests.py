@@ -1729,9 +1729,11 @@ class ActiveStaffReferenceGuardTests(TestCase):
         self.inactive_staff.save(update_fields=["employment_status"])
 
         from .models import staff_has_division_access
+        from .permissions import is_founder
         self.assertFalse(
             staff_has_division_access(self.inactive_staff.pk, self.division.pk)
         )
+        self.assertFalse(is_founder(self.inactive_staff))
 
     def test_database_guards_reject_inactive_staff_references_on_insert_and_update(self):
         with self.assertRaises(DatabaseError):
