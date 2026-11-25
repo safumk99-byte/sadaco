@@ -113,10 +113,9 @@ def record_design_approval(*, revision_id, reviewer_type, decision, actor, comme
     )
     if decision == "revision_required":
         revision.status = "revision_required"
+        revision.save(update_fields=["status", "locked_at", "updated_at"])
     elif reviewer_type == "manager":
         revision.lock_after_approval(approval)
-    else:
-        revision.save(update_fields=["status", "locked_at", "updated_at"])
     _audit(
         actor, approval, "design_approval_recorded", {},
         {
