@@ -2,7 +2,8 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
 
-from .models import AuditEvent, Enquiry, FollowUp
+from .models import AuditEvent, DesignApproval, DesignRevision, Enquiry, FollowUp
+from .permissions import has_active_role, is_founder
 
 
 ENQUIRY_TRANSITIONS = {
@@ -68,3 +69,66 @@ def complete_follow_up(*, follow_up_id, actor, note=None):
         {"status": follow_up.status, "completed_at": follow_up.completed_at.isoformat()},
     )
     return follow_up
+
+
+@transaction.atomic
+def record_design_approval(*, revision_id, reviewer_type, decision, actor, comments=""):
+    """Record customer approval or Manager confirmation for a design revision.
+
+    A staff Manager records the customer's externally obtained decision; the
+    Manager's own confirmation is a separate, subsequent approval record.
+    """
+    revision = DesignRevision.objects.select_for_update().select_related(
+        "design_record__sales_order"
+    ).get(pk=revision_id)
+    division_id = revision.design_record.sales_order.division_id
+    if not actor or actor.employment_status != "active":
+        raise ValidationError("An active staff member is required to record design approval.")
+    if not (is_founder(actor) or has_active_role(actor, "manager", division_id=division_id)):
+        raise ValidationError("Only the Manager or Founder can record design approval.")
+    if revision.locked_at is not None:
+        raise ValidationError("This design revision is already approved and locked.")
+    if reviewer_type not in {"customer", "manager"}:
+        raise ValidationError({"reviewer_type": "Reviewer type must be customer or manager."})
+    if decision not in {"approved", "revision_required"}:
+        raise ValidationError({"decision": "Decision must be approved or revision_required."})
+
+    latest_customer_approval = revision.approvals.filter(
+        reviewer_type="customer"
+    ).order_by("-reviewed_at", "-id").first()
+    if reviewer_type == "manager" and decision == "approved":
+        if not latest_customer_approval or latest_customer_approval.decision != "approved":
+            raise ValidationError(
+                "Manager confirmation requires the customer's approval first."
+            )
+
+    before = {"status": revision.status, "locked_at": None}
+    approval = DesignApproval.objects.create(
+        design_revision=revision,
+        reviewer_type=reviewer_type,
+        decision=decision,
+        reviewed_by=actor,
+        reviewed_at=timezone.now(),
+        comments=comments,
+    )
+    if decision == "revision_required":
+        revision.status = "revision_required"
+    elif reviewer_type == "manager":
+        revision.status = "approved"
+        revision.locked_at = approval.reviewed_at
+    revision.save(update_fields=["status", "locked_at", "updated_at"])
+    _audit(
+        actor, approval, "design_approval_recorded", {},
+        {
+            "design_revision_id": str(revision.pk),
+            "reviewer_type": reviewer_type,
+            "decision": decision,
+            "comments": comments,
+        },
+    )
+    _audit(
+        actor, revision, "design_revision_status_changed", before,
+        {"status": revision.status, "locked_at": revision.locked_at.isoformat() if revision.locked_at else None},
+        reason=f"{reviewer_type} decision: {decision}",
+    )
+    return approval
