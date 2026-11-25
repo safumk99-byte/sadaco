@@ -1000,13 +1000,17 @@ class DesignApprovalAPITests(TestCase):
         self.designer_user = User.objects.create_user(username="approval-api-designer", password="password123")
         self.designer = StaffProfile.objects.create(user=self.designer_user, display_name="API Designer")
         StaffDivision.objects.create(staff=self.designer, division=self.division)
+        designer_role = Role.objects.create(code="designer", name="Designer")
+        StaffRole.objects.create(staff=self.designer, role=designer_role, division=self.division)
         customer = Customer.objects.create(customer_code="APR-API-001", display_name="API Approval Customer")
         order = SalesOrder.objects.create(
             order_number="SAD-APPROVAL-API-001", customer=customer, division=self.division,
             created_by=self.manager, subtotal=Decimal("100"), grand_total=Decimal("100"),
             balance_due=Decimal("100"),
         )
-        design = DesignRecord.objects.create(sales_order=order, title="API Approval Artwork")
+        design = DesignRecord.objects.create(
+            sales_order=order, title="API Approval Artwork", assigned_to=self.designer
+        )
         self.revision = DesignRevision.objects.create(
             design_record=design, revision_number=1, status="submitted", created_by=self.designer,
         )
