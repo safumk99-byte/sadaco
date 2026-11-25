@@ -219,8 +219,10 @@ class HasConfiguredRolePermission(BasePermission):
         division_id = getattr(obj, "division_id", None)
         if division_id is None and hasattr(obj, "enquiry"):
             division_id = obj.enquiry.division_id
-        if division_id is None and hasattr(obj, "orders"):
-            return False
+        if division_id is None and hasattr(obj, "enquiries") and hasattr(obj, "orders"):
+            related_divisions = set(obj.enquiries.values_list("division_id", flat=True))
+            related_divisions.update(obj.orders.values_list("division_id", flat=True))
+            return any(has_permission(profile, code, division_id=value) for value in related_divisions)
         return bool(division_id and has_permission(
             profile, code, division_id=division_id
         ))
