@@ -1692,7 +1692,11 @@ class ActiveStaffReferenceGuardTests(TestCase):
 
     def test_global_founder_role_does_not_restore_access_for_inactive_staff(self):
         founder_role = Role.objects.create(code="founder", name="Founder")
+        self.inactive_staff.employment_status = StaffProfile.EmploymentStatus.ACTIVE
+        self.inactive_staff.save()
         StaffRole.objects.create(staff=self.inactive_staff, role=founder_role)
+        self.inactive_staff.employment_status = StaffProfile.EmploymentStatus.INACTIVE
+        self.inactive_staff.save(update_fields=["employment_status"])
 
         from .models import staff_has_division_access
         self.assertFalse(
