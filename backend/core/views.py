@@ -5,9 +5,10 @@ from django.views.decorators.http import require_GET
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.exceptions import PermissionDenied
 
 from .models import Customer, DesignRevision, Enquiry, FollowUp
-from .permissions import (HasConfiguredRolePermission, IsActiveStaff, IsFounderOrScopedDivisionMember, active_role_division_ids, active_staff_profile, is_founder, permission_scope_division_ids)
+from .permissions import (HasConfiguredRolePermission, IsActiveStaff, IsFounderOrScopedDivisionMember, active_role_division_ids, active_staff_profile, is_founder, permission_scope_division_ids, has_permission)
 from .serializers import (
     CustomerSerializer, DesignApprovalReadSerializer, DesignApprovalSubmissionSerializer,
     DesignRevisionSerializer, EnquirySerializer, FollowUpSerializer,
@@ -68,7 +69,11 @@ class EnquiryViewSet(viewsets.ModelViewSet):
         return qs
 
     def perform_create(self, serializer):
-        serializer.save(created_by=self.request.user.staff_profile)
+        profile = active_staff_profile(self.request.user)
+        division_id = serializer.validated_data["division"].pk
+        if not has_permission(profile, "crm.enquiry.create", division_id=division_id):
+            raise PermissionDenied("Your role cannot create enquiries in this division.")
+        serializer.save(created_by=profile)
 
     @action(detail=True, methods=["post"], url_path="transition")
     def transition(self, request, pk=None):
@@ -107,6 +112,13 @@ class FollowUpViewSet(viewsets.ModelViewSet):
         if division_ids is not None:
             qs = qs.filter(enquiry__division_id__in=division_ids)
         return qs
+
+    def perform_create(self, serializer):
+        profile = active_staff_profile(self.request.user)
+        enquiry = serializer.validated_data["enquiry"]
+        if not has_permission(profile, "crm.followup.create", division_id=enquiry.division_id):
+            raise PermissionDenied("Your role cannot create follow-ups in this division.")
+        serializer.save()
 
     @action(detail=True, methods=["post"], url_path="complete")
     def complete(self, request, pk=None):
