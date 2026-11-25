@@ -9,7 +9,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from .models import (
-    Customer, DesignRecord, DesignRevision, Division, Enquiry, JobCard, Quotation,
+    Customer, DesignRecord, DesignRevision, Division, Enquiry, FollowUp, JobCard, Quotation,
     OrderAssignment, ProductionStage, ProductionUpdate, SalesOrder, StaffDivision,
     StaffProfile, StaffTask, StoredFile, DesignRevisionFile, Role, StaffRole,
 )
@@ -21,6 +21,96 @@ class DomainModelTests(TestCase):
         self.user = get_user_model().objects.create_user(username="designer", password="test-password-123")
         self.staff = StaffProfile.objects.create(user=self.user, display_name="Test Designer")
         StaffDivision.objects.create(staff=self.staff, division=self.division)
+
+    def test_enquiry_and_followup_model_division_scope_is_enforced(self):
+        other_division = Division.objects.create(code="enquiry-other", name="Enquiry Other Division")
+        other_user = get_user_model().objects.create_user(
+            username="enquiry-other-staff", password="test-password-123"
+        )
+        other_staff = StaffProfile.objects.create(
+            user=other_user, display_name="Enquiry Other Staff"
+        )
+        StaffDivision.objects.create(staff=other_staff, division=other_division)
+        customer = Customer.objects.create(
+            customer_code="C-ENQUIRY-SCOPE", display_name="Enquiry Scope Customer"
+        )
+        with self.assertRaises(ValidationError):
+            Enquiry.objects.create(
+                enquiry_number="ENQ-BAD-ASSIGNEE", customer=customer,
+                division=self.division, source=Enquiry.Source.DIRECT,
+                requested_product_service="Signage", assigned_to=other_staff,
+                created_by=self.staff,
+            )
+        with self.assertRaises(ValidationError):
+            Enquiry.objects.create(
+                enquiry_number="ENQ-BAD-CREATOR", customer=customer,
+                division=self.division, source=Enquiry.Source.DIRECT,
+                requested_product_service="Signage", created_by=other_staff,
+            )
+        enquiry = Enquiry.objects.create(
+            enquiry_number="ENQ-VALID-SCOPE", customer=customer,
+            division=self.division, source=Enquiry.Source.DIRECT,
+            requested_product_service="Signage", assigned_to=self.staff,
+            created_by=self.staff,
+        )
+        with self.assertRaises(ValidationError):
+            FollowUp.objects.create(
+                enquiry=enquiry, assigned_to=other_staff,
+                due_at=timezone.now(),
+            )
+
+    def test_enquiry_and_followup_database_guards_reject_raw_cross_division_assignments(self):
+        other_division = Division.objects.create(code="enquiry-raw-other", name="Enquiry Raw Other")
+        other_user = get_user_model().objects.create_user(
+            username="enquiry-raw-other-staff", password="test-password-123"
+        )
+        other_staff = StaffProfile.objects.create(
+            user=other_user, display_name="Enquiry Raw Other Staff"
+        )
+        StaffDivision.objects.create(staff=other_staff, division=other_division)
+        customer = Customer.objects.create(
+            customer_code="C-ENQUIRY-RAW", display_name="Enquiry Raw Customer"
+        )
+        enquiry = Enquiry.objects.create(
+            enquiry_number="ENQ-RAW-SCOPE", customer=customer,
+            division=self.division, source=Enquiry.Source.DIRECT,
+            requested_product_service="Signage", assigned_to=self.staff,
+            created_by=self.staff,
+        )
+        followup = FollowUp.objects.create(
+            enquiry=enquiry, assigned_to=self.staff, due_at=timezone.now(),
+        )
+        cases = [
+            ("core_enquiry", "assigned_to_id", other_staff.pk, enquiry.pk),
+            ("core_enquiry", "created_by_id", other_staff.pk, enquiry.pk),
+            ("core_followup", "assigned_to_id", other_staff.pk, followup.pk),
+        ]
+        for table, column, value, row_id in cases:
+            with self.subTest(table=table, column=column):
+                with self.assertRaises(DatabaseError):
+                    with transaction.atomic():
+                        with connection.cursor() as cursor:
+                            cursor.execute(
+                                f'UPDATE "{table}" SET "{column}" = %s WHERE "id" = %s',
+                                [value, row_id],
+                            )
+
+    def test_global_founder_can_create_enquiry_without_staff_division_membership(self):
+        founder_user = get_user_model().objects.create_user(
+            username="enquiry-global-founder", password="test-password-123"
+        )
+        founder = StaffProfile.objects.create(user=founder_user, display_name="Enquiry Global Founder")
+        founder_role = Role.objects.create(code="founder", name="Founder")
+        StaffRole.objects.create(staff=founder, role=founder_role)
+        customer = Customer.objects.create(
+            customer_code="C-ENQUIRY-FOUNDER", display_name="Enquiry Founder Customer"
+        )
+        enquiry = Enquiry.objects.create(
+            enquiry_number="ENQ-GLOBAL-FOUNDER", customer=customer,
+            division=self.division, source=Enquiry.Source.DIRECT,
+            requested_product_service="Signage", created_by=founder,
+        )
+        self.assertEqual(enquiry.created_by_id, founder.pk)
 
     def test_global_founder_can_create_sales_order_without_staff_division_membership(self):
         founder_user = get_user_model().objects.create_user(username="global-founder", password="test-password-123")
