@@ -217,6 +217,80 @@ class DomainModelTests(TestCase):
                 title="Cross-division task", priority="normal",
             ).save()
 
+    def test_database_guards_reject_raw_cross_division_staff_assignments(self):
+        other_division = Division.objects.create(code="decor", name="SADACO Decor Co")
+        other_user = get_user_model().objects.create_user(
+            username="raw-other-division-staff", password="test-password-123"
+        )
+        other_staff = StaffProfile.objects.create(
+            user=other_user, display_name="Other Division Staff"
+        )
+        StaffDivision.objects.create(staff=other_staff, division=other_division)
+
+        customer = Customer.objects.create(
+            customer_code="C-RAW-DIV-GUARD", display_name="Raw Division Guard Customer"
+        )
+        order = SalesOrder.objects.create(
+            order_number="SAD-RAW-DIV-GUARD", customer=customer, division=self.division,
+            created_by=self.staff, subtotal=Decimal("100"), grand_total=Decimal("100"),
+            balance_due=Decimal("100"),
+        )
+        design = DesignRecord.objects.create(
+            sales_order=order, title="Raw guard design", assigned_to=self.staff
+        )
+        revision = DesignRevision.objects.create(
+            design_record=design, revision_number=1, status="pending", created_by=self.staff,
+        )
+        manager_role = Role.objects.create(code="manager", name="Manager")
+        StaffRole.objects.create(staff=self.staff, role=manager_role, division=self.division)
+        from .services import record_design_approval
+        record_design_approval(
+            revision_id=revision.pk, reviewer_type="customer",
+            decision="approved", actor=self.staff,
+        )
+        record_design_approval(
+            revision_id=revision.pk, reviewer_type="manager",
+            decision="approved", actor=self.staff,
+        )
+        revision.refresh_from_db()
+        job = JobCard.objects.create(
+            job_number="JOB-RAW-DIV-GUARD", sales_order=order,
+            approved_design_revision=revision, division=self.division,
+        )
+        stage = ProductionStage.objects.create(
+            job_card=job, stage_code="assembly", stage_name="Assembly",
+            sequence_number=1, assigned_to=self.staff,
+        )
+        update = ProductionUpdate.objects.create(
+            production_stage=stage, staff=self.staff, status="in_progress"
+        )
+        assignment = OrderAssignment.objects.create(
+            sales_order=order, staff=self.staff, assigned_by=self.staff,
+            assignment_type="production",
+        )
+        task = StaffTask.objects.create(
+            task_number="TASK-RAW-DIV-GUARD", division=self.division,
+            sales_order=order, assigned_to=self.staff, assigned_by=self.staff,
+            title="Valid division task", priority="normal",
+        )
+
+        invalid_updates = [
+            ("core_designrecord", "assigned_to_id", other_staff.pk, design.pk),
+            ("core_orderassignment", "staff_id", other_staff.pk, assignment.pk),
+            ("core_productionstage", "assigned_to_id", other_staff.pk, stage.pk),
+            ("core_productionupdate", "staff_id", other_staff.pk, update.pk),
+            ("core_stafftask", "assigned_to_id", other_staff.pk, task.pk),
+        ]
+        for table, column, value, row_id in invalid_updates:
+            with self.subTest(table=table):
+                with self.assertRaises(DatabaseError):
+                    with transaction.atomic():
+                        with connection.cursor() as cursor:
+                            cursor.execute(
+                                f'UPDATE "{table}" SET "{column}" = %s WHERE "id" = %s',
+                                [value, row_id],
+                            )
+
     def test_locked_revision_file_attachments_cannot_be_added_or_removed(self):
         customer = Customer.objects.create(customer_code="C-003", display_name="Test Customer 3")
         order = SalesOrder.objects.create(
