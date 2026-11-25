@@ -1,4 +1,4 @@
-from django.db.models import Q
+from django.db.models import F, Q
 from django.utils import timezone
 from rest_framework.permissions import BasePermission
 
