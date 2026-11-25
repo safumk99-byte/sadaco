@@ -1468,8 +1468,8 @@ class DesignApprovalActorScopeTests(TestCase):
                                 "reviewed_by_id, reviewed_at, comments) "
                                 "VALUES (%s, %s, %s, %s, %s, %s, %s)",
                                 [
-                                    uuid.uuid4(), self.revision.pk, reviewer_type,
-                                    decision, actor.pk, now, "Raw SQL bypass attempt",
+                                    uuid.uuid4().hex, self.revision.pk.hex, reviewer_type,
+                                    decision, actor.pk.hex, now, "Raw SQL bypass attempt",
                                 ],
                             )
 
